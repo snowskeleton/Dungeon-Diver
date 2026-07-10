@@ -1,0 +1,947 @@
+<title>game-2 — Design Roadmap</title>
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background-color: #0d0d1c;
+    background-image: radial-gradient(circle, rgba(255,255,255,0.055) 1px, transparent 1px);
+    background-size: 8px 8px;
+    color: #c8cfe0;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 15px;
+    line-height: 1.65;
+    padding: 40px 20px 88px;
+  }
+
+  .doc {
+    max-width: 820px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 48px;
+  }
+
+  /* ── Header ── */
+  .doc-header {
+    padding-left: 18px;
+    border-left: 3px solid #e94560;
+  }
+
+  .doc-eyebrow {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: #e94560;
+    margin-bottom: 7px;
+  }
+
+  .doc-title {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 30px;
+    font-weight: bold;
+    color: #e8ecf5;
+    line-height: 1.1;
+    margin-bottom: 9px;
+    text-wrap: balance;
+  }
+
+  .doc-subtitle {
+    font-size: 14px;
+    color: #697080;
+    line-height: 1.6;
+  }
+
+  /* ── Section Label ── */
+  .section-label {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: #697080;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #1e1f3a;
+  }
+
+  /* ── Vision ── */
+  .vision {
+    background: #14152b;
+    border: 1px solid #1e1f3a;
+    border-top: 2px solid #e94560;
+    padding: 20px 24px;
+  }
+
+  .vision p {
+    font-size: 15px;
+    color: #c8cfe0;
+    line-height: 1.75;
+  }
+
+  /* ── Roster ── */
+  .roster-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+
+  @media (max-width: 620px) {
+    .roster-grid { grid-template-columns: 1fr 1fr; }
+  }
+
+  .roster-card {
+    background: #14152b;
+    border: 1px solid #1e1f3a;
+    border-top: 2px solid #2a2b48;
+    padding: 14px 14px 16px;
+  }
+
+  .roster-card.ready  { border-top-color: #3db87a; }
+  .roster-card.needed { border-top-color: #e94560; }
+
+  .class-eyebrow {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .sprite-tag {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 8px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 5px;
+  }
+
+  .sprite-tag.done   { color: #3db87a; background: rgba(61,184,122,0.1); }
+  .sprite-tag.needed { color: #e94560; background: rgba(233,69,96,0.1); }
+
+  .class-name {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 16px;
+    font-weight: bold;
+    color: #e8ecf5;
+    margin-bottom: 10px;
+  }
+
+  .class-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .meta-row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .meta-key {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 8px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #4a4d6a;
+  }
+
+  .meta-val {
+    font-size: 12px;
+    color: #b8c0d0;
+  }
+
+  .pips {
+    display: inline-flex;
+    gap: 2px;
+    align-items: center;
+  }
+
+  .pip {
+    width: 8px;
+    height: 6px;
+    background: #1e1f3a;
+    border-radius: 1px;
+  }
+
+  .pip.on { background: #e94560; }
+  .roster-card.ready .pip.on { background: #3db87a; }
+
+  /* ── Room Types ── */
+  .room-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+
+  @media (max-width: 600px) {
+    .room-grid { grid-template-columns: 1fr 1fr; }
+  }
+
+  .room-card {
+    background: #14152b;
+    border: 1px solid #1e1f3a;
+    padding: 12px 14px;
+  }
+
+  .room-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  .room-name {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 13px;
+    font-weight: bold;
+    color: #e8ecf5;
+  }
+
+  .room-phase {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 8px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    flex-shrink: 0;
+  }
+
+  .room-phase.ph1 { background: rgba(61,184,122,0.12); color: #3db87a; }
+  .room-phase.ph4 { background: rgba(233,69,96,0.12);  color: #e94560; }
+  .room-phase.ph5 { background: rgba(245,166,35,0.1);  color: #f5a623; }
+
+  .room-desc {
+    font-size: 12px;
+    color: #697080;
+    line-height: 1.5;
+  }
+
+  /* ── Phase Track ── */
+  .phase-track {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .phase-card {
+    background: #14152b;
+    border: 1px solid #1e1f3a;
+    border-left: 3px solid #1e1f3a;
+  }
+
+  .phase-card.done  { border-left-color: #3db87a; }
+  .phase-card.next  { border-left-color: #e94560; }
+  .phase-card.later { border-left-color: #2a2b48; }
+
+  .phase-card > summary {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 20px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .phase-card > summary::-webkit-details-marker { display: none; }
+  .phase-card > summary::marker { display: none; }
+  .phase-card > summary:hover { background: rgba(255,255,255,0.018); }
+
+  .floor-num {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: #4a4d6a;
+    min-width: 46px;
+    flex-shrink: 0;
+  }
+
+  .phase-name {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 14px;
+    font-weight: bold;
+    color: #e8ecf5;
+    flex: 1;
+  }
+
+  .phase-badge {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    flex-shrink: 0;
+  }
+
+  .badge-done  { background: rgba(61,184,122,0.12); color: #3db87a; }
+  .badge-next  { background: rgba(233,69,96,0.14);  color: #e94560; }
+  .badge-later { background: rgba(255,255,255,0.04); color: #4a4d6a; }
+
+  .phase-chevron {
+    font-size: 10px;
+    color: #3a3c58;
+    transition: transform 0.15s ease;
+    flex-shrink: 0;
+  }
+
+  .phase-card[open] > summary .phase-chevron {
+    transform: rotate(90deg);
+  }
+
+  .phase-body {
+    padding: 0 20px 20px;
+    border-top: 1px solid #1e1f3a;
+  }
+
+  .phase-milestone {
+    margin: 14px 0 12px;
+    font-size: 13px;
+    color: #697080;
+    line-height: 1.5;
+  }
+
+  .phase-milestone strong { color: #c8cfe0; }
+
+  .task-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .task-list li {
+    font-size: 14px;
+    color: #b8c0d0;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+
+  .tm {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 11px;
+    color: #3a3c58;
+    flex-shrink: 0;
+    width: 14px;
+    text-align: center;
+  }
+
+  .tm.done { color: #3db87a; }
+
+  .phase-art-note {
+    margin-top: 14px;
+    padding: 10px 14px;
+    background: #101128;
+    border-left: 2px solid #1e1f3a;
+    font-size: 12px;
+    color: #697080;
+    line-height: 1.55;
+  }
+
+  .phase-art-note strong {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #8892a0;
+  }
+
+  /* ── Asset Checklist ── */
+  .asset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  @media (max-width: 560px) {
+    .asset-grid { grid-template-columns: 1fr; }
+  }
+
+  .asset-group {
+    background: #14152b;
+    border: 1px solid #1e1f3a;
+    padding: 16px 18px;
+  }
+
+  .ag-label {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  .ag-label.done  { color: #3db87a; }
+  .ag-label.soon  { color: #e94560; }
+  .ag-label.later { color: #4a4d6a; }
+
+  .asset-items {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .asset-items li {
+    font-size: 13px;
+    color: #b8c0d0;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+
+  .adot {
+    width: 5px;
+    height: 5px;
+    border-radius: 1px;
+    flex-shrink: 0;
+  }
+
+  .adot.done  { background: #3db87a; }
+  .adot.soon  { background: #e94560; }
+  .adot.later { background: #2e3050; }
+
+  .asset-items .note {
+    color: #4a4d6a;
+    font-size: 12px;
+    font-style: italic;
+  }
+
+  /* ── Open Questions ── */
+  .questions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .q-item {
+    background: #14152b;
+    border: 1px solid #1e1f3a;
+    border-left: 3px solid #f5a623;
+    padding: 14px 18px;
+  }
+
+  .q-tag {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 9px;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: #f5a623;
+    margin-bottom: 5px;
+  }
+
+  .q-text {
+    font-size: 14px;
+    color: #e8ecf5;
+    line-height: 1.5;
+    margin-bottom: 5px;
+    text-wrap: balance;
+  }
+
+  .q-why {
+    font-size: 12px;
+    color: #697080;
+    line-height: 1.6;
+  }
+
+  /* ── Footer ── */
+  .doc-footer {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: #1e1f3a;
+    text-align: center;
+    text-transform: uppercase;
+  }
+</style>
+
+<div class="doc">
+
+  <!-- HEADER -->
+  <header class="doc-header">
+    <div class="doc-eyebrow">Living Design Document</div>
+    <div class="doc-title">game-2 Roadmap</div>
+    <div class="doc-subtitle">
+      Roguelike · Co-op 1–4 · Top-down dungeon crawl · Public release target<br>
+      Updated July 2026 — revised as decisions are made
+    </div>
+  </header>
+
+  <!-- VISION -->
+  <section>
+    <div class="section-label">Vision</div>
+    <div class="vision">
+      <p>
+        A roguelike dungeon crawler built for couch co-op. Every run starts clean — no meta-progression,
+        no permanent unlocks. Players pick from a roster of four distinct classes, each with a fixed weapon
+        and different stat profile, then descend through 10 floors of dungeon rooms. Challenges vary —
+        combat arenas, mazes, puzzles, boss encounters. Items found along the way define the run. A single
+        dungeon environment throughout; beat floor 10 to win. Pixel art, top-down, Zelda-paced.
+      </p>
+    </div>
+  </section>
+
+  <!-- ROSTER -->
+  <section>
+    <div class="section-label">Character Roster</div>
+    <div class="roster-grid">
+
+      <div class="roster-card ready">
+        <div class="class-eyebrow">
+          <span style="color:#3db87a;">Tank</span>
+          <span class="sprite-tag done">Sprite done</span>
+        </div>
+        <div class="class-name">Knight</div>
+        <div class="class-meta">
+          <div class="meta-row">
+            <span class="meta-key">Weapon</span>
+            <span class="meta-val">Sword &mdash; melee, instant hitbox</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-key">HP</span>
+            <span class="pips"><span class="pip on"></span><span class="pip on"></span><span class="pip on"></span><span class="pip on"></span><span class="pip"></span></span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-key">Speed</span>
+            <span class="pips"><span class="pip on"></span><span class="pip on"></span><span class="pip on"></span><span class="pip"></span><span class="pip"></span></span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-key">Damage</span>
+            <span class="pips"><span class="pip on"></span><span class="pip on"></span><span class="pip on"></span><span class="pip"></span><span class="pip"></span></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="roster-card needed">
+        <div class="class-eyebrow">
+          <span style="color:#e94560;">Assassin</span>
+          <span class="sprite-tag needed">Sprite needed</span>
+        </div>
+        <div class="class-name">Rogue</div>
+        <div class="class-meta">
+          <div class="meta-row">
+            <span class="meta-key">Weapon</span>
+            <span class="meta-val">Daggers &mdash; fast projectile, 1 hit</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-key">HP</span>
+            <span class="pips"><span class="pip on"></span><span class="pip on"></span><span class="pip"></span><span class="pip"></span><span class="pip"></span></span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-key">Speed</span>
+            <span class="pips"><span class="pip on"></span><span class="pip on"></span><span class="pip on"></span><span class="pip on"></span><span class="pip on"></span></span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-key">Damage</span>
+            <span class="pips"><span class="pip on"></span><span class="pip on"></span><span class="pip on"></span><span class="pip on"></span><span class="pip"></span></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="roster-card needed">
+        <div class="class-eyebrow">
+          <span style="color:#e94560;">Skirmisher</span>
+          <span class="sprite-tag needed">Sprite needed</span>
+        </div>
+        <div class="class-name">Ranger</div>
+        <div class="class-meta">
+          <div class="meta-row">
+            <span class="meta-key">Weapon</span>
+            <span class="meta-val">Bow &mdash; traveling projectile, 1 hit</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-key">HP</span>
+            <span class="pips"><span class="pip on"></span><span class="pip on"></span><span class="pip on"></span><span class="pip"></span><span class="pip"></span></span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-key">Speed</span>
+            <span class="pips"><span class="pip on"></span><span class="pip on"></span><span class="pip on"></span><span class="pip on"></span><span class="pip"></span></span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-key">Damage</span>
+            <span class="pips"><span class="pip on"></span><span class="pip on"></span><span class="pip on"></span><span class="pip"></span><span class="pip"></span></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="roster-card needed">
+        <div class="class-eyebrow">
+          <span style="color:#e94560;">Glass Cannon</span>
+          <span class="sprite-tag needed">Sprite needed</span>
+        </div>
+        <div class="class-name">Mage</div>
+        <div class="class-meta">
+          <div class="meta-row">
+            <span class="meta-key">Weapon</span>
+            <span class="meta-val">Staff &mdash; AOE pulse, hits all in radius every N frames</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-key">HP</span>
+            <span class="pips"><span class="pip on"></span><span class="pip on"></span><span class="pip"></span><span class="pip"></span><span class="pip"></span></span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-key">Speed</span>
+            <span class="pips"><span class="pip on"></span><span class="pip on"></span><span class="pip"></span><span class="pip"></span><span class="pip"></span></span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-key">Damage</span>
+            <span class="pips"><span class="pip on"></span><span class="pip on"></span><span class="pip on"></span><span class="pip on"></span><span class="pip on"></span></span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ROOM TYPES -->
+  <section>
+    <div class="section-label">Room Types</div>
+    <p style="font-size:12px;color:#697080;margin-bottom:14px;">
+      Room types are assigned by a per-room weighted roll after the dungeon graph is generated.
+      Boss is the only fixed count (exactly 1 per floor, random placement).
+      All others are probabilistic — average counts assume ~13 rooms per floor.
+    </p>
+    <div class="room-grid">
+
+      <div class="room-card">
+        <div class="room-header">
+          <span class="room-name">Combat</span>
+          <span class="room-phase ph1">Phase 1 · 58%</span>
+        </div>
+        <div class="room-desc">The default (~7 per floor). Clear all enemies to unlock the exit doors. Semi-open layout with random tetris-block cover obstacles — some rooms are fully open, most have light cover. Cover is randomly generated per room.</div>
+      </div>
+
+      <div class="room-card">
+        <div class="room-header">
+          <span class="room-name">Boss</span>
+          <span class="room-phase ph4">Phase 4 · fixed 1</span>
+        </div>
+        <div class="room-desc">Exactly 1 per floor, randomly placed in any room except the spawn room — independent of the stairs. Floors 1–9: mini-boss (same structure, weaker stats). Floor 10: final boss. Open arena layout. Telegraph: passageway tiles leading into this room are colored gold.</div>
+      </div>
+
+      <div class="room-card">
+        <div class="room-header">
+          <span class="room-name">Maze</span>
+          <span class="room-phase ph4">Phase 4 · 17%</span>
+        </div>
+        <div class="room-desc">~2 per floor. Recursive backtracking wall layout, enemies scattered throughout. Navigation is the challenge — no special clear condition beyond reaching the exit.</div>
+      </div>
+
+      <div class="room-card">
+        <div class="room-header">
+          <span class="room-name">Chest</span>
+          <span class="room-phase ph4">Phase 4</span>
+        </div>
+        <div class="room-desc">No combat. Guaranteed item drop on entry — upgrade or equipment. Spawn chance TBD.</div>
+      </div>
+
+      <div class="room-card">
+        <div class="room-header">
+          <span class="room-name">Puzzle</span>
+          <span class="room-phase ph4">Phase 4 · tabled</span>
+        </div>
+        <div class="room-desc">Tabled for a later phase — needs proper design space. Interactive objects trigger environmental changes (e.g. lever removes fire blocking a door). Currently filled by Maze rooms in the floor composition.</div>
+      </div>
+
+      <div class="room-card">
+        <div class="room-header">
+          <span class="room-name">Trap Tile</span>
+          <span class="room-phase ph4">Phase 4 · ~1%/room</span>
+        </div>
+        <div class="room-desc">Not a dedicated room type — a tile that can spawn inside any eligible room (excludes shop, shrine, boss). ~1% chance per eligible room, giving ~10% cumulative odds per floor. Warps all players forward N floors. Players can see it and opt not to step on it.</div>
+      </div>
+
+      <div class="room-card">
+        <div class="room-header">
+          <span class="room-name">Shop</span>
+          <span class="room-phase ph5">Phase 5 · 17%</span>
+        </div>
+        <div class="room-desc">~2 per floor. Spend HP to buy from a shared item pool — one pool for the whole team, so players decide together who gets what. No gold system needed.</div>
+      </div>
+
+      <div class="room-card">
+        <div class="room-header">
+          <span class="room-name">Healing Shrine</span>
+          <span class="room-phase ph5">Phase 5 · 8%</span>
+        </div>
+        <div class="room-desc">~1 per floor. No enemies. Restore partial HP on entry — a deliberate breath room. Each player heals independently on entry.</div>
+      </div>
+
+      <div class="room-card">
+        <div class="room-header">
+          <span class="room-name">Wave</span>
+          <span class="room-phase ph5">Phase 5</span>
+        </div>
+        <div class="room-desc">Enemies spawn in sequential waves. Doors don't open until all waves are cleared. Upgrade drops after the final wave. Spawn chance TBD.</div>
+      </div>
+
+      <div class="room-card">
+        <div class="room-header">
+          <span class="room-name">Bounty</span>
+          <span class="room-phase ph5">Phase 5</span>
+        </div>
+        <div class="room-desc">One named champion enemy with a guaranteed rare item. Spawn chance TBD.</div>
+      </div>
+
+      <div class="room-card">
+        <div class="room-header">
+          <span class="room-name">Darkness</span>
+          <span class="room-phase ph5">Phase 5</span>
+        </div>
+        <div class="room-desc">Severely limited visibility radius around each player. Enemies harder to spot; combat becomes more tense and unpredictable.</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- PHASES -->
+  <section>
+    <div class="section-label">Development Phases</div>
+    <div class="phase-track">
+
+      <details class="phase-card done" open>
+        <summary>
+          <span class="floor-num">FLOOR 0</span>
+          <span class="phase-name">Foundation</span>
+          <span class="phase-badge badge-done">Done</span>
+          <span class="phase-chevron">&#9654;</span>
+        </summary>
+        <div class="phase-body">
+          <div class="phase-milestone">The game exists and runs.</div>
+          <ul class="task-list">
+            <li><span class="tm done">&#10003;</span> Phaser 3 client + Colyseus authoritative server, connected and running</li>
+            <li><span class="tm done">&#10003;</span> Knight — playable character with full animations and sword overlay</li>
+            <li><span class="tm done">&#10003;</span> Two enemy types (green slime, red slime) with AI state machine</li>
+            <li><span class="tm done">&#10003;</span> Co-op 1–4 players (P key to add), each with its own server connection</li>
+            <li><span class="tm done">&#10003;</span> Melee combat with tunable swing angles</li>
+            <li><span class="tm done">&#10003;</span> Tile-based map, wall collision, tile effects (fire / slime)</li>
+          </ul>
+        </div>
+      </details>
+
+      <details class="phase-card done">
+        <summary>
+          <span class="floor-num">FLOOR 1</span>
+          <span class="phase-name">Rooms &amp; Floors</span>
+          <span class="phase-badge badge-done">Done</span>
+          <span class="phase-chevron">&#9654;</span>
+        </summary>
+        <div class="phase-body">
+          <div class="phase-milestone"><strong>Milestone:</strong> Enter a room, clear it, walk through a door, and descend a floor.</div>
+          <ul class="task-list">
+            <li><span class="tm done">&#10003;</span> Dungeon generator: 5&times;4 grid of 21&times;16-tile rooms, random walk with 60% neighbor chance, seeded RNG, barriers between rooms</li>
+            <li><span class="tm done">&#10003;</span> Room type assignment: weighted roll per room (58% Combat / 17% Maze / 17% Shop / 8% Shrine / 1 fixed Boss)</li>
+            <li><span class="tm done">&#10003;</span> Combat room carve function: semi-open layout with randomly placed tetris-block cover (25% chance fully open)</li>
+            <li><span class="tm done">&#10003;</span> Boss room placement: random non-spawn room; gold breathing passageway tiles as in-world telegraph</li>
+            <li><span class="tm done">&#10003;</span> Enemy spawning per room: type-aware (skips boss/shop/shrine), count scaled by floor &amp; player count</li>
+            <li><span class="tm done">&#10003;</span> Door lock/unlock: lock on entry if enemies present; unlock on clear; empty rooms never lock</li>
+            <li><span class="tm done">&#10003;</span> Stairs: stepping on stairs tile descends to next floor; difficulty scales</li>
+            <li><span class="tm done">&#10003;</span> Room transition: camera pan on room entry (current behavior accepted)</li>
+          </ul>
+          <div class="phase-art-note">
+            <strong>Art needed:</strong> None for MVP — doors, stairs, and cover blocks can be colored tiles. Gold passageway tiles for boss are a tile color change.
+          </div>
+        </div>
+      </details>
+
+      <details class="phase-card next">
+        <summary>
+          <span class="floor-num">FLOOR 2</span>
+          <span class="phase-name">Characters &amp; Projectiles</span>
+          <span class="phase-badge badge-next">Up Next</span>
+          <span class="phase-chevron">&#9654;</span>
+        </summary>
+        <div class="phase-body">
+          <div class="phase-milestone"><strong>Milestone:</strong> All four classes are playable with distinct-feeling weapons.</div>
+          <ul class="task-list">
+            <li><span class="tm">—</span> Character select screen before floor 1 loads; per-class stats wired in</li>
+            <li><span class="tm">—</span> <code>ProjectileState</code> schema: x, y, vx, vy, radius, damage, ownerId, lifetime, hitsRemaining, tickRate</li>
+            <li><span class="tm">—</span> <code>GameState.projectiles</code> MapSchema; server ticks all active projectiles each frame</li>
+            <li><span class="tm">—</span> Rogue: fast short-lived projectile (thrown dagger), hitsRemaining:1, despawns on wall hit</li>
+            <li><span class="tm">—</span> Ranger: medium-speed traveling projectile (arrow), hitsRemaining:1, despawns on wall hit</li>
+            <li><span class="tm">—</span> Mage: stationary AOE, large radius, tickRate:N (pulses damage to all enemies in radius every N frames — like a fire tile, not per-enemy tracking), hitsRemaining:&infin;</li>
+            <li><span class="tm">—</span> Client renders projectile entities; placeholder sprites ok</li>
+          </ul>
+          <div class="phase-art-note">
+            <strong>Art needed:</strong> Rogue, Ranger, Mage sprites + weapons (dagger, bow, staff). Character select UI. Placeholder rectangles unblock implementation.
+          </div>
+        </div>
+      </details>
+
+      <details class="phase-card later">
+        <summary>
+          <span class="floor-num">FLOOR 3</span>
+          <span class="phase-name">Upgrade System</span>
+          <span class="phase-badge badge-later">Later</span>
+          <span class="phase-chevron">&#9654;</span>
+        </summary>
+        <div class="phase-body">
+          <div class="phase-milestone"><strong>Milestone:</strong> Picking up an item changes how the rest of the run plays.</div>
+          <ul class="task-list">
+            <li><span class="tm">—</span> On room clear: some rooms trigger an upgrade offer</li>
+            <li><span class="tm">—</span> Upgrade picker: game pauses, each player chooses 1-of-3</li>
+            <li><span class="tm">—</span> First upgrade set: stat boosts (+max HP, +speed, +damage, +lifesteal)</li>
+            <li><span class="tm">—</span> Upgrades scale in power with floor depth</li>
+            <li><span class="tm">—</span> Upgrades are per-player, cleared on run end</li>
+          </ul>
+          <div class="phase-art-note">
+            <strong>Art needed:</strong> First pass can use colored shapes + text labels. Proper upgrade icons are nice-to-have.
+          </div>
+        </div>
+      </details>
+
+      <details class="phase-card later">
+        <summary>
+          <span class="floor-num">FLOOR 4</span>
+          <span class="phase-name">Room Variety</span>
+          <span class="phase-badge badge-later">Later</span>
+          <span class="phase-chevron">&#9654;</span>
+        </summary>
+        <div class="phase-body">
+          <div class="phase-milestone"><strong>Milestone:</strong> Two rooms in a row that feel completely different.</div>
+          <ul class="task-list">
+            <li><span class="tm">—</span> Chest rooms: guaranteed item on entry, no combat; spawn chance TBD</li>
+            <li><span class="tm">—</span> Trap tiles: ~1% roll per eligible room (not shop/shrine/boss); warps all players forward N floors; visible tile, players can avoid</li>
+            <li><span class="tm">—</span> Puzzle rooms: tabled — lever/switch objects trigger environmental changes (fire, wall tiles, doors); design needs dedicated scope</li>
+          </ul>
+          <div class="phase-art-note">
+            <strong>Art needed:</strong> Boss sprite #1, chest sprite.
+          </div>
+        </div>
+      </details>
+
+      <details class="phase-card later">
+        <summary>
+          <span class="floor-num">FLOOR 5</span>
+          <span class="phase-name">Content Pass</span>
+          <span class="phase-badge badge-later">Later</span>
+          <span class="phase-chevron">&#9654;</span>
+        </summary>
+        <div class="phase-body">
+          <div class="phase-milestone"><strong>Milestone:</strong> Two consecutive runs feel different enough to want a third.</div>
+          <ul class="task-list">
+            <li><span class="tm">—</span> More enemy types (2–4 beyond the slimes)</li>
+            <li><span class="tm">—</span> More bosses — one unique boss per 2–3 floor range</li>
+            <li><span class="tm">—</span> Wave, Bounty, Healing Shrine, Shop, Darkness room variants</li>
+            <li><span class="tm">—</span> More upgrades: weapon enhancements, passive abilities</li>
+            <li><span class="tm">—</span> Enemy pool shifts by floor range within the dungeon theme</li>
+          </ul>
+          <div class="phase-art-note">
+            <strong>Art needed:</strong> The big art phase. Multiple new enemies, additional bosses, weapon sprites.
+          </div>
+        </div>
+      </details>
+
+      <details class="phase-card later">
+        <summary>
+          <span class="floor-num">FLOOR 6</span>
+          <span class="phase-name">Release Prep</span>
+          <span class="phase-badge badge-later">Later</span>
+          <span class="phase-chevron">&#9654;</span>
+        </summary>
+        <div class="phase-body">
+          <div class="phase-milestone"><strong>Milestone:</strong> A complete stranger can sit down and play without help.</div>
+          <ul class="task-list">
+            <li><span class="tm">—</span> Main menu: new game, player count, character select</li>
+            <li><span class="tm">—</span> Win screen (cleared floor 10) and death screen with run summary</li>
+            <li><span class="tm">—</span> Sound effects + ambient music</li>
+            <li><span class="tm">—</span> Difficulty balancing pass across all 10 floors</li>
+            <li><span class="tm">—</span> Itch.io build; Steam prep if scope warrants</li>
+          </ul>
+          <div class="phase-art-note">
+            <strong>Art needed:</strong> Title / menu art. Minimal new sprites if content is solid by Floor 5.
+          </div>
+        </div>
+      </details>
+
+    </div>
+  </section>
+
+  <!-- ASSET CHECKLIST -->
+  <section>
+    <div class="section-label">Asset Checklist</div>
+    <div class="asset-grid">
+
+      <div class="asset-group">
+        <div class="ag-label done">Done</div>
+        <ul class="asset-items">
+          <li><span class="adot done"></span> knight.png — armored knight, full animation</li>
+          <li><span class="adot done"></span> sword-001.png — Knight's weapon overlay</li>
+          <li><span class="adot done"></span> green-slime.png — basic enemy</li>
+          <li><span class="adot done"></span> red-slime.png — stronger slime variant</li>
+          <li><span class="adot done"></span> Floor tiles <span class="note">(generated programmatically)</span></li>
+        </ul>
+      </div>
+
+      <div class="asset-group">
+        <div class="ag-label soon">Needed — Phase 2 (Characters)</div>
+        <ul class="asset-items">
+          <li><span class="adot soon"></span> rogue.png — full animation sheet</li>
+          <li><span class="adot soon"></span> Dagger sprite — Rogue's weapon</li>
+          <li><span class="adot soon"></span> ranger.png — full animation sheet</li>
+          <li><span class="adot soon"></span> Bow sprite — Ranger's weapon</li>
+          <li><span class="adot soon"></span> mage.png — full animation sheet</li>
+          <li><span class="adot soon"></span> Staff sprite — Mage's weapon</li>
+          <li><span class="adot soon"></span> Character select UI</li>
+        </ul>
+      </div>
+
+      <div class="asset-group">
+        <div class="ag-label soon">Needed — Phases 3–4 (Environment)</div>
+        <ul class="asset-items">
+          <li><span class="adot soon"></span> Chest / treasure sprite</li>
+          <li><span class="adot soon"></span> Door sprite <span class="note">(colored tile ok for now)</span></li>
+          <li><span class="adot soon"></span> Stairs / exit portal</li>
+          <li><span class="adot soon"></span> Upgrade icons <span class="note">(shapes ok for first pass)</span></li>
+          <li><span class="adot soon"></span> Boss sprite #1 (full animation)</li>
+          <li><span class="adot soon"></span> Lever / switch sprite</li>
+        </ul>
+      </div>
+
+      <div class="asset-group">
+        <div class="ag-label later">Needed — Phase 5+</div>
+        <ul class="asset-items">
+          <li><span class="adot later"></span> Enemy types #3, #4</li>
+          <li><span class="adot later"></span> Boss sprites #2, #3</li>
+          <li><span class="adot later"></span> Final boss sprite (floor 10)</li>
+          <li><span class="adot later"></span> Weapon upgrade visual variants</li>
+          <li><span class="adot later"></span> Menu / title art</li>
+        </ul>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- OPEN QUESTIONS -->
+  <section>
+    <div class="section-label">Open Questions</div>
+    <div class="questions-list">
+
+      <div class="q-item">
+        <div class="q-tag">Important — needed before Phase 3</div>
+        <div class="q-text">Stat boosts only for the first upgrade set, or active abilities too?</div>
+        <div class="q-why">Stat boosts (+HP, +speed, +damage, +lifesteal) are fast to implement and balance. Active abilities (a dash, a shield, a projectile modifier) are more interesting but require new server logic and possibly art. Starting with stats is fine — this question is about how ambitious Phase 3 should be.</div>
+      </div>
+
+    </div>
+  </section>
+
+  <footer class="doc-footer">
+    game-2 &mdash; living document &mdash; updated as decisions are made
+  </footer>
+
+</div>
