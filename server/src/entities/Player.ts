@@ -1,7 +1,7 @@
-import { InputMessage, CharacterClass, CharacterType, CharacterConfig, getCharacterConfig, WeaponId, Weapon, WEAPON_REGISTRY } from "shared";
+import { InputMessage, CharacterClass, CharacterType, CharacterConfig, getCharacterConfig, WeaponId, Weapon, WEAPON_REGISTRY, PLAYER_BODY_PROFILE } from "shared";
 import { PlayerState } from "../schema/PlayerState";
 import { Entity } from "./Entity";
-import { PhysicsWorld, CAT } from "../physics/PhysicsWorld";
+import { PhysicsWorld } from "../physics/PhysicsWorld";
 
 export class Player extends Entity {
   state: PlayerState;
@@ -42,7 +42,7 @@ export class Player extends Entity {
     this.state.weaponId = startWeapon.id;
     this.state.inventory.push(startWeapon.id);
     this.state.activeWeaponIndex = 0;
-    this.attachBody(physics, startX, startY, CAT.PLAYER);
+    this.attachBody(physics, startX, startY, PLAYER_BODY_PROFILE);
   }
 
   get maxHp(): number {

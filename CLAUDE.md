@@ -2,6 +2,15 @@
 
 2D top-down co-op game (classic Zelda style). Phaser 3 client + Colyseus authoritative server, TypeScript throughout. Everything is plain text files — no GUI editors, no scene builders.
 
+## Engineering approach — read this first
+
+Build this project **MIT-style, not New Jersey-style**: correctness and a clean, complete design beat implementation-simplicity shortcuts. Do the hard thing right even if it takes longer. If you catch yourself reaching for a quick hack because the correct version is more work, stop and do the correct version. Placeholders are fine **only if they're functional real code** (a new enemy inheriting basic chase, a boss with one working ability) — never a fake or dead abstraction.
+
+Concretely, and non-negotiably:
+- **Enemies and their behavior are object-oriented.** Every enemy is its own class extending `Enemy`; its stats and behavior are defined *in that class* and compiler-checked. There is **no** generic "one enemy class configured by data" and **no lookup tables** that map an id to behavior or config. Shared behavior (chase, patrol, a volley) is a reusable method or a function the class calls — not a config flag or a `Record<Id, …>`. Bosses are `Boss` subclasses, one per boss.
+- **Don't optimize for a hypothetical non-coding "designer."** We are the designers and we edit code directly. Put values where the compiler checks them and where they're cohesive (on the class), not in a stringly-keyed registry justified by imaginary tooling.
+- **Prefer explicit, type-checked code over dynamic dispatch on strings.** A `switch` the compiler can exhaustively check, or direct class references in an array, beat a keyed map every time.
+
 ## Deep-dive docs — read the matching one before touching that system
 
 | File | Read when |
@@ -10,6 +19,9 @@
 | [docs/weapons-and-ammo.md](docs/weapons-and-ammo.md) | Touching weapons, attack FX, ammo, or projectiles |
 | [docs/loadout.md](docs/loadout.md) | Touching inventory, weapon switching, shops, or pause |
 | [docs/enemies.md](docs/enemies.md) | Adding or balancing an enemy |
+| [docs/bosses.md](docs/bosses.md) | Designing or building a boss moveset (per-boss abilities spec + bestiary text) |
+| [docs/boss-implementation-plan.md](docs/boss-implementation-plan.md) | Sequencing the boss/layers build — what to implement in what order |
+| [docs/layers.md](docs/layers.md) | Touching collision, projectile targeting, friendly fire, or hit resolution |
 | [docs/assets.md](docs/assets.md) | Adding or replacing art |
 | [docs/lessons.md](docs/lessons.md) | Building a debug tool, a tunables panel, or a persistent weapon sprite |
 

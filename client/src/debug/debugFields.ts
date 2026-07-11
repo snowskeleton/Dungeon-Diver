@@ -1,4 +1,4 @@
-import { DebugConfig, DEFAULT_DEBUG_CONFIG, ENEMY_REGISTRY, EnemyType, RoomType } from "shared";
+import { DebugConfig, DEFAULT_DEBUG_CONFIG, EnemyType, RoomType } from "shared";
 import { CLIENT_ENEMY_REGISTRY } from "../enemies";
 import { FieldSpec, Preset } from "../ui/FieldPanel";
 
@@ -17,10 +17,11 @@ const ROOM_TYPE_CHOICES = [
   ...ROOM_TYPES.map((t) => ({ value: t, label: t[0].toUpperCase() + t.slice(1) })),
 ];
 
-const ENEMY_CHOICES = (Object.keys(ENEMY_REGISTRY) as EnemyType[]).map((id) => ({
-  value: id,
-  label: CLIENT_ENEMY_REGISTRY[id].name,
-}));
+// The rabble picker lists only non-boss enemies — bosses only ever spawn in the
+// boss room, so offering them here would be misleading.
+const ENEMY_CHOICES = (Object.keys(CLIENT_ENEMY_REGISTRY) as EnemyType[])
+  .filter((id) => !CLIENT_ENEMY_REGISTRY[id].isBoss)
+  .map((id) => ({ value: id, label: CLIENT_ENEMY_REGISTRY[id].name }));
 
 export const DEBUG_FIELDS: FieldSpec<DebugConfig>[] = [
   {

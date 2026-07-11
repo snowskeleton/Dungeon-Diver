@@ -10,6 +10,9 @@ export interface EnemyClip {
 export interface ClientEnemyDef {
   /** Display name, e.g. for the placeholder-art report. */
   name: string;
+  /** True for bosses — excludes them from the Debug menu's rabble picker (bosses
+   *  only ever spawn in the boss room). */
+  isBoss?: boolean;
   /** Spritesheet texture key. Several enemies can share one sheet — the
    *  float-skull colours are three rows of the same PNG — so this is not
    *  always the enemy id. GameScene dedupes preloads by this. */

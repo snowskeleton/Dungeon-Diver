@@ -1,35 +1,76 @@
-import { KNOCKBACK_SCALE, KNOCKBACK_STUN_MS_PER_UNIT, KNOCKBACK_STUN_MAX_MS, AiState, SERVER_TICK_MS, EnemyConfig } from "shared";
+import { KNOCKBACK_SCALE, KNOCKBACK_STUN_MS_PER_UNIT, KNOCKBACK_STUN_MAX_MS, AiState, SERVER_TICK_MS, EnemyType, EnemyFacingMode, ENEMY_BODY_PROFILE } from "shared";
 import { EnemyState } from "../schema/EnemyState";
 import { PlayerState } from "../schema/PlayerState";
 import { Entity, KNOCKBACK_DECAY } from "./Entity";
-import { PhysicsWorld, CAT } from "../physics/PhysicsWorld";
+import { PhysicsWorld } from "../physics/PhysicsWorld";
 
 const PATROL_RANGE = 64;
 
+/** Lets an enemy emit a projectile during its tick (bosses' ranged attacks).
+ *  The owner id is the enemy's own map key; `affects` is stamped by GameRoom. */
+export type SpawnProjectile = (ammoId: string, x: number, y: number, angleRad: number) => void;
+
+/** A concrete enemy class: `new`-able and carrying its `EnemyType` id statically,
+ *  so the spawn lists in entities/enemies can be plain arrays of classes that the
+ *  compiler still checks — no id→class lookup table. */
+export type EnemyClass = { new (physics: PhysicsWorld, x: number, y: number): Enemy; readonly type: EnemyType };
+
+// Base class for every enemy. Behaviour lives here and in subclasses — never in a
+// data blob steered by a lookup table (see the engineering-approach note in
+// CLAUDE.md). The default tick is the standard chase-and-melee AI; a subclass
+// that wants something else (a boss's telegraphed moveset) overrides tick().
+//
+// Stats are plain getters with functional placeholder defaults: a brand-new
+// enemy is a working chaser out of the box, and tuning it — or giving it a
+// distinct stat — is a one-line getter override, all compiler-checked. Bosses
+// and specific enemies override what they need.
 export abstract class Enemy extends Entity {
   state: EnemyState;
-  protected cfg: EnemyConfig;
-  // Set to true the first tick after isDying becomes true so GameRoom only
-  // calls FloorManager.onEnemyMaybeCleared once per enemy death.
+  // Set true the first tick after isDying so GameRoom runs the room-clear check
+  // once per death.
   clearCheckDone = false;
-  private patrolOriginX: number;
-  private patrolOriginY: number;
+  protected patrolOriginX: number;
+  protected patrolOriginY: number;
   private patrolAngle: number = Math.random() * Math.PI * 2;
   private attackCooldown: number = 0;
   // Remaining hitstun (ms). While > 0 the enemy suspends its AI (no chase, no
   // attack) so the knockback push isn't immediately cancelled by chasing.
   private stunMs: number = 0;
 
-  constructor(physics: PhysicsWorld, startX: number, startY: number, cfg: EnemyConfig) {
+  // ── Stats (override per enemy) ──────────────────────────────────────────────
+  protected get maxHp(): number { return 60; }
+  protected get speed(): number { return 70; }
+  protected get aggroRadius(): number { return 160; }
+  // Center-to-center; must exceed 2×ENTITY_RADIUS (10px) or attacks never land.
+  protected get attackRadius(): number { return 14; }
+  protected get attackDamage(): number { return 10; }
+  protected get attackCooldownMs(): number { return 1200; }
+  /** 0 = full knockback; higher absorbs more force. */
+  protected get knockbackResistance(): number { return 3; }
+  /** "horizontal" art has one side view (flipX for left); "directional" has a
+   *  row per facing. Must match the client visual def for this enemy. */
+  protected get facingMode(): EnemyFacingMode { return "horizontal"; }
+
+  /** This enemy's id, read from the concrete subclass's `static readonly type`. */
+  protected get typeId(): EnemyType {
+    return (this.constructor as unknown as { type: EnemyType }).type;
+  }
+
+  constructor(physics: PhysicsWorld, startX: number, startY: number) {
     super();
-    this.cfg = cfg;
     this.state = new EnemyState();
     this.state.x = startX;
     this.state.y = startY;
-    this.state.health = cfg.maxHp;
+    this.state.health = this.maxHp;
+    this.state.maxHealth = this.maxHp;
+    this.state.enemyType = this.typeId;
+    // Mirrored into state so the client's debug overlay can draw the true ranges
+    // without a second copy of the numbers.
+    this.state.aggroRadius = this.aggroRadius;
+    this.state.attackRadius = this.attackRadius;
     this.patrolOriginX = startX;
     this.patrolOriginY = startY;
-    this.attachBody(physics, startX, startY, CAT.ENEMY);
+    this.attachBody(physics, startX, startY, ENEMY_BODY_PROFILE);
   }
 
   get isDying(): boolean {
@@ -55,7 +96,7 @@ export abstract class Enemy extends Entity {
   // stunned for a scaled duration so its chase can't immediately eat the push.
   applyKnockback(fromX: number, fromY: number, force: number): void {
     if (this.state.isDying) return;
-    const overage = force - this.cfg.knockbackResistance;
+    const overage = force - this.knockbackResistance;
     if (overage <= 0) return; // didn't clear resistance → ignored entirely
 
     const dx = this.state.x - fromX;
@@ -72,29 +113,35 @@ export abstract class Enemy extends Entity {
     this.state.stunned = true;
   }
 
-  tick(
-    players: Map<string, PlayerState>,
-    dtMs: number,
-    dealDamageToPlayer: (sessionId: string, amount: number) => void,
-  ): void {
-    if (this.state.isDying) return;
-
-    // Hitstun: skip all AI (no chase, no attack) so the knockback impulse lands
-    // cleanly. The impulse itself still carries via commitVelocity() each tick.
+  // Advances the hitstun timer. Returns true while still stunned — callers skip
+  // the rest of their AI so the knockback impulse (carried by commitVelocity)
+  // lands cleanly. Shared by the default melee tick and Boss's own tick.
+  protected updateStun(dtMs: number): boolean {
     if (this.stunMs > 0) {
       this.stunMs -= dtMs;
       if (this.stunMs <= 0) {
         this.stunMs = 0;
         this.state.stunned = false;
       }
-      return;
+      return true;
     }
+    return false;
+  }
 
-    // Tile effects run in GameRoom after the physics step (post-step positions).
+  // Standard enemy AI: patrol until a player is in aggro range, chase, and melee
+  // in attack range. Bosses override this entirely.
+  tick(
+    players: Map<string, PlayerState>,
+    dtMs: number,
+    dealDamageToPlayer: (sessionId: string, amount: number) => void,
+    _spawnProjectile?: SpawnProjectile,
+  ): void {
+    if (this.state.isDying) return;
+    if (this.updateStun(dtMs)) return;
+
     if (this.attackCooldown > 0) this.attackCooldown -= dtMs;
 
     const closest = this.closestPlayer(players);
-
     if (!closest) {
       this.patrol(dtMs);
       return;
@@ -102,18 +149,17 @@ export abstract class Enemy extends Entity {
 
     const { id, dist, dx, dy } = closest;
 
-    if (dist <= this.cfg.attackRadius) {
+    if (dist <= this.attackRadius) {
       this.transition("attack");
       this.state.targetId = id;
       if (this.attackCooldown <= 0) {
-        dealDamageToPlayer(id, this.cfg.attackDamage);
-        this.attackCooldown = this.cfg.attackCooldownMs;
+        dealDamageToPlayer(id, this.attackDamage);
+        this.attackCooldown = this.attackCooldownMs;
       }
-    } else if (dist <= this.cfg.aggroRadius) {
+    } else if (dist <= this.aggroRadius) {
       this.transition("chase");
       this.state.targetId = id;
-      this.move(dx, dy, this.cfg.speed);
-      this.updateFacing(dx, dy);
+      this.chase(dx, dy);
     } else {
       this.transition("patrol");
       this.state.targetId = "";
@@ -121,7 +167,13 @@ export abstract class Enemy extends Entity {
     }
   }
 
-  private patrol(dtMs: number): void {
+  // Reusable movement helpers subclasses (e.g. bosses) can call.
+  protected chase(dx: number, dy: number): void {
+    this.move(dx, dy, this.speed);
+    this.updateFacing(dx, dy);
+  }
+
+  protected patrol(dtMs: number): void {
     this.patrolAngle += 0.4 * (dtMs / 1000);
     const tx = this.patrolOriginX + Math.cos(this.patrolAngle) * PATROL_RANGE;
     const ty = this.patrolOriginY + Math.sin(this.patrolAngle) * PATROL_RANGE;
@@ -131,12 +183,12 @@ export abstract class Enemy extends Entity {
     if (dist < 0.5) return;
     // Clamp so one tick's step never overshoots the orbit target — the old
     // position-based move clamped implicitly; raw velocity would oscillate.
-    const speed = Math.min(this.cfg.speed * 0.5, dist / (SERVER_TICK_MS / 1000));
+    const speed = Math.min(this.speed * 0.5, dist / (SERVER_TICK_MS / 1000));
     this.move(dx, dy, speed);
     this.updateFacing(dx, dy);
   }
 
-  private closestPlayer(
+  protected closestPlayer(
     players: Map<string, PlayerState>,
   ): { id: string; dist: number; dx: number; dy: number } | null {
     let best: { id: string; dist: number; dx: number; dy: number } | null = null;
@@ -149,17 +201,21 @@ export abstract class Enemy extends Entity {
     return best;
   }
 
-  private transition(next: AiState): void {
+  protected transition(next: AiState): void {
     this.state.aiState = next;
   }
 
-  // Subclasses can override to restrict which directions are tracked.
-  // Base behavior: full 4-directional facing.
+  // Directional art has a row per facing, so track all four. Horizontal art only
+  // has a side view, so never face up/down (the client would have no frame).
   protected updateFacing(dx: number, dy: number): void {
-    if (Math.abs(dx) > Math.abs(dy)) {
+    if (this.facingMode === "directional") {
+      if (Math.abs(dx) > Math.abs(dy)) {
+        this.state.facing = dx > 0 ? "right" : "left";
+      } else if (dy !== 0) {
+        this.state.facing = dy > 0 ? "down" : "up";
+      }
+    } else if (dx !== 0) {
       this.state.facing = dx > 0 ? "right" : "left";
-    } else if (dy !== 0) {
-      this.state.facing = dy > 0 ? "down" : "up";
     }
   }
 }

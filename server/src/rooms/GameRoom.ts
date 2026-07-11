@@ -4,23 +4,20 @@ import {
   TILE_PROPS, TileId, TILE,
   ENEMY_BASE_COUNT, ENEMY_FLOOR_BONUS_INTERVAL, ENEMY_PLAYER_SCALE,
   generateDungeon, DungeonResult, DungeonOptions, FloorChangeMessage,
-  MAP_SEED, EnemyType, ENEMY_REGISTRY, AMMO_REGISTRY, WEAPON_REGISTRY,
+  MAP_SEED, EnemyType, AMMO_REGISTRY, WEAPON_REGISTRY,
   DebugConfig, toDungeonOptions,
+  Layer, canAffect, PLAYER_PROJECTILE_AFFECTS, ENEMY_PROJECTILE_AFFECTS,
 } from "shared";
 import { GameState } from "../schema/GameState";
 import { ShopState, ShopItemState } from "../schema/ShopState";
 import { Player } from "../entities/Player";
-import { Enemy } from "../entities/Enemy";
-import { Goo } from "../entities/Goo";
+import { Enemy, EnemyClass } from "../entities/Enemy";
+import { REGULAR_ENEMIES } from "../entities/enemies";
+import { BOSSES } from "../entities/bosses";
 import { Projectile } from "../entities/Projectile";
 import { PlayerState } from "../schema/PlayerState";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
 import { FloorManager } from "../floor/FloorManager";
-
-const ALL_ENEMY_TYPES = Object.keys(ENEMY_REGISTRY) as EnemyType[];
-// Bosses are placed by hand in the boss room, never rolled into normal rooms.
-const ENEMY_TYPES = ALL_ENEMY_TYPES.filter((t) => !ENEMY_REGISTRY[t].boss);
-const BOSS_TYPES = ALL_ENEMY_TYPES.filter((t) => ENEMY_REGISTRY[t].boss);
 const SHOP_ITEM_COUNT = 3;
 // How close (px) a player must stand to a pedestal to buy it.
 const BUY_RADIUS = 40;
@@ -172,10 +169,17 @@ export class GameRoom extends Room<GameState> {
     return Math.ceil(base * (1 + ENEMY_PLAYER_SCALE * (players - 1)));
   }
 
-  // Which enemy types spawns are drawn from — the debug list if it names any.
-  private enemyPool(): EnemyType[] {
+  // Which enemy classes rabble is drawn from — narrowed to the debug selection
+  // if it names any regular enemies. Bosses aren't in REGULAR_ENEMIES, so a boss
+  // type in the selection is simply ignored here (it can only spawn in the boss
+  // room) — no boss ever appears as a plain contact enemy.
+  private enemyPool(): EnemyClass[] {
     const picked = this.debug?.enemyTypes;
-    return picked && picked.length > 0 ? picked : ENEMY_TYPES;
+    if (picked && picked.length > 0) {
+      const chosen = REGULAR_ENEMIES.filter((C) => picked.includes(C.type));
+      if (chosen.length > 0) return chosen;
+    }
+    return REGULAR_ENEMIES;
   }
 
   private spawnFloorEnemies() {
@@ -202,16 +206,16 @@ export class GameRoom extends Room<GameState> {
   // FloorManager.finalizeEmptyRooms() or the boss room gets pre-cleared and its
   // barriers removed — the boss would never lock the player in.
   private spawnBoss() {
-    if (BOSS_TYPES.length === 0) return;
+    if (BOSSES.length === 0) return;
     const room = this.currentDungeon.rooms.find((r) => r.type === "boss");
     if (!room) return;
 
     const pos = this.bossPos(room.centerCol, room.centerRow, room);
     if (!pos) return;
 
-    const type = BOSS_TYPES[(this.state.floor - 1) % BOSS_TYPES.length];
+    const BossClass = BOSSES[(this.state.floor - 1) % BOSSES.length];
     const id = `enemy_${this.enemyCounter++}`;
-    const boss = new Goo(this.physics, pos, type);
+    const boss = new BossClass(this.physics, pos.x, pos.y);
     this.enemies.set(id, boss);
     this.state.enemies.set(id, boss.state);
     this.floorManager.assignEnemy(id, pos.x, pos.y);
@@ -234,8 +238,8 @@ export class GameRoom extends Room<GameState> {
     if (!pos) return;
     const id = `enemy_${this.enemyCounter++}`;
     const pool = this.enemyPool();
-    const type = pool[Math.floor(Math.random() * pool.length)];
-    const enemy = new Goo(this.physics, pos, type);
+    const EnemyClass = pool[Math.floor(Math.random() * pool.length)];
+    const enemy = new EnemyClass(this.physics, pos.x, pos.y);
     this.enemies.set(id, enemy);
     this.state.enemies.set(id, enemy.state);
     this.floorManager.assignEnemy(id, pos.x, pos.y);
@@ -329,6 +333,20 @@ export class GameRoom extends Room<GameState> {
     this.broadcast("floor_change", msg);
   }
 
+  // Spawns a projectile and registers it for sync. `affects` (a Layer mask)
+  // decides which team its hits reach; `ownerId` is a player session id (player
+  // shots) or an enemy id (boss shots), used for self-hit exclusion.
+  private spawnProjectile(
+    ammoId: string, x: number, y: number, angle: number, ownerId: string, affects: number,
+  ): void {
+    const ammo = AMMO_REGISTRY[ammoId];
+    if (!ammo) return;
+    const id = `proj_${this.projectileCounter++}`;
+    const proj = new Projectile(this.physics, ammo, x, y, angle, ownerId, affects);
+    this.projectiles.set(id, proj);
+    this.state.projectiles.set(id, proj.state);
+  }
+
   private tick() {
     // Frozen while any player has the inventory/stats menu open. Message handlers
     // (switch/close) keep running; only the world simulation halts.
@@ -356,6 +374,9 @@ export class GameRoom extends Room<GameState> {
         visiblePlayers as unknown as Map<string, PlayerState>,
         dtMs,
         (targetSessionId, damage) => { this.players.get(targetSessionId)?.takeDamage(damage); },
+        // Bosses fire projectiles through this hook; stamped with the enemy team
+        // mask so the shot damages players, not other enemies (docs/layers.md).
+        (ammoId, x, y, angle) => this.spawnProjectile(ammoId, x, y, angle, id, ENEMY_PROJECTILE_AFFECTS),
       );
     });
 
@@ -370,33 +391,38 @@ export class GameRoom extends Room<GameState> {
       });
     });
 
-    // 3b. Ranged weapons: spawn a projectile on the tick a shot starts.
+    // 3b. Ranged weapons: spawn a projectile on the tick a shot starts. Player
+    //     shots damage enemies (and props); never other players (docs/layers.md).
     this.players.forEach((player, sid) => {
       if (!player.justAttacked) return;
       player.justAttacked = false;
       const ammoId = player.weapon.ammoId;
       if (!player.weapon.isRanged || !ammoId) return;
-      const ammo = AMMO_REGISTRY[ammoId];
-      if (!ammo) return;
-      const id = `proj_${this.projectileCounter++}`;
-      const proj = new Projectile(
-        this.physics, ammo, player.state.x, player.state.y, player.getShotAngle(), sid,
-      );
-      this.projectiles.set(id, proj);
-      this.state.projectiles.set(id, proj.state);
+      this.spawnProjectile(ammoId, player.state.x, player.state.y, player.getShotAngle(), sid, PLAYER_PROJECTILE_AFFECTS);
     });
 
-    // 3c. Move projectiles and resolve enemy hits. Kills feed step 4's clear check.
+    // 3c. Move projectiles and resolve hits against whichever team the shot's
+    //     `affects` mask reaches. One loop serves player and enemy projectiles.
     this.projectiles.forEach((proj, id) => {
       proj.tick(dtMs);
       if (!proj.dead) {
-        this.enemies.forEach((enemy, eid) => {
-          if (enemy.isDying) return;
-          if (proj.tryHit(eid, enemy.state.x, enemy.state.y)) {
-            enemy.takeDamage(proj.cfg.damage);
-            enemy.applyKnockback(proj.prevX, proj.prevY, proj.cfg.knockback);
-          }
-        });
+        if (canAffect(proj.affects, Layer.ENEMY)) {
+          this.enemies.forEach((enemy, eid) => {
+            if (enemy.isDying) return;
+            if (proj.tryHit(eid, enemy.state.x, enemy.state.y)) {
+              enemy.takeDamage(proj.cfg.damage);
+              enemy.applyKnockback(proj.prevX, proj.prevY, proj.cfg.knockback);
+            }
+          });
+        }
+        if (canAffect(proj.affects, Layer.PLAYER)) {
+          this.players.forEach((player, pid) => {
+            if (pid === proj.ownerSessionId || player.isDead) return; // no self-hit
+            if (proj.tryHit(pid, player.state.x, player.state.y)) {
+              player.takeDamage(proj.cfg.damage);
+            }
+          });
+        }
       }
       if (proj.dead) {
         this.projectiles.delete(id);

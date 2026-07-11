@@ -414,12 +414,16 @@ export class GameScene extends Phaser.Scene {
     });
 
     state.enemies.onAdd((enemyState: any, id: string) => {
-      const e = new EnemyEntity(this, enemyState.x, enemyState.y, enemyState.enemyType);
+      const e = new EnemyEntity(
+        this, enemyState.x, enemyState.y, enemyState.enemyType,
+        enemyState.maxHealth, enemyState.aggroRadius, enemyState.attackRadius,
+      );
       this.enemies.set(id, e);
       enemyState.onChange(() =>
         e.setTarget(
           enemyState.x, enemyState.y, enemyState.health,
           enemyState.facing, enemyState.aiState, enemyState.isDying,
+          enemyState.telegraph,
         ),
       );
     });

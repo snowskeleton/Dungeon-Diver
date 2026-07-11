@@ -2,14 +2,18 @@ import { AmmoConfig, TILE_PROPS, TileId } from "shared";
 import { ProjectileState } from "../schema/ProjectileState";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
 
-// A kinematic projectile (arrow). Not a matter-js body: it integrates its own
-// position each tick, despawns on a wall tile or after its lifetime, and does a
-// simple point-vs-enemy-center overlap test for hits. Pierce lets one shot pass
-// through several enemies.
+// A kinematic projectile (arrow, fireball, thrown weapon). Not a matter-js body:
+// it integrates its own position each tick, despawns on a wall tile or after its
+// lifetime, and does a swept overlap test against candidate targets. Which
+// targets it can damage is decided by `affects` (a Layer mask) — a player arrow
+// carries ENEMY, a boss fireball carries PLAYER — so the same class serves both
+// teams. See docs/layers.md. Pierce lets one shot pass through several targets.
 export class Projectile {
   state: ProjectileState;
   readonly cfg: AmmoConfig;
   readonly ownerSessionId: string;
+  /** Which Layer(s) this projectile's hits reach (directional). */
+  readonly affects: number;
   dead = false;
   // Position at the start of the current tick — used as the knockback source so
   // enemies get pushed along the arrow's travel direction.
@@ -21,7 +25,7 @@ export class Projectile {
   private vy: number;
   private ageMs = 0;
   private pierceLeft: number;
-  private hitEnemies = new Set<string>();
+  private hitTargets = new Set<string>();
   private reversed = false;
 
   constructor(
@@ -31,10 +35,12 @@ export class Projectile {
     y: number,
     angleRad: number,
     ownerSessionId: string,
+    affects: number,
   ) {
     this.physics = physics;
     this.cfg = ammo;
     this.ownerSessionId = ownerSessionId;
+    this.affects = affects;
     this.pierceLeft = ammo.pierce;
     this.prevX = x;
     this.prevY = y;
@@ -70,7 +76,7 @@ export class Projectile {
       this.reversed = true;
       this.vx = -this.vx;
       this.vy = -this.vy;
-      this.hitEnemies.clear();
+      this.hitTargets.clear();
     }
 
     if (!this.cfg.ignoresWalls) {
@@ -81,10 +87,12 @@ export class Projectile {
     }
   }
 
-  // Returns true the first time this projectile overlaps a given enemy. Consumes
-  // one point of pierce; the projectile dies once pierce is exhausted.
-  tryHit(enemyId: string, ex: number, ey: number): boolean {
-    if (this.dead || this.hitEnemies.has(enemyId)) return false;
+  // Returns true the first time this projectile overlaps a given target (player
+  // or enemy). Caller is responsible for the `affects & layer` check; this only
+  // tests geometry + dedupe. Consumes one point of pierce; the projectile dies
+  // once pierce is exhausted.
+  tryHit(targetId: string, ex: number, ey: number): boolean {
+    if (this.dead || this.hitTargets.has(targetId)) return false;
 
     // Elliptical overlap aligned to travel direction: `along` runs down the
     // flight line (forward = the hitbox "length"), `perp` across it (side = the
@@ -114,7 +122,7 @@ export class Projectile {
     // the ellipse's forward half-width there (the elliptical end caps).
     const gap = along < 0 ? -along : along > segLen ? along - segLen : 0;
     if (gap > fwd * Math.sqrt(1 - k)) return false;
-    this.hitEnemies.add(enemyId);
+    this.hitTargets.add(targetId);
     this.pierceLeft -= 1;
     if (this.pierceLeft <= 0) this.dead = true;
     return true;

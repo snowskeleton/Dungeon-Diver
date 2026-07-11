@@ -1,5 +1,5 @@
 import Matter from "matter-js";
-import { TILE_PROPS, TILE_SIZE, TileId, SERVER_TICK_MS, FOOT_OFFSET, ENTITY_RADIUS } from "shared";
+import { TILE_PROPS, TILE_SIZE, TileId, SERVER_TICK_MS, FOOT_OFFSET, ENTITY_RADIUS, Layer, CORPSE_SOLID_MASK } from "shared";
 
 // ---- Coordinate mapping (defined here and nowhere else) ----
 // Schema state.x/y is the sprite CENTER — that's the client contract and it
@@ -11,30 +11,11 @@ import { TILE_PROPS, TILE_SIZE, TileId, SERVER_TICK_MS, FOOT_OFFSET, ENTITY_RADI
 // NOTE: ENTITY_RADIUS must stay ≤ ~14 or entities can't fit through 32px gaps.
 export { FOOT_OFFSET, ENTITY_RADIUS };
 
-// Collision categories (bitmasks).
-export const CAT = { WALL: 0x0001, PLAYER: 0x0002, ENEMY: 0x0004 } as const;
-export type EntityCategory = typeof CAT.PLAYER | typeof CAT.ENEMY;
-
-export const COLLIDE = {
-  playerVsPlayer: true,
-  playerVsEnemy: true,
-  enemyVsEnemy: true,
-};
-
-function maskFor(category: EntityCategory): number {
-  if (category === CAT.PLAYER) {
-    return (
-      CAT.WALL |
-      (COLLIDE.playerVsPlayer ? CAT.PLAYER : 0) |
-      (COLLIDE.playerVsEnemy ? CAT.ENEMY : 0)
-    );
-  }
-  return (
-    CAT.WALL |
-    (COLLIDE.playerVsEnemy ? CAT.PLAYER : 0) |
-    (COLLIDE.enemyVsEnemy ? CAT.ENEMY : 0)
-  );
-}
+// Physical collision is governed by the shared `Layer` vocabulary: a body's
+// `layer` is its matter `category`, its `solidMask` is its matter `mask`. Walls
+// block players and enemies (projectiles are not matter bodies). See
+// docs/layers.md for the full model.
+const WALL_SOLID_MASK = Layer.PLAYER | Layer.ENEMY;
 
 export function pxPerSecToVelocity(pxPerSec: number): number {
   return pxPerSec / 60;
@@ -100,7 +81,7 @@ function buildWallBodies(
       {
         isStatic: true,
         label: "wall",
-        collisionFilter: { category: CAT.WALL, mask: CAT.PLAYER | CAT.ENEMY },
+        collisionFilter: { category: Layer.WALL, mask: WALL_SOLID_MASK },
       },
     ),
   );
@@ -111,7 +92,7 @@ function buildWallBodies(
   const edge = {
     isStatic: true,
     label: "world-edge",
-    collisionFilter: { category: CAT.WALL, mask: CAT.PLAYER | CAT.ENEMY },
+    collisionFilter: { category: Layer.WALL, mask: WALL_SOLID_MASK },
   };
   bodies.push(
     Matter.Bodies.rectangle(w / 2, -16, w + 64, 32, edge),
@@ -164,7 +145,7 @@ export class PhysicsWorld {
     const body = Matter.Bodies.rectangle(cx, cy, w, h, {
       isStatic: true,
       label: `barrier_${id}`,
-      collisionFilter: { category: CAT.WALL, mask: CAT.PLAYER | CAT.ENEMY },
+      collisionFilter: { category: Layer.WALL, mask: WALL_SOLID_MASK },
     });
     this.barriers.set(id, body);
     Matter.Composite.add(this.engine.world, body);
@@ -177,7 +158,9 @@ export class PhysicsWorld {
     this.barriers.delete(id);
   }
 
-  createEntityBody(spriteX: number, spriteY: number, category: EntityCategory): Matter.Body {
+  // `layer` is the body's matter category (what it IS); `solidMask` is what it
+  // physically blocks against. Both come from the entity's InteractionProfile.
+  createEntityBody(spriteX: number, spriteY: number, layer: number, solidMask: number): Matter.Body {
     const body = Matter.Bodies.circle(
       spriteX,
       spriteY + FOOT_OFFSET,
@@ -188,7 +171,7 @@ export class PhysicsWorld {
         frictionAir: 0,
         restitution: 0,
         inertia: Infinity,
-        collisionFilter: { category, mask: maskFor(category) },
+        collisionFilter: { category: layer, mask: solidMask },
       },
     );
     Matter.Composite.add(this.engine.world, body);
@@ -212,7 +195,7 @@ export class PhysicsWorld {
   }
 
   setEntityDead(body: Matter.Body): void {
-    body.collisionFilter.mask = CAT.WALL;
+    body.collisionFilter.mask = CORPSE_SOLID_MASK;
     Matter.Body.setVelocity(body, { x: 0, y: 0 });
   }
 

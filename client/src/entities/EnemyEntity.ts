@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { AiState, Facing, EnemyType, ENEMY_REGISTRY } from "shared";
+import { AiState, Facing, EnemyType } from "shared";
 import { Entity } from "./Entity";
 import { CLIENT_ENEMY_REGISTRY, ClientEnemyDef } from "../enemies";
 import { DebugDrawable, DebugShape, DEBUG_COLORS } from "../debug/DebugDraw";
@@ -11,21 +11,28 @@ export class EnemyEntity extends Entity implements DebugDrawable {
   private facing: Facing = "right";
   private aiState: AiState = "patrol";
   private dying = false;
+  private telegraphing = false;
+  private telegraphT = 0;
   private currentEnemyAnim?: string;
   private readonly enemyType: string;
+  private readonly aggroRadius: number;
+  private readonly attackRadius: number;
   private readonly visual?: ClientEnemyDef;
 
-  constructor(scene: Phaser.Scene, x: number, y: number, enemyType: string) {
-    const maxHp = ENEMY_REGISTRY[enemyType as EnemyType]?.maxHp ?? 60;
-    super(scene, x, y, 0xe53e3e, maxHp);
-    if (!(enemyType in ENEMY_REGISTRY)) {
+  // maxHp/aggroRadius/attackRadius are synced from the server (EnemyState) — the
+  // enemy classes live server-side, so the client carries no copy of their stats.
+  constructor(scene: Phaser.Scene, x: number, y: number, enemyType: string, maxHp: number, aggroRadius: number, attackRadius: number) {
+    super(scene, x, y, 0xe53e3e, maxHp || 60);
+    this.visual = CLIENT_ENEMY_REGISTRY[enemyType as EnemyType];
+    if (!this.visual) {
       console.warn(`EnemyEntity: unknown enemy type "${enemyType}" — rendering placeholder rectangle`);
     }
     this.targetX = x;
     this.targetY = y;
-    this.currentHp = maxHp;
+    this.currentHp = maxHp || 60;
     this.enemyType = enemyType;
-    this.visual = CLIENT_ENEMY_REGISTRY[enemyType as EnemyType];
+    this.aggroRadius = aggroRadius;
+    this.attackRadius = attackRadius;
 
     if (this.visual) {
       this.useRawSprite(this.visual.textureKey);
@@ -34,7 +41,7 @@ export class EnemyEntity extends Entity implements DebugDrawable {
     this.sprite.setSize(20, 20);
   }
 
-  setTarget(x: number, y: number, hp: number, facing: Facing, aiState: AiState, isDying: boolean) {
+  setTarget(x: number, y: number, hp: number, facing: Facing, aiState: AiState, isDying: boolean, telegraph = false) {
     if (!this.dying) {
       this.targetX = x;
       this.targetY = y;
@@ -42,6 +49,7 @@ export class EnemyEntity extends Entity implements DebugDrawable {
     this.currentHp = hp;
     this.facing = facing;
     this.aiState = aiState;
+    this.telegraphing = telegraph;
 
     if (isDying && !this.dying) {
       this.dying = true;
@@ -67,6 +75,7 @@ export class EnemyEntity extends Entity implements DebugDrawable {
       this.charSprite.x = this.sprite.x;
       this.charSprite.y = this.sprite.y;
       this.playEnemyAnim();
+      this.updateTelegraph();
     }
 
     if (!this.dying) {
@@ -74,19 +83,32 @@ export class EnemyEntity extends Entity implements DebugDrawable {
     }
   }
 
+  // A boss winding up an attack pulses bright red — the readable "tell" a player
+  // reacts to (docs/bosses.md). Cleared the moment the strike fires.
+  private updateTelegraph() {
+    if (!this.charSprite) return;
+    if (this.telegraphing && !this.dying) {
+      this.telegraphT += 0.2;
+      const pulse = 0.5 + 0.5 * Math.sin(this.telegraphT * Math.PI); // 0→1→0
+      // White → red: green/blue fall off as the pulse rises, red stays full.
+      const gb = Math.round(255 + (60 - 255) * pulse);
+      this.charSprite.setTint(Phaser.Display.Color.GetColor(255, gb, gb));
+    } else if (this.telegraphT !== 0) {
+      this.telegraphT = 0;
+      this.charSprite.clearTint();
+    }
+  }
+
   collectDebugShapes(): DebugShape[] {
     // Corpses don't interact (WALL-only mask on the server) — nothing to show.
     if (this.dying) return [];
-    const cfg = ENEMY_REGISTRY[this.enemyType as EnemyType];
     const shapes: DebugShape[] = [this.bodyDebugCircle(DEBUG_COLORS.enemyBody)];
-    if (cfg) {
-      // Attack/aggro are center-to-center distances (see Enemy AI), so centre
-      // them on the sprite, not the feet body.
-      const x = this.sprite.x;
-      const y = this.sprite.y;
-      shapes.push({ kind: "circle", x, y, r: cfg.aggroRadius, color: DEBUG_COLORS.enemyAggro });
-      shapes.push({ kind: "circle", x, y, r: cfg.attackRadius, color: DEBUG_COLORS.enemyAttack });
-    }
+    // Attack/aggro are center-to-center distances (see Enemy AI), so centre them
+    // on the sprite, not the feet body. Radii are synced from the server.
+    const x = this.sprite.x;
+    const y = this.sprite.y;
+    if (this.aggroRadius > 0) shapes.push({ kind: "circle", x, y, r: this.aggroRadius, color: DEBUG_COLORS.enemyAggro });
+    if (this.attackRadius > 0) shapes.push({ kind: "circle", x, y, r: this.attackRadius, color: DEBUG_COLORS.enemyAttack });
     return shapes;
   }
 

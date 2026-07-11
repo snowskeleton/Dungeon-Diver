@@ -1,9 +1,7 @@
 import type Matter from "matter-js";
-import { TILE_PROPS, TileId, TILE_DAMAGE_INTERVAL_MS } from "shared";
+import { TILE_PROPS, TileId, TILE_DAMAGE_INTERVAL_MS, InteractionProfile } from "shared";
 import { EntityState } from "../schema/EntityState";
-import {
-  PhysicsWorld, EntityCategory, syncStateFromBody,
-} from "../physics/PhysicsWorld";
+import { PhysicsWorld, syncStateFromBody } from "../physics/PhysicsWorld";
 
 // Knockback velocity is multiplied by this each tick; combined with the v0
 // math in Enemy.applyKnockback it reproduces the old total push distance.
@@ -26,10 +24,10 @@ export abstract class Entity {
     physics: PhysicsWorld,
     x: number,
     y: number,
-    category: EntityCategory,
+    profile: InteractionProfile,
   ): void {
     this.physics = physics;
-    this.body = physics.createEntityBody(x, y, category);
+    this.body = physics.createEntityBody(x, y, profile.layer, profile.solidMask);
   }
 
   // Records diagonal-normalized movement intent. Walls and entity separation

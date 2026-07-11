@@ -1,3 +1,10 @@
+// Enemy identifiers shared across client + server. The actual enemy definitions
+// (stats + behavior) are object-oriented classes on the server
+// (server/src/entities/enemies + /bosses); the client renders them from its own
+// visual registry (client/src/enemies). All that has to be shared is the id
+// union (Colyseus syncs it as a string; the client keys visuals off it) and the
+// facing mode each enemy's art uses.
+
 export type EnemyType =
   // Horizontal, single-row strips
   | "goo-green"
@@ -31,7 +38,7 @@ export type EnemyType =
   | "sword-beast"
   | "fang"
   | "hood-fang"
-  // Bosses — never in the random spawn pool; one is placed in the boss room
+  // Bosses — placed only in the boss room, never in the normal spawn pool
   | "turtle-dragon"
   | "wyvern"
   | "wyvern-green"
@@ -43,48 +50,5 @@ export type EnemyType =
 
 /** "horizontal" art has one side view, mirrored with flipX (goos, bats, spiders).
  *  "directional" art has an up/right/down/left row per facing (bones, beasts).
- *  Must match the client visual def registered for the same enemy id. */
+ *  Each enemy class declares which its art uses; the client visual def must match. */
 export type EnemyFacingMode = "horizontal" | "directional";
-
-export interface EnemyConfig {
-  maxHp: number;
-  speed: number;
-  aggroRadius: number;
-  attackRadius: number;       // center-to-center; must exceed 2×ENTITY_RADIUS (10px)
-  attackDamage: number;
-  attackCooldownMs: number;
-  knockbackResistance: number; // 0 = full knockback; higher absorbs more force
-  /** Defaults to "horizontal". */
-  facingMode?: EnemyFacingMode;
-  /** Bosses are excluded from the random spawn pool — GameRoom places one in the
-   *  floor's boss room instead. */
-  boss?: boolean;
-}
-
-/** Untuned stand-in stats for freshly imported art — a copy of GooGreen's block.
- *  Every enemy that spreads this plays identically, which is the point: the ones
- *  nobody has balanced yet are obvious. To tune an enemy, replace the spread in
- *  its config file with real numbers. */
-export const PLACEHOLDER_ENEMY_CONFIG: EnemyConfig = {
-  maxHp: 60,
-  speed: 70,
-  aggroRadius: 160,
-  attackRadius: 14,
-  attackDamage: 10,
-  attackCooldownMs: 1200,
-  knockbackResistance: 3,
-};
-
-/** Likewise untuned, but scaled so a boss reads as a boss: a big HP pool, a wide
- *  aggro radius so it commits the moment you enter, a reach that matches its
- *  larger sprite, and enough knockback resistance to shrug off light hits. */
-export const PLACEHOLDER_BOSS_CONFIG: EnemyConfig = {
-  maxHp: 600,
-  speed: 55,
-  aggroRadius: 400,
-  attackRadius: 26,
-  attackDamage: 22,
-  attackCooldownMs: 1500,
-  knockbackResistance: 12,
-  boss: true,
-};

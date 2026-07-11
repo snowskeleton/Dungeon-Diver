@@ -32,7 +32,7 @@ type BossSpec = Omit<SheetSpec, "name" | "displayW" | "displayH"> & { displaySiz
 
 const boss = (id: string, name: string, spec: BossSpec): ClientEnemyDef => {
   const { displaySize = BOSS_SIZE, ...sheet } = spec;
-  return makeSheetEnemyDef(id, { ...sheet, name, displayW: displaySize, displayH: displaySize });
+  return { ...makeSheetEnemyDef(id, { ...sheet, name, displayW: displaySize, displayH: displaySize }), isBoss: true };
 };
 
 export const CLIENT_ENEMY_REGISTRY: Record<EnemyType, ClientEnemyDef> = {
