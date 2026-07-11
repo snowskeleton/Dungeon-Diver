@@ -8,7 +8,7 @@ Player characters ("humanoids": guy, gal, skeleton, skeleton-mage) share one pip
 - **`client/src/characters/index.ts`** — `CLIENT_CHARACTER_VISUAL_REGISTRY` maps each `CharacterType` to `{ preload, defineAnimations, spriteConfig }`. `GameScene` iterates it in `preload()`/`create()` (deduped by texture key), so a new character skin touches only this file plus the `CharacterType` union.
 - **`client/src/entities/Entity.ts` → `setupCharacter(spriteConfig, weaponType)` + `playAnim(action, facing)`** — the single per-frame driver, called by both `LocalPlayer` and `RemotePlayer`. Short sequence: sync sprite position → hurt flash (interrupts everything, early-returns) → resolve effective action → set clip → play attack FX.
 
-Enemies do **not** go through this path — `EnemyEntity` calls `useRawSprite()` and drives its own clips from `GooSprites.ts`/`BatSprites.ts`. Clip-definition helpers shared by both paths live in `client/src/entities/SpriteClips.ts`.
+Enemies do **not** go through this path — `EnemyEntity` calls `useRawSprite()` and drives its clips from `CLIENT_ENEMY_REGISTRY` (`client/src/enemies/index.ts`), which hands it a `preload`/`defineAnimations`/`animKey`/`displaySize` bundle per enemy. Clip-definition helpers shared by both paths live in `client/src/entities/SpriteClips.ts`.
 
 ## The one-shot-clip trap (bit us twice — read before touching attack/hurt)
 

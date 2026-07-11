@@ -13,25 +13,23 @@ export interface ClientCharacterVisualDef {
   spriteConfig: CharacterSpriteConfig;
 }
 
+const humanoid = (type: CharacterType): ClientCharacterVisualDef => ({
+  preload: (s) => preloadHumanoid(s, type),
+  defineAnimations: (s) => defineHumanoidAnimations(s, type),
+  spriteConfig: makeHumanoidSpriteConfig(type),
+});
+
 export const CLIENT_CHARACTER_VISUAL_REGISTRY: Record<CharacterType, ClientCharacterVisualDef> = {
-  guy: {
-    preload: (s) => preloadHumanoid(s, "guy"),
-    defineAnimations: (s) => defineHumanoidAnimations(s, "guy"),
-    spriteConfig: makeHumanoidSpriteConfig("guy"),
-  },
-  gal: {
-    preload: (s) => preloadHumanoid(s, "gal"),
-    defineAnimations: (s) => defineHumanoidAnimations(s, "gal"),
-    spriteConfig: makeHumanoidSpriteConfig("gal"),
-  },
-  skeleton: {
-    preload: (s) => preloadHumanoid(s, "skeleton"),
-    defineAnimations: (s) => defineHumanoidAnimations(s, "skeleton"),
-    spriteConfig: makeHumanoidSpriteConfig("skeleton"),
-  },
-  "skeleton-mage": {
-    preload: (s) => preloadHumanoid(s, "skeleton-mage"),
-    defineAnimations: (s) => defineHumanoidAnimations(s, "skeleton-mage"),
-    spriteConfig: makeHumanoidSpriteConfig("skeleton-mage"),
-  },
+  guy: humanoid("guy"),
+  "guy-blue": humanoid("guy-blue"),
+  gal: humanoid("gal"),
+  "gal-green": humanoid("gal-green"),
+  skeleton: humanoid("skeleton"),
+  "skeleton-mage": humanoid("skeleton-mage"),
+  colt: humanoid("colt"),
+  "the-fool": humanoid("the-fool"),
+  gigante: humanoid("gigante"),
+  reptile: humanoid("reptile"),
+  kobold: humanoid("kobold"),
+  scaleless: humanoid("scaleless"),
 };

@@ -1,8 +1,7 @@
 import Phaser from "phaser";
 import { AiState, Facing, EnemyType, ENEMY_REGISTRY } from "shared";
 import { Entity } from "./Entity";
-import { isGooType, resolveGooAnim, gooAnimKey } from "./GooSprites";
-import { isBatType, batAnimKey, BAT_DISPLAY_SIZE } from "./BatSprites";
+import { CLIENT_ENEMY_REGISTRY, ClientEnemyDef } from "../enemies";
 import { DebugDrawable, DebugShape, DEBUG_COLORS } from "../debug/DebugDraw";
 
 export class EnemyEntity extends Entity implements DebugDrawable {
@@ -14,6 +13,7 @@ export class EnemyEntity extends Entity implements DebugDrawable {
   private dying = false;
   private currentEnemyAnim?: string;
   private readonly enemyType: string;
+  private readonly visual?: ClientEnemyDef;
 
   constructor(scene: Phaser.Scene, x: number, y: number, enemyType: string) {
     const maxHp = ENEMY_REGISTRY[enemyType as EnemyType]?.maxHp ?? 60;
@@ -25,12 +25,11 @@ export class EnemyEntity extends Entity implements DebugDrawable {
     this.targetY = y;
     this.currentHp = maxHp;
     this.enemyType = enemyType;
+    this.visual = CLIENT_ENEMY_REGISTRY[enemyType as EnemyType];
 
-    if (isGooType(enemyType)) {
-      this.useRawSprite(enemyType);
-    } else if (isBatType(enemyType)) {
-      this.useRawSprite(enemyType);
-      this.charSprite!.setDisplaySize(BAT_DISPLAY_SIZE, BAT_DISPLAY_SIZE);
+    if (this.visual) {
+      this.useRawSprite(this.visual.textureKey);
+      this.charSprite!.setDisplaySize(this.visual.displayW, this.visual.displayH);
     }
     this.sprite.setSize(20, 20);
   }
@@ -92,17 +91,12 @@ export class EnemyEntity extends Entity implements DebugDrawable {
   }
 
   private playEnemyAnim() {
-    this.charSprite!.setFlipX(this.facing === "left");
+    if (!this.visual) return;
 
-    let key: string;
-    if (isGooType(this.enemyType)) {
-      const clip = resolveGooAnim(this.dying);
-      key = gooAnimKey(this.enemyType, clip);
-    } else if (isBatType(this.enemyType)) {
-      key = this.dying ? batAnimKey("death") : batAnimKey("fly");
-    } else {
-      return;
-    }
+    // Directional art has a row per facing and must never be mirrored; the
+    // def decides, since only it knows which layout the sheet uses.
+    const { key, flipX } = this.visual.resolve(this.dying, this.facing);
+    this.charSprite!.setFlipX(flipX);
 
     if (this.currentEnemyAnim === key) return;
     this.currentEnemyAnim = key;

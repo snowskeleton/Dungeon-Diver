@@ -13,8 +13,7 @@ import { ProjectileEntity } from "../entities/ProjectileEntity";
 import { CLIENT_CHARACTER_VISUAL_REGISTRY } from "../characters";
 import { preloadAttackFX, defineAttackFXAnimations } from "../entities/AttackFXSprites";
 import { preloadBowSheet, defineBowAnimation } from "../entities/RangedWeaponFX";
-import { preloadGoo, defineGooAnimations } from "../entities/GooSprites";
-import { preloadBat, defineBatAnimations } from "../entities/BatSprites";
+import { CLIENT_ENEMY_REGISTRY } from "../enemies";
 import { HitboxDebug } from "../debug/HitboxDebug";
 import { InventoryHud } from "../ui/InventoryHud";
 import { ShopItemEntity } from "../entities/ShopItemEntity";
@@ -22,7 +21,6 @@ import { weaponStatLines } from "../ui/weaponStats";
 import { LaunchConfig, Loadout, defaultLoadout, pickLoadout } from "../launch";
 import { loadOptions } from "../options/gameOptions";
 
-const GOO_TYPES = ["goo-green", "goo-blue", "goo-gold"] as const;
 
 /** Server's `GameState.dungeonOpts`, or null if state hasn't synced yet. */
 function parseDungeonOpts(raw: unknown): DungeonOptions | null {
@@ -102,8 +100,14 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
-    GOO_TYPES.forEach((t) => preloadGoo(this, t));
-    preloadBat(this);
+    // Several enemies can share one sheet (the float-skull colours), so preload
+    // once per texture key.
+    const seenEnemySheets = new Set<string>();
+    Object.values(CLIENT_ENEMY_REGISTRY).forEach((def) => {
+      if (seenEnemySheets.has(def.textureKey)) return;
+      seenEnemySheets.add(def.textureKey);
+      def.preload(this);
+    });
 
     // Preload weapon icon PNGs — each weapon's texture key is its id. Held ranged
     // weapons (bows/crossbows) load as a 2-frame draw spritesheet instead.
@@ -133,8 +137,7 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
-    GOO_TYPES.forEach((t) => defineGooAnimations(this, t));
-    defineBatAnimations(this);
+    Object.values(CLIENT_ENEMY_REGISTRY).forEach((def) => def.defineAnimations(this));
 
     // Define bow/crossbow draw clips (held ranged weapons only).
     for (const weapon of Object.values(WEAPON_REGISTRY)) {

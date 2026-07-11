@@ -34,8 +34,8 @@ Both are defined in `.claude/launch.json` for the preview panel. The Colyseus se
 ```
 shared/src/
   types.ts             ← tile IDs + TILE_PROPS, InputMessage, RoomType, and the few cross-cutting constants (SERVER_TICK_MS, KNOCKBACK_* scale/stun knobs, enemy-count formula, ENTITY_RADIUS/FOOT_OFFSET). Balance does NOT live here — see characters/, enemies/, weapons/, ammo/
-  characters/          ← one CharacterConfig per class (Knight/Rogue/Ranger/Mage): id, name, maxHp, speed, defaultWeaponId; index.ts exports CHARACTER_REGISTRY. Weapon stats live in weapons/, not here
-  enemies/             ← one EnemyConfig per enemy (GooGreen/GooBlue/GooGold/Bat): hp/speed/aggro/attack/knockback stats; index.ts exports ENEMY_REGISTRY
+  characters/          ← one CharacterConfig per class (Knight/Rogue/Ranger/Mage): id, name, maxHp, speed, defaultWeaponId; index.ts exports CHARACTER_REGISTRY. Weapon stats live in weapons/, not here. base.ts also holds the CharacterType union (12 humanoid skins)
+  enemies/             ← one EnemyConfig per enemy: hp/speed/aggro/attack/knockback, plus `facingMode` (horizontal|directional) and `boss`; index.ts exports ENEMY_REGISTRY. base.ts also holds PLACEHOLDER_ENEMY_CONFIG / PLACEHOLDER_BOSS_CONFIG, the untuned stand-ins that freshly imported art spreads
   weapons/             ← one Weapon per <category>/<id>/index.ts (+ <id>.png icon); category base.ts holds defaults; index.ts exports WEAPON_REGISTRY + WeaponId union. Each weapon carries its own fxType; ranged ones carry ammoId + rangedStyle
   ammo/                ← projectiles ranged weapons spawn; mirrors weapons/ layout. Behaviour-sharing groups nest under a category base (arrows/, boomerangs/); one-offs (throwing-knife, throwing-star) sit flat. index.ts exports AMMO_REGISTRY + AmmoId union
   debug.ts             ← DebugConfig (the Debug menu's flat settings object) + DEFAULT_DEBUG_CONFIG + toDungeonOptions()
@@ -51,7 +51,7 @@ server/src/
   entities/Entity.ts        ← base class: move() records velocity intent (physics resolves walls/separation), applyTileEffects(), takeDamage(), teleport() — shared by Player + Enemy
   entities/Player.ts        ← extends Entity; looks up its CharacterConfig from CHARACTER_REGISTRY; applyInput(), getAttackHitbox(), hitsEnemy(), justAttacked flag + getShotAngle() for ranged fire. Owns the weapon inventory
   entities/Enemy.ts         ← abstract base; tick() runs AI state machine (patrol/chase/attack), knockback + hitstun (overage threshold; stun suspends AI), death
-  entities/Goo.ts           ← the ONE concrete enemy class: takes any EnemyType, pulls its EnemyConfig from ENEMY_REGISTRY, overrides updateFacing() for horizontal-only art (bats spawn as Goo too)
+  entities/Goo.ts           ← the ONE concrete enemy class: takes any EnemyType, pulls its EnemyConfig from ENEMY_REGISTRY, and picks 4-way vs left/right facing from cfg.facingMode (every enemy and boss spawns as a Goo)
   entities/Projectile.ts    ← kinematic arrow/thrown-weapon (no matter-js body); integrates position, swept ellipse-vs-enemy hits, pierce, boomerang return, wall/lifetime despawn. Pulls its AmmoConfig from AMMO_REGISTRY
   schema/EntityState.ts     ← Colyseus schema base (x, y, health, speedMultiplier)
   schema/PlayerState.ts     ← extends EntityState (facing, isAttacking, attackSeq, characterClass, characterType, weaponId=active, inventory[], activeWeaponIndex)
@@ -66,7 +66,9 @@ client/src/
   scenes/MenuScene.ts       ← title screen: Start / Options / Debug. Start and Debug both run pickLoadout() then `scene.start("GameScene", config)`
   scenes/GameScene.ts       ← main scene; init(LaunchConfig) resets per-run state, async create() connects to server, wires state sync (players/enemies/projectiles/shops) + floor-change/barrier messages, room-locked camera. Owns the inventory HUD, PAUSED overlay, and P1 store card. Esc → menu
   characters/index.ts       ← CLIENT_CHARACTER_VISUAL_REGISTRY (CharacterType → preload/defineAnimations/spriteConfig)
-  enemies/index.ts          ← CLIENT_ENEMY_REGISTRY (display names)
+  enemies/index.ts          ← CLIENT_ENEMY_REGISTRY: per-enemy name + textureKey + displayW/H + preload/defineAnimations/resolve(). Adding an enemy is one entry here
+  enemies/sheetEnemy.ts     ← makeSheetEnemyDef(): horizontal art (one side view, flipX for left). Handles multi-row sheets + non-square cells via explicit moveFrames
+  enemies/directionalEnemy.ts ← makeDirectionalEnemyDef(): 4-row sheets, one row per facing (up/right/down/left), never mirrored
   weapons/index.ts          ← CLIENT_WEAPON_REGISTRY (name + placeholder-art flag; feeds PlaceholderReport)
   entities/Entity.ts        ← base Phaser class: rectangle anchor + HP bar; setupCharacter()/playAnim() for registry-driven characters, useRawSprite() for self-animating sprites (enemies), attack FX with per-frame weapon icon tracking
   entities/SpriteClips.ts   ← shared clip-definition helpers used by the Humanoid/Goo/Bat sprite modules
@@ -74,11 +76,9 @@ client/src/
   entities/AttackFXSprites.ts ← one-shot slash/stab FX strips, rotated per facing
   entities/RangedWeaponFX.ts ← "held" ranged draw: 2-frame bow/crossbow sheet played 0→1→0→0 beside the player, rotated to fire direction
   entities/ProjectileEntity.ts ← lightweight (no HP bar) projectile view; lerps to server pos, points along angle or spins per AmmoConfig
-  entities/GooSprites.ts    ← goo clips (6-frame cycle; death = same frames reversed) + isGooType()
-  entities/BatSprites.ts    ← bat clips (16×16 frames displayed at 32×32) + isBatType()
   entities/LocalPlayer.ts   ← extends Entity; reads InputSource, sends to server, hp field for HUD. Weapon-swap on active change, cycle/menu/buy actions, shop proximity, acquire-diff → AcquireFX + input freeze
   entities/RemotePlayer.ts  ← extends Entity; lerps toward server position, drives anim from server's facing/isAttacking/attackSeq + inferred movement; swaps weapon visuals on weaponId change
-  entities/EnemyEntity.ts   ← extends Entity; lerps toward server position, plays goo/bat clips from enemyType/isDying
+  entities/EnemyEntity.ts   ← extends Entity; lerps toward server position; asks CLIENT_ENEMY_REGISTRY[enemyType].resolve(isDying, facing) for the clip + whether to mirror
   entities/ShopItemEntity.ts ← in-world shop pedestal view (icon + HP-cost label); ghosts out when purchased. Not an Entity (no HP bar)
   entities/AcquireFX.ts     ← one-shot "item get!" flourish: weapon icon pops above the head + centered stats panel; fires on inventory growth
   input/InputSource.ts      ← interface + KeyboardInputSource (wasd/arrows) + GamepadInputSource. read()=movement/attack; readActions()=discrete intents (prev/next slot, toggle menu, interact/buy) edge-detected by LocalPlayer
@@ -118,9 +118,11 @@ client/src/
 
 To add a debug knob: add the property to `DebugConfig` (`shared/src/debug.ts`) with a default, add one entry to `DEBUG_FIELDS` (`client/src/debug/debugFields.ts`), and read it in `GameRoom` (or map it into `DungeonOptions`). The panel renders itself from the field list — `FieldPanel.ts` never needs touching. `GameScene` and `MenuScene` are restartable, so anything they mutate is reset in `init()`/`create()`, not at field-initializer time.
 
-**Room type system**: `dungeonGenerator.ts` assigns a `RoomType` (`"combat" | "maze" | "boss" | "shop" | "shrine"`) to each room during generation — before carving, so the carve function varies by type. Boss is placed first (random non-start room), then all others get a weighted roll (58% combat / 17% maze / 17% shop / 8% shrine). `RoomData.type` carries the type through to `GameRoom`, which uses it to decide enemy spawning (skips boss/shop/shrine). Boss passageway tiles are overwritten with `TILE.BOSS_FLOOR` (gold, breathing animation) after connections are built.
+**Room type system**: `dungeonGenerator.ts` assigns a `RoomType` (`"combat" | "maze" | "boss" | "shop" | "shrine"`) to each room during generation — before carving, so the carve function varies by type. Boss is placed first (random non-start room), then all others get a weighted roll (58% combat / 17% maze / 17% shop / 8% shrine). `RoomData.type` carries the type through to `GameRoom`, which uses it to decide enemy spawning (shop/shrine get none; the boss room gets a single boss, not the usual rabble; **the start room never gets enemies** so players aren't jumped on load — the one exception is a degenerate single-room floor where start === exit). Boss passageway tiles are overwritten with `TILE.BOSS_FLOOR` (gold, breathing animation) after connections are built.
 
-**Empty room finalization**: after `spawnFloorEnemies()`, `GameRoom` calls `floorManager.finalizeEmptyRooms()`, which marks all zero-enemy rooms as pre-cleared and removes their outgoing `barrierParent` barriers. Without this, boss/shop/shrine rooms lock the player in forever (no enemies to kill = clear condition never fires). Also, `FloorManager.checkPlayerEnteredRoom()` skips placing `barrierChild` for any room with no enemies — players can always retreat from empty rooms.
+**Debug "showcase" floors**: picking a specific room type in the Debug menu with a 1×1 grid no longer builds a lone start-is-exit room. `toDungeonOptions` maps it to `DungeonOptions.showcaseRoomType`, and `generateDungeon` builds a fixed 3-room line — plain combat start → the chosen room → combat exit (with stairs) — so shop/shrine/boss rooms get tested with a real spawn point and a proper exit. A bigger grid still forces every room to the chosen type (`forceRoomType`) as before.
+
+**Empty room finalization**: after `spawnFloorEnemies()`, `GameRoom` calls `floorManager.finalizeEmptyRooms()`, which marks all zero-enemy rooms as pre-cleared and removes their outgoing `barrierParent` barriers. Without this, shop/shrine rooms lock the player in forever (no enemies to kill = clear condition never fires). **`spawnBoss()` must run before `finalizeEmptyRooms()`** — it's called at the end of `spawnFloorEnemies()` for exactly that reason. Otherwise the boss room is pre-cleared and the boss never locks anyone in. Also, `FloorManager.checkPlayerEnteredRoom()` skips placing `barrierChild` for any room with no enemies — players can always retreat from empty rooms.
 
 **Stairs are never covered**: the stairs go at the exit room's center tile, which is also where a shop lays its middle pedestal. Two rules keep them clear. `dungeonGenerator.ts` picks the exit room as the farthest room from start whose type is not in `STAIRS_AVOID_TYPES` (`shop`, `shrine`) — add any future prop-placing room type to that list. And `GameRoom.spawnShops()` nudges each pedestal to the nearest plain-`FLOOR` column on the center row, which covers the fallback case where a forced-room-type debug floor makes *every* room a shop. Also: when start === exit (a single-room floor) the player would spawn on top of the stairs and descend instantly, so `generateDungeon` steps the spawn to the nearest open tile.
 
@@ -152,7 +154,7 @@ Colyseus fires `onAdd` for items already in the map when the callback is registe
 | Player/class (maxHp, speed, starting weapon) | `shared/src/characters/<Class>.ts` |
 | Weapon (damage, cooldown, force, swing geometry, fxType) | `shared/src/weapons/<category>/<id>/index.ts` (or category `base.ts`) |
 | Ammo/projectile (damage, speed, pierce, hit ellipse, spin/return) | `shared/src/ammo/<id>/index.ts` |
-| Enemy (hp, speed, aggro, attack, knockback resistance) | `shared/src/enemies/<Name>.ts` |
+| Enemy/boss (hp, speed, aggro, attack, knockback resistance) | `shared/src/enemies/<Name>.ts` |
 | Store (pedestal count, HP cost formula, buy radius) | `server/src/rooms/GameRoom.ts` |
 | Loadout keybinds / acquire freeze | `client/src/input/InputSource.ts`, `ACQUIRE_MS` in `entities/AcquireFX.ts` |
 | Knockback / hitstun feel, tick rate, enemy count, body geometry | `shared/src/types.ts` |

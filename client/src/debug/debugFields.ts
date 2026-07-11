@@ -31,11 +31,11 @@ export const DEBUG_FIELDS: FieldSpec<DebugConfig>[] = [
   { kind: "number", key: "gridRows", label: "Rooms down", min: 1, max: 4 },
   {
     kind: "select", key: "roomType", label: "Room type", options: ROOM_TYPE_CHOICES,
-    help: "Forces every room to this type",
+    help: "Forces every room to this type. With a 1×1 grid: a 3-room showcase (start → this → exit)",
   },
   {
     kind: "toggle", key: "includeBoss", label: "Boss room",
-    help: "Ignored when only one room exists",
+    help: "Ignored on single-room and showcase floors",
   },
   {
     kind: "toggle", key: "includeStairs", label: "Stairs",
@@ -55,7 +55,7 @@ export const DEBUG_FIELDS: FieldSpec<DebugConfig>[] = [
 // you care about; anything omitted keeps its current value in the panel.
 export const DEBUG_PRESETS: Preset<DebugConfig>[] = [
   {
-    label: "Single combat room",
+    label: "Combat showcase",
     values: { ...DEFAULT_DEBUG_CONFIG, enabled: true, gridCols: 1, gridRows: 1, roomType: "combat" },
   },
   {
@@ -73,7 +73,7 @@ export const DEBUG_PRESETS: Preset<DebugConfig>[] = [
     },
   },
   {
-    label: "Shop only",
+    label: "Shop showcase",
     values: {
       ...DEFAULT_DEBUG_CONFIG, enabled: true, gridCols: 1, gridRows: 1,
       roomType: "shop", enemiesPerRoom: 0,

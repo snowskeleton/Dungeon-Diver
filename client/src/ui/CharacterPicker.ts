@@ -36,10 +36,11 @@ const CSS = `
   .cp-class.selected { border-color: #8888ff; background: #33335e; color: #fff; }
   .cp-class-name { font-size: 12px; font-weight: bold; }
   .cp-class-stats { font-size: 10px; color: #8888aa; margin-top: 4px; line-height: 1.4; }
-  .cp-skins { display: flex; gap: 10px; }
+  .cp-skins { display: flex; flex-wrap: wrap; gap: 10px; }
   .cp-skin {
     cursor: pointer; padding: 6px; border: 2px solid transparent; border-radius: 6px;
     display: flex; flex-direction: column; align-items: center;
+    width: 62px;
   }
   .cp-skin:hover { border-color: #6666bb; }
   .cp-skin.selected { border-color: #8888ff; background: #2a2a5a; }

@@ -35,6 +35,13 @@ export interface DungeonOptions {
   minRooms?: number;
   /** Give every room this type instead of rolling weighted types. Default null (roll). */
   forceRoomType?: RoomType | null;
+  /**
+   * Build a fixed 3-room line to show off one room type: a plain start room, then
+   * this type, then the exit. Overrides grid size and the random walk. Lets the
+   * debug menu test a shop/shrine/boss room with a real spawn point and stairs
+   * instead of a degenerate single room that is both start and exit.
+   */
+  showcaseRoomType?: RoomType | null;
   /** Reserve one non-start room as the boss room. Defaults to true unless forceRoomType is set. */
   includeBoss?: boolean;
   /** Place the descend-stairs tile in the exit room. Default true. */
@@ -270,8 +277,10 @@ export function generateDungeon(seed: number, opts: DungeonOptions = {}): Dungeo
   const rng = makeRng(seed);
   const randInt = (max: number) => Math.floor(rng() * max);
 
-  const GRID_COLS = Math.max(1, opts.gridCols ?? DEFAULT_GRID_COLS);
-  const GRID_ROWS = Math.max(1, opts.gridRows ?? DEFAULT_GRID_ROWS);
+  // A showcase floor is a fixed 3-room horizontal line, so it dictates the grid.
+  const showcase = opts.showcaseRoomType ?? null;
+  const GRID_COLS = showcase ? 3 : Math.max(1, opts.gridCols ?? DEFAULT_GRID_COLS);
+  const GRID_ROWS = showcase ? 1 : Math.max(1, opts.gridRows ?? DEFAULT_GRID_ROWS);
   const NEIGHBOR_CHANCE = opts.neighborChance ?? DEFAULT_NEIGHBOR_CHANCE;
   const MIN_ROOMS = Math.min(opts.minRooms ?? DEFAULT_MIN_ROOMS, GRID_COLS * GRID_ROWS);
   const forceRoomType = opts.forceRoomType ?? null;
@@ -300,30 +309,40 @@ export function generateDungeon(seed: number, opts: DungeonOptions = {}): Dungeo
   const DIRS: RC[] = [
     { gx: 0, gy: -1 }, { gx: 1, gy: 0 }, { gx: 0, gy: 1 }, { gx: -1, gy: 0 },
   ];
-  const unvisitedNeighbors = (c: RC): RC[] =>
-    DIRS
-      .map(d => ({ gx: c.gx + d.gx, gy: c.gy + d.gy }))
-      .filter(n =>
-        n.gx >= 0 && n.gx < GRID_COLS && n.gy >= 0 && n.gy < GRID_ROWS &&
-        !roomGrid[n.gx][n.gy] && chance(NEIGHBOR_CHANCE),
-      );
 
-  const sx = Math.max(0, Math.min(GRID_COLS - 1, Math.floor(GRID_COLS / 2) + randInt(3) - 1));
-  const sy = Math.max(0, Math.min(GRID_ROWS - 1, Math.floor(GRID_ROWS / 2) + randInt(3) - 1));
-  const start: RC = { gx: sx, gy: sy };
-  roomGrid[start.gx][start.gy] = true;
+  let start: RC;
+  if (showcase) {
+    // Fixed line: start (0,0) — special (1,0) — exit (2,0), left to right.
+    for (let gx = 0; gx < 3; gx++) roomGrid[gx][0] = true;
+    addConnection({ gx: 0, gy: 0 }, { gx: 1, gy: 0 });
+    addConnection({ gx: 1, gy: 0 }, { gx: 2, gy: 0 });
+    start = { gx: 0, gy: 0 };
+  } else {
+    const unvisitedNeighbors = (c: RC): RC[] =>
+      DIRS
+        .map(d => ({ gx: c.gx + d.gx, gy: c.gy + d.gy }))
+        .filter(n =>
+          n.gx >= 0 && n.gx < GRID_COLS && n.gy >= 0 && n.gy < GRID_ROWS &&
+          !roomGrid[n.gx][n.gy] && chance(NEIGHBOR_CHANCE),
+        );
 
-  const stack: RC[] = [start];
-  while (stack.length > 0) {
-    const cur = stack[stack.length - 1];
-    const next = unvisitedNeighbors(cur);
-    if (next.length > 0) {
-      const chosen = next[randInt(next.length)];
-      roomGrid[chosen.gx][chosen.gy] = true;
-      addConnection(cur, chosen);
-      stack.push(chosen);
-    } else {
-      stack.pop();
+    const sx = Math.max(0, Math.min(GRID_COLS - 1, Math.floor(GRID_COLS / 2) + randInt(3) - 1));
+    const sy = Math.max(0, Math.min(GRID_ROWS - 1, Math.floor(GRID_ROWS / 2) + randInt(3) - 1));
+    start = { gx: sx, gy: sy };
+    roomGrid[start.gx][start.gy] = true;
+
+    const stack: RC[] = [start];
+    while (stack.length > 0) {
+      const cur = stack[stack.length - 1];
+      const next = unvisitedNeighbors(cur);
+      if (next.length > 0) {
+        const chosen = next[randInt(next.length)];
+        roomGrid[chosen.gx][chosen.gy] = true;
+        addConnection(cur, chosen);
+        stack.push(chosen);
+      } else {
+        stack.pop();
+      }
     }
   }
 
@@ -364,19 +383,30 @@ export function generateDungeon(seed: number, opts: DungeonOptions = {}): Dungeo
 
   // ── 2. Assign room types ────────────────────────────────────────────────
   const roomTypes = new Map<string, RoomType>();
+  let bossRoomId: string | null;
 
-  // Boss: random non-start room. Skipped when disabled or when the start room
-  // is the only room, since the boss can never be the room you spawn in.
-  const bossEligible = allRoomIds.filter(id => id !== startId);
-  const bossRoomId = wantBoss && bossEligible.length > 0
-    ? bossEligible[randInt(bossEligible.length)]
-    : null;
-  if (bossRoomId) roomTypes.set(bossRoomId, "boss");
+  if (showcase) {
+    // start & exit are plain combat rooms; the middle is the room being shown off.
+    const midId = roomKey({ gx: 1, gy: 0 });
+    roomTypes.set(startId, "combat");
+    roomTypes.set(midId, showcase);
+    roomTypes.set(roomKey({ gx: 2, gy: 0 }), "combat");
+    // Only a boss room if that's what's being shown off.
+    bossRoomId = showcase === "boss" ? midId : null;
+  } else {
+    // Boss: random non-start room. Skipped when disabled or when the start room
+    // is the only room, since the boss can never be the room you spawn in.
+    const bossEligible = allRoomIds.filter(id => id !== startId);
+    bossRoomId = wantBoss && bossEligible.length > 0
+      ? bossEligible[randInt(bossEligible.length)]
+      : null;
+    if (bossRoomId) roomTypes.set(bossRoomId, "boss");
 
-  // All other rooms: the forced type, or a weighted roll
-  for (const id of allRoomIds) {
-    if (id === bossRoomId) continue;
-    roomTypes.set(id, forceRoomType ?? pickRoomType(rng));
+    // All other rooms: the forced type, or a weighted roll
+    for (const id of allRoomIds) {
+      if (id === bossRoomId) continue;
+      roomTypes.set(id, forceRoomType ?? pickRoomType(rng));
+    }
   }
 
   // ── 3. Build tile grid and carve rooms ──────────────────────────────────

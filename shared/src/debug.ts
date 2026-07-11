@@ -45,6 +45,18 @@ export const DEFAULT_DEBUG_CONFIG: DebugConfig = {
 
 export function toDungeonOptions(cfg: DebugConfig): DungeonOptions {
   if (!cfg.enabled) return {};
+
+  // Picking a specific room type in what would be a single room expands to a
+  // 3-room showcase (plain start → chosen room → exit) so shop/shrine/boss rooms
+  // are tested with a real spawn point and stairs, not a degenerate start=exit.
+  const singleRoom = Math.max(1, cfg.gridCols) * Math.max(1, cfg.gridRows) === 1;
+  if (singleRoom && cfg.roomType !== "random") {
+    return {
+      showcaseRoomType: cfg.roomType,
+      includeStairs: cfg.includeStairs,
+    };
+  }
+
   const area = Math.max(1, cfg.gridCols) * Math.max(1, cfg.gridRows);
   return {
     gridCols: cfg.gridCols,

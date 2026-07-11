@@ -4,7 +4,7 @@ import {
   TILE_PROPS, TileId, TILE,
   ENEMY_BASE_COUNT, ENEMY_FLOOR_BONUS_INTERVAL, ENEMY_PLAYER_SCALE,
   generateDungeon, DungeonResult, DungeonOptions, FloorChangeMessage,
-  MAP_SEED, EnemyType, AMMO_REGISTRY, WEAPON_REGISTRY,
+  MAP_SEED, EnemyType, ENEMY_REGISTRY, AMMO_REGISTRY, WEAPON_REGISTRY,
   DebugConfig, toDungeonOptions,
 } from "shared";
 import { GameState } from "../schema/GameState";
@@ -17,7 +17,10 @@ import { PlayerState } from "../schema/PlayerState";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
 import { FloorManager } from "../floor/FloorManager";
 
-const ENEMY_TYPES: EnemyType[] = ["goo-green", "goo-blue", "goo-gold", "bat"];
+const ALL_ENEMY_TYPES = Object.keys(ENEMY_REGISTRY) as EnemyType[];
+// Bosses are placed by hand in the boss room, never rolled into normal rooms.
+const ENEMY_TYPES = ALL_ENEMY_TYPES.filter((t) => !ENEMY_REGISTRY[t].boss);
+const BOSS_TYPES = ALL_ENEMY_TYPES.filter((t) => ENEMY_REGISTRY[t].boss);
 const SHOP_ITEM_COUNT = 3;
 // How close (px) a player must stand to a pedestal to buy it.
 const BUY_RADIUS = 40;
@@ -181,10 +184,47 @@ export class GameRoom extends Room<GameState> {
     // An explicit debug count means "put enemies here", even in rooms that normally
     // stay empty (boss/shop/shrine).
     const everyRoom = this.debug != null && this.debug.enemiesPerRoom >= 0;
+    // Players spawn in the start room, so it stays clear — no getting jumped on
+    // load. The lone exception is a one-room debug floor (start === exit), where
+    // the start room is the only place enemies could go.
+    const startId = this.currentDungeon.startRoomId;
+    const singleRoom = startId === this.currentDungeon.exitRoomId;
     for (const room of this.currentDungeon.rooms) {
+      if (room.id === startId && !singleRoom) continue;
       if (!everyRoom && (room.type === "boss" || room.type === "shop" || room.type === "shrine")) continue;
       for (let i = 0; i < count; i++) this.spawnEnemyInRoom(room.id);
     }
+    this.spawnBoss();
+  }
+
+  // One boss per floor, in the room the generator marked "boss". Rotating by
+  // floor number means consecutive floors never repeat a boss. Must run before
+  // FloorManager.finalizeEmptyRooms() or the boss room gets pre-cleared and its
+  // barriers removed — the boss would never lock the player in.
+  private spawnBoss() {
+    if (BOSS_TYPES.length === 0) return;
+    const room = this.currentDungeon.rooms.find((r) => r.type === "boss");
+    if (!room) return;
+
+    const pos = this.bossPos(room.centerCol, room.centerRow, room);
+    if (!pos) return;
+
+    const type = BOSS_TYPES[(this.state.floor - 1) % BOSS_TYPES.length];
+    const id = `enemy_${this.enemyCounter++}`;
+    const boss = new Goo(this.physics, pos, type);
+    this.enemies.set(id, boss);
+    this.state.enemies.set(id, boss.state);
+    this.floorManager.assignEnemy(id, pos.x, pos.y);
+  }
+
+  // Centre of the boss room, unless that tile is the stairs (a boss room can be
+  // the exit room) or unwalkable — then anywhere open in the room.
+  private bossPos(col: number, row: number, room: { tileCol: number; tileRow: number }) {
+    const tile = this.currentDungeon.mapData[row]?.[col] as TileId | undefined;
+    if (tile !== undefined && TILE_PROPS[tile].walkable && tile !== TILE.STAIRS) {
+      return { x: col * TILE_SIZE + TILE_SIZE / 2, y: row * TILE_SIZE + TILE_SIZE / 2 };
+    }
+    return this.randomPosInRoom(room.tileCol + 1, room.tileRow + 1, room.tileCol + 20, room.tileRow + 15);
   }
 
   private spawnEnemyInRoom(roomId: string) {

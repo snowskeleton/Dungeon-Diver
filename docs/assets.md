@@ -17,6 +17,9 @@ npm run assets:build      # = node assets/sync-to-client.js
 ## Other scripts in `assets/`
 
 - `generate-weapons.js` — splits `weapon-icons.png` into per-weapon PNGs and writes per-weapon TypeScript definition files into `shared/src/weapons/{category}/{id}/`.
+- `generate-snake-sheets.js` — the Snakes art ships as three per-direction strips instead of one sheet; this composes `fang.png` / `hood-fang.png` into the standard 4-row directional layout (the "left" row is the side strip mirrored per-frame). The output is committed, so only re-run it if the source art changes.
+
+Both require `sharp`, which is **not** a project dependency: `npm install --no-save sharp` first.
 
 ## Sprite-sheet grid alignment (bit us once)
 
@@ -34,6 +37,10 @@ Related: when rescaling, always work from the **original source PNG**, never fro
 ## Sheet layouts
 
 - **Humanoid characters**: 15 cols × 4 rows at 32×32. See [animation.md](animation.md).
-- **Enemies**: single-row strips (goos 6×1 @ 32×32, bat 6×1 @ 16×16). See [enemies.md](enemies.md).
+- **Enemies (horizontal)**: one side view, mirrored for left. Usually a single-row strip, cell size varies (goos 6×1 @32, bats 6×1 @16, rat 8×1 @20); some are multi-row (spider 6×3 of 32×16, frog-flower 4×3 @32) or share a sheet across colour variants (float-skull 3×3 @16).
+- **Enemies (directional)**: 4 rows of 4 frames @16 — up / right / down / left, never mirrored (bones, kultist, the beasts, snakes).
+- **Bosses**: horizontal, big sheets, rendered at 2× (turtle-dragon 16×1 @32, wyverns 4×2 @32, centaur-knight + big-beast 8×4 @32, tengu-mask 18×4 @32, batwing-buttstomper 8×6 @40).
 - **Attack FX strips**: right-facing, 4 frames. See [weapons-and-ammo.md](weapons-and-ammo.md).
 - **Weapon/ammo icons**: live beside their config under `shared/src/weapons/` and `shared/src/ammo/`, not in `assets/`.
+
+An enemy sheet's PNG basename must equal the enemy id, unless its def sets an explicit `textureKey`. See [enemies.md](enemies.md).
