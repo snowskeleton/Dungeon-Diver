@@ -169,17 +169,30 @@ export class GameRoom extends Room<GameState> {
     return Math.ceil(base * (1 + ENEMY_PLAYER_SCALE * (players - 1)));
   }
 
-  // Which enemy classes rabble is drawn from — narrowed to the debug selection
-  // if it names any regular enemies. Bosses aren't in REGULAR_ENEMIES, so a boss
-  // type in the selection is simply ignored here (it can only spawn in the boss
-  // room) — no boss ever appears as a plain contact enemy.
+  // Which enemy classes rabble is drawn from. If the debug menu names any regular
+  // enemies, the pool is exactly those, in the order they were listed (so a
+  // round-robin fill matches the menu). Bosses aren't in REGULAR_ENEMIES, so a
+  // boss type in the selection is ignored here — bosses only spawn in the boss
+  // room, never as plain contact enemies.
   private enemyPool(): EnemyClass[] {
     const picked = this.debug?.enemyTypes;
     if (picked && picked.length > 0) {
-      const chosen = REGULAR_ENEMIES.filter((C) => picked.includes(C.type));
+      // Resolve against every class — regular AND boss — so a selected boss
+      // spawns as its real Boss subclass wherever the floor gets populated. The
+      // random pool (below) stays boss-free, so only an explicit pick spawns one.
+      const all: EnemyClass[] = [...REGULAR_ENEMIES, ...BOSSES];
+      const chosen = picked
+        .map((t) => all.find((C) => C.type === t))
+        .filter((C): C is EnemyClass => C !== undefined);
       if (chosen.length > 0) return chosen;
     }
     return REGULAR_ENEMIES;
+  }
+
+  /** True when the debug menu named a specific enemy list — then the pool is
+   *  filled round-robin (deterministic) rather than by random draw. */
+  private hasCustomEnemyList(): boolean {
+    return (this.debug?.enemyTypes?.length ?? 0) > 0;
   }
 
   private spawnFloorEnemies() {
@@ -192,11 +205,26 @@ export class GameRoom extends Room<GameState> {
     // load. The lone exception is a one-room debug floor (start === exit), where
     // the start room is the only place enemies could go.
     const startId = this.currentDungeon.startRoomId;
-    const singleRoom = startId === this.currentDungeon.exitRoomId;
+    const exitId = this.currentDungeon.exitRoomId;
+    const singleRoom = startId === exitId;
+    // A showcase floor auto-adds plain start/exit combat rooms to frame the room
+    // being shown off. Those framing rooms stay clean so a "boss" showcase is just
+    // the boss (and a "combat" showcase is just its one populated room) — unless
+    // you force enemies into every room.
+    const isShowcase = this.dungeonOpts.showcaseRoomType != null;
+    const pool = this.enemyPool();
+    const roundRobin = this.hasCustomEnemyList();
+    let filled = 0; // round-robin cursor, continuous across rooms
     for (const room of this.currentDungeon.rooms) {
       if (room.id === startId && !singleRoom) continue;
+      if (isShowcase && !everyRoom && room.id === exitId) continue;
       if (!everyRoom && (room.type === "boss" || room.type === "shop" || room.type === "shrine")) continue;
-      for (let i = 0; i < count; i++) this.spawnEnemyInRoom(room.id);
+      for (let i = 0; i < count; i++) {
+        // Round-robin walks the listed creatures in order, wrapping to the start
+        // when the quota outruns the list; with no list it's a random draw.
+        const cls = roundRobin ? pool[filled++ % pool.length] : pool[Math.floor(Math.random() * pool.length)];
+        this.spawnEnemyInRoom(room.id, cls);
+      }
     }
     this.spawnBoss();
   }
@@ -231,15 +259,13 @@ export class GameRoom extends Room<GameState> {
     return this.randomPosInRoom(room.tileCol + 1, room.tileRow + 1, room.tileCol + 20, room.tileRow + 15);
   }
 
-  private spawnEnemyInRoom(roomId: string) {
+  private spawnEnemyInRoom(roomId: string, Cls: EnemyClass) {
     const room = this.currentDungeon.rooms.find(r => r.id === roomId);
     if (!room) return;
     const pos = this.randomPosInRoom(room.tileCol + 1, room.tileRow + 1, room.tileCol + 20, room.tileRow + 15);
     if (!pos) return;
     const id = `enemy_${this.enemyCounter++}`;
-    const pool = this.enemyPool();
-    const EnemyClass = pool[Math.floor(Math.random() * pool.length)];
-    const enemy = new EnemyClass(this.physics, pos.x, pos.y);
+    const enemy = new Cls(this.physics, pos.x, pos.y);
     this.enemies.set(id, enemy);
     this.state.enemies.set(id, enemy.state);
     this.floorManager.assignEnemy(id, pos.x, pos.y);

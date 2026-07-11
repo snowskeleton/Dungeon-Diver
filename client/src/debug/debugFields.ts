@@ -17,11 +17,15 @@ const ROOM_TYPE_CHOICES = [
   ...ROOM_TYPES.map((t) => ({ value: t, label: t[0].toUpperCase() + t.slice(1) })),
 ];
 
-// The rabble picker lists only non-boss enemies — bosses only ever spawn in the
-// boss room, so offering them here would be misleading.
+// Every creature is selectable, bosses included — a selected boss spawns as its
+// real Boss class (in whatever rooms get populated), which is how you test a
+// specific boss without relying on the floor-rotated boss room. Bosses are
+// labeled so they're easy to spot; they stay out of the *random* spawn pool.
 const ENEMY_CHOICES = (Object.keys(CLIENT_ENEMY_REGISTRY) as EnemyType[])
-  .filter((id) => !CLIENT_ENEMY_REGISTRY[id].isBoss)
-  .map((id) => ({ value: id, label: CLIENT_ENEMY_REGISTRY[id].name }));
+  .map((id) => {
+    const def = CLIENT_ENEMY_REGISTRY[id];
+    return { value: id, label: def.isBoss ? `${def.name} (boss)` : def.name };
+  });
 
 export const DEBUG_FIELDS: FieldSpec<DebugConfig>[] = [
   {

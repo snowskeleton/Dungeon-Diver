@@ -12,8 +12,19 @@ export interface BossAbility {
   windUpMs: number;
   recoverMs: number;
   range: number;
-  /** Fired once, on the strike frame, aimed at the target's position then. */
-  execute(boss: Boss, target: TargetInfo, spawn: SpawnProjectile): void;
+  /** How long before the strike the aim freezes. The boss tracks the player for
+   *  the first (windUpMs − aimLockMs), then locks the aim point — the final
+   *  aimLockMs is the player's window to step out of the line. 0 aims at the
+   *  player's exact position at the moment of firing (no dodge window). */
+  aimLockMs: number;
+  /** Fired once, on the strike frame, at the locked aim point. */
+  execute(boss: Boss, aim: AimPoint, spawn: SpawnProjectile): void;
+}
+
+/** A world-space point a boss has locked its aim onto. */
+export interface AimPoint {
+  x: number;
+  y: number;
 }
 
 export interface TargetInfo {
@@ -37,6 +48,12 @@ export abstract class Boss extends Enemy {
   private activeAbility?: BossAbility;
   private cooldowns: Record<string, number> = {};
   private cachedAbilities?: BossAbility[];
+  // The current wind-up's aim point (world coords) and whether it's frozen yet.
+  // The boss tracks the player into these until the ability's aimLockMs, then
+  // stops updating them so a moving player can leave the line of fire.
+  private aimX = 0;
+  private aimY = 0;
+  private aimLocked = false;
   /** Distance the boss tries to keep from its target while repositioning. */
   protected preferredRange = 180;
 
@@ -93,14 +110,23 @@ export abstract class Boss extends Enemy {
 
     switch (this.mode) {
       case "windup":
-        // Committed to the tell — stand still until the strike frame.
+        // Committed to the tell — stand still. Track the player into the aim
+        // point until aimLockMs before the strike, then hold it so a moving
+        // player can slip out of the line before it fires.
         this.phaseTimer -= dtMs;
-        if (this.phaseTimer <= 0 && this.activeAbility) {
-          this.activeAbility.execute(this, target, spawnProjectile ?? (() => {}));
-          this.cooldowns[this.activeAbility.id] = this.activeAbility.cooldownMs;
-          this.mode = "recover";
-          this.phaseTimer = this.activeAbility.recoverMs;
-          this.clearTelegraph();
+        if (this.activeAbility) {
+          if (!this.aimLocked) {
+            this.aimX = this.state.x + target.dx;
+            this.aimY = this.state.y + target.dy;
+            if (this.phaseTimer <= this.activeAbility.aimLockMs) this.aimLocked = true;
+          }
+          if (this.phaseTimer <= 0) {
+            this.activeAbility.execute(this, { x: this.aimX, y: this.aimY }, spawnProjectile ?? (() => {}));
+            this.cooldowns[this.activeAbility.id] = this.activeAbility.cooldownMs;
+            this.mode = "recover";
+            this.phaseTimer = this.activeAbility.recoverMs;
+            this.clearTelegraph();
+          }
         }
         return;
 
@@ -122,6 +148,9 @@ export abstract class Boss extends Enemy {
           this.activeAbility = ready;
           this.mode = "windup";
           this.phaseTimer = ready.windUpMs;
+          this.aimLocked = false;
+          this.aimX = this.state.x + target.dx; // start tracking from current pos
+          this.aimY = this.state.y + target.dy;
           this.state.telegraph = true;
           this.state.abilityId = ready.id;
           this.transition("attack");
@@ -151,18 +180,22 @@ export abstract class Boss extends Enemy {
 
 // ── Ability builder (shared by boss subclasses) ───────────────────────────────
 // A volley fires `count` projectiles fanned across `spreadDeg`, centred on the
-// aim direction. count=1 is a single aimed shot; odd counts always put one shot
-// dead-on (so standing still is punished). This one primitive expresses every
-// projectile move so far (breath cones, orb sprays, single lances) — richer
-// signatures (dash, AOE, summon) will be added as their own ability builders.
+// locked aim point. count=1 is a single aimed shot; odd counts always put one
+// shot dead-on (so standing still is punished). `aimLockMs` (default 0) sets how
+// early the aim freezes during the wind-up — raise it to give a moving player
+// room to dodge out of the line (see BossAbility.aimLockMs / docs/bosses.md).
+// This one primitive expresses every projectile move so far (breath cones, orb
+// sprays, single lances); richer signatures (dash, AOE, summon) get their own.
 export function volley(o: {
   id: string; ammoId: string; count: number; spreadDeg: number;
   windUpMs: number; recoverMs: number; cooldownMs: number; range: number;
+  aimLockMs?: number;
 }): BossAbility {
   return {
     id: o.id, cooldownMs: o.cooldownMs, windUpMs: o.windUpMs, recoverMs: o.recoverMs, range: o.range,
-    execute: (boss, target, spawn) => {
-      const base = Math.atan2(target.dy, target.dx);
+    aimLockMs: o.aimLockMs ?? 0,
+    execute: (boss, aim, spawn) => {
+      const base = Math.atan2(aim.y - boss.state.y, aim.x - boss.state.x);
       const spread = (o.spreadDeg * Math.PI) / 180;
       for (let i = 0; i < o.count; i++) {
         const off = o.count === 1 ? 0 : (i / (o.count - 1) - 0.5) * spread;

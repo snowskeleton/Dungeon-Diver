@@ -14,6 +14,18 @@ export class TurtleDragon extends Boss {
 
   protected preferredRange = 130;
   protected abilities(): BossAbility[] {
-    return [volley({ id: "boulder-belch", ammoId: "fireball", count: 3, spreadDeg: 30, windUpMs: 900, recoverMs: 600, cooldownMs: 2800, range: 340 })];
+    // aimLockMs: tracks you for the first ~500ms, then locks the aim for the
+    // final 400ms — keep moving and its spread lands where you *were*.
+    return [volley({
+      id: "boulder-belch",
+      ammoId: "fireball",
+      count: 3,
+      spreadDeg: 30,
+       windUpMs: 900,
+       recoverMs: 600,
+       cooldownMs: 2800,
+       range: 340,
+       aimLockMs: 200
+    })];
   }
 }

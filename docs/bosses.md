@@ -32,6 +32,31 @@ lands should be a hit the player *could have read and dodged*. That means:
 - **Telegraph length is the difficulty knob.** We tune the same attack from "generous" on
   an early floor to "tight" on a deep one without redesigning it.
 
+### Aim tracking, then lock (how aimed attacks stay dodgeable)
+
+An aimed attack must **not** fire at your exact position on the strike frame — if it does,
+moving during the wind-up buys you nothing and the attack is undodgeable. Instead the boss
+**tracks you for most of the wind-up, then locks an aim point some milliseconds before
+firing**, so the tail of the tell is your window to step off the line.
+
+This is `aimLockMs` on `BossAbility` (and the `volley()` builder), in
+`server/src/entities/Boss.ts`:
+
+- For the first `windUpMs − aimLockMs`, the boss follows your position into its aim point.
+- For the final `aimLockMs`, the aim is frozen — the shot lands where you *were*.
+- `aimLockMs: 0` reproduces the old "snaps to you at the instant of firing" feel (no dodge
+  window) — avoid it for slow, telegraphed attacks; it's only appropriate for a fast,
+  short-tell shot that's *meant* to punish standing still (e.g. the Grey Wyvern's quick
+  strike).
+
+**Rule of thumb:** the slower and more telegraphed the attack, the larger the `aimLockMs`.
+The Turtle Dragon's boulder belch uses `aimLockMs: 400` on a 900 ms wind-up. When adding an
+aimed attack to any boss (or a future ranged enemy), set a non-zero `aimLockMs` unless you
+specifically want an unavoidable snap-shot.
+
+*(Future polish: surface the locked aim point as a ground marker so the freeze is visible,
+not just felt.)*
+
 ### Telegraph vocabulary (shared visual language)
 
 | Telegraph | Meaning | Example FX |
