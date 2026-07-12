@@ -12,6 +12,7 @@ export class ProjectileEntity implements DebugDrawable {
   private targetY: number;
   private readonly spriteAngle: number;
   private readonly spinDegPerSec: number;
+  private readonly fixedAngle: boolean;
   private readonly ammo?: AmmoConfig;
   private travelAngle: number;
 
@@ -27,6 +28,7 @@ export class ProjectileEntity implements DebugDrawable {
     this.ammo = ammo;
     this.spriteAngle = ammo?.spriteAngle ?? -90;
     this.spinDegPerSec = ammo?.spinDegPerSec ?? 0;
+    this.fixedAngle = ammo?.fixedAngle ?? false;
     this.targetX = x;
     this.targetY = y;
     this.travelAngle = angleRad;
@@ -42,6 +44,12 @@ export class ProjectileEntity implements DebugDrawable {
     // Spinning projectiles (thrown weapons) aren't aimed — their update() spins
     // the sprite freely, so don't fight it here.
     if (this.spinDegPerSec > 0) return;
+    // Ground hazards (tremor shards) rise in place and don't aim along travel —
+    // keep the art at its drawn orientation regardless of which way it radiates.
+    if (this.fixedAngle) {
+      this.sprite.setAngle(0);
+      return;
+    }
     const deg = Phaser.Math.RadToDeg(angleRad);
     // Sprite art points "up"; rotating by (travel − spriteAngle) aims it along travel.
     this.sprite.setAngle(deg - this.spriteAngle);

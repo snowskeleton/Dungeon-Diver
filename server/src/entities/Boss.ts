@@ -485,6 +485,165 @@ export function radial(o: {
   };
 }
 
+// A tremor line: instead of firing moving projectiles, the boss cracks the
+// ground and stationary shards ERUPT outward along each spoke — a growing line
+// that rises ring-by-ring to a fixed distance, holds for a beat, then all vanish
+// together:
+//
+//     >              (t0: first ring)
+//     >>>            (rings racing out…)
+//     >>>>>>         (fully extended, then holds)
+//     ·              (all clear at once)
+//
+// Fixed world directions like radial() (4 cardinals leave diagonals safe, 8
+// forces you through the ring), but the shards stand where they rose rather than
+// flying. A channel drives the staggered eruption; each shard's lifetime is set
+// so the whole cast clears on one tick regardless of when it rose. The shard ammo
+// is stationary (speed 0) and persistent (high pierce) — see ammo/rock-shard.
+export function tremorLine(o: {
+  id: string;
+  ammoId: string;
+  /** Number of spokes radiating from the boss (4 cardinals, 8 with diagonals). */
+  count: number;
+  offsetDeg?: number;
+  /** Shards per spoke — the line's length in segments. */
+  rings: number;
+  /** Distance between successive shards; ring i sits at (i + 1) × this from the boss. */
+  ringSpacing: number;
+  /** Time to extend all rings (the line races out over this window). */
+  growthMs: number;
+  /** How long the fully-extended line holds before every shard clears. */
+  holdMs: number;
+  /** Damage per hit from the consolidated line hitbox. */
+  damage: number;
+  /** Per-player re-hit cooldown (ms) while standing in the line — the whole
+   *  ability is one hitbox, so this gates repeat damage, not per-shard overlap. */
+  hitCooldownMs: number;
+  /** Half-width (px) of the damaging line, matched to the shard visuals. Default 12. */
+  hazardHalfWidth?: number;
+  windUpMs: number;
+  recoverMs: number;
+  cooldownMs: number;
+  range: number;
+  /** Half-width (px) of a spoke's danger lane for the canHit gate. Default 28. */
+  laneHalfWidth?: number;
+}): BossAbility {
+  const offset = ((o.offsetDeg ?? 0) * Math.PI) / 180;
+  const stepAng = (Math.PI * 2) / o.count;
+  const laneHalf = o.laneHalfWidth ?? 28;
+  return {
+    id: o.id,
+    cooldownMs: o.cooldownMs,
+    windUpMs: o.windUpMs,
+    recoverMs: o.recoverMs,
+    range: o.range,
+    aimLockMs: 0,
+    // Same gate as radial(): only erupt when the player stands in some spoke's
+    // lane, so a player in a safe gap (a diagonal, for 4 cardinals) is left alone.
+    canHit: (_boss, target) => {
+      const ang = Math.atan2(target.dy, target.dx);
+      for (let i = 0; i < o.count; i++) {
+        const delta = ang - (offset + i * stepAng);
+        const perp = target.dist * Math.sin(Math.atan2(Math.sin(delta), Math.cos(delta)));
+        if (Math.abs(perp) <= laneHalf) return true;
+      }
+      return false;
+    },
+    execute: () => {}, // the channel erupts the shards over time; no instant strike
+    channel: tremorLineChannel(o, offset, stepAng),
+  };
+}
+
+// The channel behind tremorLine: no movement — the boss holds while shards erupt
+// ring-by-ring along every spoke, then holds the finished line, then lets it
+// expire. Knockback-immune so a hit can't cancel the eruption mid-line (the
+// recover phase is the punish window).
+//
+// The shards are INERT visual markers; the whole attack is ONE hitbox owned here.
+// Each tick we damage any player standing within hazardHalf of a spoke and inside
+// the length that has erupted so far, gated by a per-player cooldown so overlapping
+// spokes (which all cross at the boss centre) can't stack multiple hits at once.
+function tremorLineChannel(
+  o: {
+    ammoId: string;
+    count: number;
+    rings: number;
+    ringSpacing: number;
+    growthMs: number;
+    holdMs: number;
+    damage: number;
+    hitCooldownMs: number;
+    hazardHalfWidth?: number;
+  },
+  offset: number,
+  stepAng: number,
+): BossChannel {
+  const totalMs = o.growthMs + o.holdMs;
+  const ringStepMs = o.growthMs / o.rings; // gap between successive rings erupting
+  const hazardHalf = o.hazardHalfWidth ?? 12;
+  // Precompute each spoke's unit direction once.
+  const dirs = Array.from({ length: o.count }, (_, s) => ({
+    x: Math.cos(offset + s * stepAng),
+    y: Math.sin(offset + s * stepAng),
+  }));
+  let elapsed = 0;
+  let ringsSpawned = 0;
+  const hitAt = new Map<string, number>(); // sessionId → ms until it can be hit again
+  return {
+    durationMs: totalMs,
+    knockbackImmune: true,
+    start() {
+      elapsed = 0;
+      ringsSpawned = 0;
+      hitAt.clear();
+    },
+    update(boss, dtMs, ctx) {
+      elapsed += dtMs;
+      // Erupt ring i (0-based) once elapsed reaches its scheduled time. Each
+      // shard's lifetime is (totalMs − scheduledTime) so it dies at totalMs — the
+      // whole line clears together no matter when each ring rose. The shards are
+      // inert (no hitbox); they only render the growing line.
+      while (ringsSpawned < o.rings && elapsed >= ringsSpawned * ringStepMs) {
+        const i = ringsSpawned;
+        const dist = (i + 1) * o.ringSpacing;
+        const life = totalMs - i * ringStepMs;
+        for (const d of dirs) {
+          const sx = boss.state.x + d.x * dist;
+          const sy = boss.state.y + d.y * dist;
+          ctx.spawn(o.ammoId, sx, sy, Math.atan2(d.y, d.x), { lifetimeMs: life, inert: true });
+        }
+        ringsSpawned++;
+      }
+
+      // Single consolidated hitbox: the danger reaches out to the furthest ring
+      // that has erupted so far. Damage each player once per hitCooldownMs.
+      const reach = ringsSpawned * o.ringSpacing;
+      for (const [id, ms] of hitAt) {
+        const next = ms - dtMs;
+        if (next <= 0) hitAt.delete(id); else hitAt.set(id, next);
+      }
+      ctx.players.forEach((p, id) => {
+        if ((hitAt.get(id) ?? 0) > 0) return;
+        const relX = p.x - boss.state.x;
+        const relY = p.y - boss.state.y;
+        for (const d of dirs) {
+          const along = relX * d.x + relY * d.y; // distance out along the spoke
+          if (along < 0 || along > reach) continue;
+          const perp = relX * -d.y + relY * d.x; // perpendicular offset from the spoke
+          if (Math.abs(perp) <= hazardHalf) {
+            ctx.dealDamageToPlayer(id, o.damage);
+            hitAt.set(id, o.hitCooldownMs);
+            break; // one hit for the whole ability, not one per overlapping spoke
+          }
+        }
+      });
+    },
+    end() {
+      // No cleanup: the shards expire on their own timed lifetimes; recover follows.
+    },
+  };
+}
+
 // A dash attack: after the wind-up the boss rockets toward the telegraphed point
 // as a channelled active phase, its body a contact hazard. Reusable for every
 // charging boss (spin, gallop, roll, thunder-dash) — tune the numbers per boss.

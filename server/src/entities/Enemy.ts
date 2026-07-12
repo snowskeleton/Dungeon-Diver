@@ -6,9 +6,25 @@ import { PhysicsWorld } from "../physics/PhysicsWorld";
 
 const PATROL_RANGE = 64;
 
+/** Per-spawn overrides for a projectile a boss emits. `lifetimeMs` lets a timed
+ *  ground hazard (tremor shards) clear a whole staggered batch on one tick.
+ *  `inert` makes the projectile a pure visual/telegraph marker — it renders and
+ *  expires but never hit-tests, because the ability's channel owns a single
+ *  consolidated hitbox instead of one per marker (the Turtle Dragon's tremor). */
+export interface SpawnOpts {
+  lifetimeMs?: number;
+  inert?: boolean;
+}
+
 /** Lets an enemy emit a projectile during its tick (bosses' ranged attacks).
  *  The owner id is the enemy's own map key; `affects` is stamped by GameRoom. */
-export type SpawnProjectile = (ammoId: string, x: number, y: number, angleRad: number) => void;
+export type SpawnProjectile = (
+  ammoId: string,
+  x: number,
+  y: number,
+  angleRad: number,
+  opts?: SpawnOpts,
+) => void;
 
 /** A concrete enemy class: `new`-able and carrying its `EnemyType` id statically,
  *  so the spawn lists in entities/enemies can be plain arrays of classes that the

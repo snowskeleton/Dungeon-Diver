@@ -58,6 +58,14 @@ export interface AmmoConfig {
    */
   spinDegPerSec?: number;
   /**
+   * If true, the sprite ignores its travel direction and always renders at its
+   * drawn orientation — for ground hazards that rise in place and radiate outward
+   * (the Turtle Dragon's tremor shards jut up from the ground; they don't fly
+   * point-first like an arrow). Overrides spriteAngle; mutually exclusive with
+   * spinDegPerSec. Defaults to false.
+   */
+  fixedAngle?: boolean;
+  /**
    * If set, the projectile reverses its velocity once it has been airborne this
    * many ms — a boomerang flies straight out, then straight back. Its hit list
    * is cleared on reversal so it can strike again on the return leg.
@@ -82,6 +90,7 @@ export class Ammo implements AmmoConfig {
   readonly hitRadiusSide: number;
   readonly spriteAngle: number;
   readonly spinDegPerSec: number;
+  readonly fixedAngle: boolean;
   readonly returnsAtMs?: number;
   readonly ignoresWalls: boolean;
   readonly category?: AmmoCategory;
@@ -99,6 +108,7 @@ export class Ammo implements AmmoConfig {
     this.hitRadiusSide = o.hitRadiusSide;
     this.spriteAngle = o.spriteAngle;
     this.spinDegPerSec = o.spinDegPerSec ?? 0;
+    this.fixedAngle = o.fixedAngle ?? false;
     this.returnsAtMs = o.returnsAtMs;
     this.ignoresWalls = o.ignoresWalls ?? false;
     this.category = o.category;

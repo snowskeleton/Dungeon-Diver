@@ -24,6 +24,7 @@ export class Projectile {
   private vx: number;
   private vy: number;
   private ageMs = 0;
+  private readonly lifetimeMs: number;
   private pierceLeft: number;
   private hitTargets = new Set<string>();
   private reversed = false;
@@ -36,11 +37,17 @@ export class Projectile {
     angleRad: number,
     ownerSessionId: string,
     affects: number,
+    // Per-spawn lifetime override (ms). A boss planting a timed hazard (the Turtle
+    // Dragon's tremor shards) sets this so a whole staggered batch expires on the
+    // same tick regardless of when each was spawned — a synchronized clear. Falls
+    // back to the ammo's own lifetimeMs.
+    lifetimeMsOverride?: number,
   ) {
     this.physics = physics;
     this.cfg = ammo;
     this.ownerSessionId = ownerSessionId;
     this.affects = affects;
+    this.lifetimeMs = lifetimeMsOverride ?? ammo.lifetimeMs;
     this.pierceLeft = ammo.pierce;
     this.prevX = x;
     this.prevY = y;
@@ -65,7 +72,7 @@ export class Projectile {
     this.state.y += this.vy * dt;
 
     this.ageMs += dtMs;
-    if (this.ageMs >= this.cfg.lifetimeMs) {
+    if (this.ageMs >= this.lifetimeMs) {
       this.dead = true;
       return;
     }

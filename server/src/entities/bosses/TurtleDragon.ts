@@ -1,5 +1,5 @@
 import { EnemyType } from "shared";
-import { Boss, BossAbility, volley, radial, dashAttack, whirl } from "../Boss";
+import { Boss, BossAbility, volley, tremorLine, dashAttack, whirl } from "../Boss";
 import { MovementBehavior, holdRange } from "./movement";
 
 // 🐢 Turtle Dragon — the Bulwark. A slow, armored area-denial tank: it holds
@@ -70,15 +70,24 @@ export class TurtleDragon extends Boss {
       damage: 14,
     });
 
-    // Ground-slam cracks in fixed directions: 4 cardinals (diagonals safe) at
-    // base, 8 cardinals+diagonals enraged (you must move through the ring).
-    const tremor = radial({
+    // Ground-slam eruption: stationary shards rise ring-by-ring outward along
+    // fixed spokes — 4 cardinals (diagonals safe) at base, 8 cardinals+diagonals
+    // enraged (you must move through the ring). The line races out, holds, then
+    // clears together. Enraged tightens the recover (less punish time).
+    const tremor = tremorLine({
       id: "tremor-slam",
       ammoId: "rock-shard",
       count: enraged ? 8 : 4,
       offsetDeg: 0,
+      rings: 13,
+      ringSpacing: 16,
+      growthMs: 420,
+      holdMs: 500,
+      damage: 12,
+      hitCooldownMs: 500,
+      hazardHalfWidth: 12,
       windUpMs: 700,
-      recoverMs: 550,
+      recoverMs: enraged ? 450 : 550,
       cooldownMs: 5000,
       range: 210,
     });
@@ -87,7 +96,7 @@ export class TurtleDragon extends Boss {
     // window; the 30° fan means standing still eats the centre shot.
     const belch = volley({
       id: "boulder-belch",
-      ammoId: "fireball",
+      ammoId: "boulder",
       count: 3,
       spreadDeg: 30,
       windUpMs: 900,

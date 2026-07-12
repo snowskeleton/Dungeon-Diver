@@ -11,7 +11,7 @@ import {
 import { GameState } from "../schema/GameState";
 import { ShopState, ShopItemState } from "../schema/ShopState";
 import { Player } from "../entities/Player";
-import { Enemy, EnemyClass } from "../entities/Enemy";
+import { Enemy, EnemyClass, SpawnOpts } from "../entities/Enemy";
 import { REGULAR_ENEMIES } from "../entities/enemies";
 import { BOSSES } from "../entities/bosses";
 import { Projectile } from "../entities/Projectile";
@@ -372,11 +372,15 @@ export class GameRoom extends Room<GameState> {
   // shots) or an enemy id (boss shots), used for self-hit exclusion.
   private spawnProjectile(
     ammoId: string, x: number, y: number, angle: number, ownerId: string, affects: number,
+    opts?: SpawnOpts,
   ): void {
     const ammo = AMMO_REGISTRY[ammoId];
     if (!ammo) return;
     const id = `proj_${this.projectileCounter++}`;
-    const proj = new Projectile(this.physics, ammo, x, y, angle, ownerId, affects);
+    // An inert marker carries no team mask, so the hit loop's canAffect checks
+    // skip it entirely — it only renders and expires (its ability owns the damage).
+    const projAffects = opts?.inert ? 0 : affects;
+    const proj = new Projectile(this.physics, ammo, x, y, angle, ownerId, projAffects, opts?.lifetimeMs);
     this.projectiles.set(id, proj);
     this.state.projectiles.set(id, proj.state);
   }
@@ -410,7 +414,7 @@ export class GameRoom extends Room<GameState> {
         (targetSessionId, damage) => { this.players.get(targetSessionId)?.takeDamage(damage); },
         // Bosses fire projectiles through this hook; stamped with the enemy team
         // mask so the shot damages players, not other enemies (docs/layers.md).
-        (ammoId, x, y, angle) => this.spawnProjectile(ammoId, x, y, angle, id, ENEMY_PROJECTILE_AFFECTS),
+        (ammoId, x, y, angle, opts) => this.spawnProjectile(ammoId, x, y, angle, id, ENEMY_PROJECTILE_AFFECTS, opts),
       );
     });
 
