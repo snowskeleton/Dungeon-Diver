@@ -1,0 +1,3 @@
+# Never commit the API key or generated scratch output.
+.env
+out/

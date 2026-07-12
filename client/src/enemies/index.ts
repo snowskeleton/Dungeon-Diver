@@ -1,6 +1,7 @@
 import { EnemyType, TILE_SIZE } from "shared";
 import { makeSheetEnemyDef, frameRow, SheetSpec } from "./sheetEnemy";
 import { makeDirectionalEnemyDef } from "./directionalEnemy";
+import { defineClips } from "../entities/SpriteClips";
 import { ClientEnemyDef } from "./types";
 
 export * from "./types";
@@ -34,6 +35,28 @@ const boss = (id: string, name: string, spec: BossSpec): ClientEnemyDef => {
   const { displaySize = BOSS_SIZE, ...sheet } = spec;
   return { ...makeSheetEnemyDef(id, { ...sheet, name, displayW: displaySize, displayH: displaySize }), isBoss: true };
 };
+
+// The Turtle Dragon renders its walk row normally but swaps to the spin row
+// (frames 10-13) while it channels its Shell Spin dash — the client learns this
+// from the boss's abilityId ("shell-spin") passed to resolve as `action`.
+function turtleDragonDef(): ClientEnemyDef {
+  const base = boss("turtle-dragon", "Turtle Dragon", { frameWidth: 32, cols: 16, moveFrames: frameRow(16, 0, 4, 6) });
+  const spinKey = "turtle-dragon-spin";
+  return {
+    ...base,
+    defineAnimations: (scene) => {
+      base.defineAnimations(scene);
+      defineClips(scene, base.textureKey, {
+        [spinKey]: { frames: frameRow(16, 0, 10, 4), frameRate: 16, repeat: -1 },
+      });
+    },
+    // Both the dash and the stationary whirl render as the spin row.
+    resolve: (isDying, facing, action) =>
+      !isDying && (action === "shell-spin" || action === "shell-whirl")
+        ? { key: spinKey, flipX: false }
+        : base.resolve(isDying, facing),
+  };
+}
 
 export const CLIENT_ENEMY_REGISTRY: Record<EnemyType, ClientEnemyDef> = {
   // ── Horizontal, single-row strips ────────────────────────────────────────
@@ -94,10 +117,9 @@ export const CLIENT_ENEMY_REGISTRY: Record<EnemyType, ClientEnemyDef> = {
   // animate the locomotion clip; the attack/special rows are unused until bosses
   // get real movesets.
 
-  // 16×1 @32: cols 0-3 idle, 4-9 walk, 10-13 spin, 14-15 damage.
-  "turtle-dragon": boss("turtle-dragon", "Turtle Dragon", {
-    frameWidth: 32, cols: 16, moveFrames: frameRow(16, 0, 4, 6),
-  }),
+  // 16×1 @32: cols 0-3 idle, 4-9 walk, 10-13 spin, 14-15 damage. The spin row
+  // plays while it channels its Shell Spin dash (abilityId "shell-spin").
+  "turtle-dragon": turtleDragonDef(),
 
   // 4×2 @32: row 0 flap, row 1 breath.
   "wyvern":       boss("wyvern",       "Wyvern",       { frameWidth: 32, cols: 4, frameRate: 10 }),

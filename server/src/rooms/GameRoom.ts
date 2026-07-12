@@ -244,6 +244,14 @@ export class GameRoom extends Room<GameState> {
     const BossClass = BOSSES[(this.state.floor - 1) % BOSSES.length];
     const id = `enemy_${this.enemyCounter++}`;
     const boss = new BossClass(this.physics, pos.x, pos.y);
+    // Confine the boss to its room's interior — it moves by setPosition and would
+    // otherwise dash straight through doorways/barriers (see Boss.setArena).
+    boss.setArena(
+      (room.tileCol + 1) * TILE_SIZE,
+      (room.tileRow + 1) * TILE_SIZE,
+      (room.tileCol + 20) * TILE_SIZE,
+      (room.tileRow + 15) * TILE_SIZE,
+    );
     this.enemies.set(id, boss);
     this.state.enemies.set(id, boss.state);
     this.floorManager.assignEnemy(id, pos.x, pos.y);

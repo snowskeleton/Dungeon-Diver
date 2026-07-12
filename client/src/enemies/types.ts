@@ -22,5 +22,8 @@ export interface ClientEnemyDef {
   displayH: number;
   preload: (scene: Phaser.Scene) => void;
   defineAnimations: (scene: Phaser.Scene) => void;
-  resolve: (isDying: boolean, facing: Facing) => EnemyClip;
+  /** Which clip to play. `action` (bosses only) names an ability the boss is
+   *  actively channelling (e.g. "shell-spin") so it can swap to a special clip;
+   *  most enemies ignore it and pick purely from isDying/facing. */
+  resolve: (isDying: boolean, facing: Facing, action?: string) => EnemyClip;
 }

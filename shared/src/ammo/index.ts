@@ -19,13 +19,14 @@ import throwingStar   from "./throwing-star";
 // ─── Enemy projectiles (one-offs) ─────────────────────────────────────────────
 import fireball       from "./fireball";
 import magicOrb       from "./magic-orb";
+import rockShard      from "./rock-shard";
 
 // ─── Registry ─────────────────────────────────────────────────────────────────
 
 const ALL_AMMO: Ammo[] = [
   arrow, steelArrow, piercingArrow, prismaticArrow, woodenArrow, fireArrow,
   throwingKnife, throwingStar, boomerang, steelBoomerang,
-  fireball, magicOrb,
+  fireball, magicOrb, rockShard,
 ];
 
 export const AMMO_REGISTRY: Record<string, Ammo> = Object.fromEntries(
@@ -36,7 +37,7 @@ export type AmmoId =
   | "arrow" | "steel-arrow" | "piercing-arrow"
   | "prismatic-arrow" | "wooden-arrow" | "fire-arrow"
   | "throwing-knife" | "throwing-star" | "boomerang" | "steel-boomerang"
-  | "fireball" | "magic-orb";
+  | "fireball" | "magic-orb" | "rock-shard";
 
 export { Ammo } from "./base";
 export { Arrow } from "./arrows/base";

@@ -182,6 +182,15 @@ export class PhysicsWorld {
     Matter.Composite.remove(this.engine.world, body);
   }
 
+  // Makes a body static (or dynamic again). A static body is NEVER displaced by
+  // the solver — a player who walks into it is shoved out instead of pushing it.
+  // High mass is not enough: matter's Verlet integrator drifts even a 1e12-mass
+  // body under sustained contact. Bosses use this so they can't be nudged; they
+  // move themselves by setEntityPosition (which still sweeps players aside).
+  setBodyStatic(body: Matter.Body, isStatic: boolean): void {
+    Matter.Body.setStatic(body, isStatic);
+  }
+
   setVelocityPxPerSec(body: Matter.Body, vx: number, vy: number): void {
     Matter.Body.setVelocity(body, {
       x: pxPerSecToVelocity(vx),

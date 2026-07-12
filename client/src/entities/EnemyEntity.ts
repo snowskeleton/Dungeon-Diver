@@ -13,6 +13,9 @@ export class EnemyEntity extends Entity implements DebugDrawable {
   private dying = false;
   private telegraphing = false;
   private telegraphT = 0;
+  // Bosses only: which ability is actively channelling (drives the spin clip).
+  private channeling = false;
+  private abilityId = "";
   private currentEnemyAnim?: string;
   private readonly enemyType: string;
   private readonly aggroRadius: number;
@@ -41,7 +44,7 @@ export class EnemyEntity extends Entity implements DebugDrawable {
     this.sprite.setSize(20, 20);
   }
 
-  setTarget(x: number, y: number, hp: number, facing: Facing, aiState: AiState, isDying: boolean, telegraph = false) {
+  setTarget(x: number, y: number, hp: number, facing: Facing, aiState: AiState, isDying: boolean, telegraph = false, channeling = false, abilityId = "") {
     if (!this.dying) {
       this.targetX = x;
       this.targetY = y;
@@ -50,6 +53,8 @@ export class EnemyEntity extends Entity implements DebugDrawable {
     this.facing = facing;
     this.aiState = aiState;
     this.telegraphing = telegraph;
+    this.channeling = channeling;
+    this.abilityId = abilityId;
 
     if (isDying && !this.dying) {
       this.dying = true;
@@ -116,8 +121,10 @@ export class EnemyEntity extends Entity implements DebugDrawable {
     if (!this.visual) return;
 
     // Directional art has a row per facing and must never be mirrored; the
-    // def decides, since only it knows which layout the sheet uses.
-    const { key, flipX } = this.visual.resolve(this.dying, this.facing);
+    // def decides, since only it knows which layout the sheet uses. A boss
+    // mid-channel passes its abilityId so the def can swap to an action clip.
+    const action = this.channeling ? this.abilityId : undefined;
+    const { key, flipX } = this.visual.resolve(this.dying, this.facing, action);
     this.charSprite!.setFlipX(flipX);
 
     if (this.currentEnemyAnim === key) return;

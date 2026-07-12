@@ -11,6 +11,10 @@ Concretely, and non-negotiably:
 - **Don't optimize for a hypothetical non-coding "designer."** We are the designers and we edit code directly. Put values where the compiler checks them and where they're cohesive (on the class), not in a stringly-keyed registry justified by imaginary tooling.
 - **Prefer explicit, type-checked code over dynamic dispatch on strings.** A `switch` the compiler can exhaustively check, or direct class references in an array, beat a keyed map every time.
 
+### Code style
+
+- **Don't cram more than two comma-separated things on one line.** A list/object/params with three or more items goes one item per line. Two or fewer may share a line — e.g. `holdRange(this.preferredRange, { speedScale: 0.5, slack: 60 })` is fine, but a config object with `windUpMs, recoverMs, cooldownMs, range` on one line is not. Applies to object literals, array literals, and parameter lists.
+
 ## Deep-dive docs — read the matching one before touching that system
 
 | File | Read when |
@@ -23,6 +27,7 @@ Concretely, and non-negotiably:
 | [docs/boss-implementation-plan.md](docs/boss-implementation-plan.md) | Sequencing the boss/layers build — what to implement in what order |
 | [docs/layers.md](docs/layers.md) | Touching collision, projectile targeting, friendly fire, or hit resolution |
 | [docs/assets.md](docs/assets.md) | Adding or replacing art |
+| [docs/retrodiffusion.md](docs/retrodiffusion.md) | Generating new art with the RetroDiffusion AI (icons, ammo, props, tiles) |
 | [docs/lessons.md](docs/lessons.md) | Building a debug tool, a tunables panel, or a persistent weapon sprite |
 
 `roadmap.html` at the project root is the living design document (phases, asset checklist, open questions).

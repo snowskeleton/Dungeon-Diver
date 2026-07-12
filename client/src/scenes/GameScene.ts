@@ -423,7 +423,7 @@ export class GameScene extends Phaser.Scene {
         e.setTarget(
           enemyState.x, enemyState.y, enemyState.health,
           enemyState.facing, enemyState.aiState, enemyState.isDying,
-          enemyState.telegraph,
+          enemyState.telegraph, enemyState.channeling, enemyState.abilityId,
         ),
       );
     });

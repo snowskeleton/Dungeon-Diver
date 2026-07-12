@@ -17,7 +17,12 @@ export class EnemyState extends EntityState {
   @type("number") attackRadius: number = 0;
   // Bosses only: true during an attack's wind-up so the client can draw a
   // telegraph (the readable "tell" before a strike). `abilityId` names which
-  // move is charging so different telegraphs can render differently.
+  // move is charging (during wind-up) or executing (during a channel) so the
+  // client can render a distinct telegraph and pick the matching action clip.
   @type("boolean") telegraph: boolean = false;
   @type("string") abilityId: string = "";
+  // Bosses only: true while a channelled ability (e.g. the spin dash) is in its
+  // extended active phase — the boss is mid-strike, not winding up. Drives the
+  // client's action animation (spin) separately from the wind-up tint.
+  @type("boolean") channeling: boolean = false;
 }
