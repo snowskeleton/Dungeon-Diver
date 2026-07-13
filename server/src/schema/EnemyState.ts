@@ -7,7 +7,6 @@ export class EnemyState extends EntityState {
   @type("string") targetId: string = "";
   @type("string") facing: string = "right";
   @type("boolean") isDying: boolean = false;
-  @type("boolean") stunned: boolean = false;
   @type("string") enemyType: string = "";
   // Self-describing stats so the client needs no copy of the enemy's numbers:
   // maxHealth scales the HP bar; the radii drive the debug hitbox overlay. Set

@@ -6,8 +6,8 @@ currently supports (we'll grow the engine to fit). Numbers (telegraph lengths, d
 cooldowns) are starting intuitions to tune, not commitments.
 
 This doc also seeds the in-game **bestiary**: each boss's role blurb + ability list is the
-text we'll move into `lore` / `abilities` fields on its `EnemyConfig`
-(`shared/src/enemies/<Name>.ts`), read back by the book UI.
+text in its class's `static lore` / `static abilities` fields (see Bestiary integration below),
+read back by the book UI.
 
 ---
 
@@ -39,8 +39,8 @@ moving during the wind-up buys you nothing and the attack is undodgeable. Instea
 **tracks you for most of the wind-up, then locks an aim point some milliseconds before
 firing**, so the tail of the tell is your window to step off the line.
 
-This is `aimLockMs` on `BossAbility` (and the `volley()` builder), in
-`server/src/entities/Boss.ts`:
+This is `aimLockMs` on `Spell` (and the `volley()` builder), in
+`server/src/spells/` (the `SpellCaster` freezes the aim `aimLockMs` before the strike):
 
 - For the first `windUpMs − aimLockMs`, the boss follows your position into its aim point.
 - For the final `aimLockMs`, the aim is frozen — the shot lands where you *were*.
@@ -275,13 +275,14 @@ many bosses each unlocks:
 
 ## Bestiary integration
 
-Each boss section above maps to fields we'll add to `EnemyConfig`:
+Each boss section above maps to `static` fields on the boss class (the `BossClass` type in
+`server/src/entities/bosses/index.ts` requires them):
 
 ```ts
-lore?: string;                                    // the role blurb
-abilities?: { name: string; desc: string }[];    // one entry per attack
+static readonly lore = "…";                              // the role blurb
+static readonly abilities = [{ name, desc }, …];         // one entry per move
 ```
 
-Filled in per boss in `shared/src/enemies/<Name>.ts`, read by the book UI from
-`ENEMY_REGISTRY` (stats) + `CLIENT_ENEMY_REGISTRY` (name + sprite). Design lives next to the
-numbers; nothing to drift out of sync.
+Design lives right next to the moveset on the `Boss` subclass. (These are bestiary *text*,
+separate from the runtime `abilities(): Spell[]` moveset — a future cleanup could derive the
+text from the spells so they can't drift.)

@@ -1,5 +1,6 @@
 import { EnemyType } from "shared";
-import { Boss, BossAbility, volley } from "../Boss";
+import { Boss } from "../Boss";
+import { Spell, volley } from "../../spells";
 
 // Centaur Knight — throws a lance at range; closes to preferredRange to duel.
 // TODO: gallop charge (dash) + club sweep (melee arc) + phase 2 (docs/bosses.md).
@@ -13,7 +14,7 @@ export class CentaurKnight extends Boss {
   ];
 
   protected preferredRange = 170;
-  protected abilities(): BossAbility[] {
+  protected abilities(): Spell[] {
     return [volley({ id: "lance-throw", ammoId: "fireball", count: 1, spreadDeg: 0, windUpMs: 600, recoverMs: 500, cooldownMs: 2000, range: 470 })];
   }
 }

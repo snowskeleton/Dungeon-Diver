@@ -1,5 +1,6 @@
 import { EnemyType } from "shared";
-import { Boss, BossAbility, volley, tremorLine, dashAttack, whirl } from "../Boss";
+import { Boss } from "../Boss";
+import { Spell, volley, tremorLine, dashAttack, whirl } from "../../spells";
 import { MovementBehavior, holdRange } from "./movement";
 
 // 🐢 Turtle Dragon — the Bulwark. A slow, armored area-denial tank: it holds
@@ -36,7 +37,7 @@ export class TurtleDragon extends Boss {
     return this.hpFraction < 0.5 ? "enrage" : "base";
   }
 
-  protected abilities(): BossAbility[] {
+  protected abilities(): Spell[] {
     const enraged = this.phaseKey() === "enrage";
 
     // Signature. aimLock 300 on an 800ms wind-up: it tracks you for the first

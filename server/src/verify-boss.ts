@@ -3,7 +3,7 @@
 // Boss.tick against a stationary player at its preferred range, and asserts the
 // boss telegraphs, fires, and its shots damage the player but NOT a bystander
 // enemy. Run: npx ts-node --transpile-only src/verify-boss.ts
-import { TILE, SERVER_TICK_MS, Layer, canAffect, ENEMY_PROJECTILE_AFFECTS, AMMO_REGISTRY } from "shared";
+import { TILE, SERVER_TICK_MS, Layer, canAffect, shapeHitsPoint, ENEMY_PROJECTILE_AFFECTS, AMMO_REGISTRY } from "shared";
 import { PhysicsWorld } from "./physics/PhysicsWorld";
 import { BOSSES } from "./entities/bosses";
 import { GooGreen } from "./entities/enemies/goos";
@@ -26,23 +26,35 @@ for (const BossClass of BOSSES) {
   const bystander = new GooGreen(physics, bx + 150, by + 24);
 
   const projectiles: Projectile[] = [];
-  const spawn = (ammoId: string, x: number, y: number, angle: number) =>
-    projectiles.push(new Projectile(physics, AMMO_REGISTRY[ammoId], x, y, angle, "boss", ENEMY_PROJECTILE_AFFECTS));
 
   let sawTelegraph = false, shots = 0;
   for (let t = 0; t < 160; t++) {
-    const before = projectiles.length;
-    boss.tick(players, SERVER_TICK_MS, () => {}, spawn);
-    shots += projectiles.length - before;
+    boss.tick(players, SERVER_TICK_MS);
     if (boss.state.telegraph) sawTelegraph = true;
+    // The boss queued its effects during tick: hit sources (spin/whirl/tremor) and
+    // projectile spawns (volleys, tremor shards). Drain and apply them.
+    for (const e of boss.drainEffects()) {
+      if (e.kind === "hit") {
+        const src = e.source;
+        if (canAffect(src.affects, Layer.PLAYER) && shapeHitsPoint(src.shape, player.x, player.y) && src.claim("p1")) player.health -= src.attack.damage;
+        if (canAffect(src.affects, Layer.ENEMY) && shapeHitsPoint(src.shape, bystander.state.x, bystander.state.y) && src.claim("b1")) bystander.takeDamage(src.attack.damage);
+      } else {
+        shots++;
+        const affects = e.opts?.inert ? 0 : ENEMY_PROJECTILE_AFFECTS;
+        projectiles.push(new Projectile(physics, AMMO_REGISTRY[e.ammoId], e.x, e.y, e.angle, "boss", affects, e.opts?.lifetimeMs));
+      }
+    }
     for (const proj of projectiles) {
       proj.tick(SERVER_TICK_MS);
       if (proj.dead) continue;
-      if (canAffect(proj.affects, Layer.PLAYER) && proj.tryHit("p1", player.x, player.y)) player.health -= proj.cfg.damage;
-      if (canAffect(proj.affects, Layer.ENEMY) && proj.tryHit("b1", bystander.state.x, bystander.state.y)) bystander.takeDamage(proj.cfg.damage);
+      const src = proj.hitSource();
+      if (canAffect(proj.affects, Layer.PLAYER) && shapeHitsPoint(src.shape, player.x, player.y) && src.claim("p1")) player.health -= proj.cfg.damage;
+      if (canAffect(proj.affects, Layer.ENEMY) && shapeHitsPoint(src.shape, bystander.state.x, bystander.state.y) && src.claim("b1")) bystander.takeDamage(proj.cfg.damage);
     }
   }
-  const pass = sawTelegraph && shots > 0 && player.health < 100 && bystander.state.health === 60;
+  // A boss must telegraph, damage the player (by shot OR melee/AOE), and never
+  // friendly-fire the bystander enemy of its own team.
+  const pass = sawTelegraph && player.health < 100 && bystander.state.health === 60;
   allPass &&= pass;
   console.log(`${pass ? "✅" : "❌"} ${type.padEnd(20)} shots=${String(shots).padStart(2)} telegraph=${sawTelegraph} playerHp=${player.health} bystanderHp=${bystander.state.health}`);
 }

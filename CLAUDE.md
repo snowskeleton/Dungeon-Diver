@@ -52,8 +52,9 @@ Both are defined in `.claude/launch.json` for the preview panel. The Colyseus se
 shared/src/
   types.ts             ← tile IDs + TILE_PROPS, InputMessage, RoomType, and the few cross-cutting constants (SERVER_TICK_MS, KNOCKBACK_* scale/stun knobs, enemy-count formula, ENTITY_RADIUS/FOOT_OFFSET). Balance does NOT live here — see characters/, enemies/, weapons/, ammo/
   characters/          ← one CharacterConfig per class (Knight/Rogue/Ranger/Mage): id, name, maxHp, speed, defaultWeaponId; index.ts exports CHARACTER_REGISTRY. Weapon stats live in weapons/, not here. base.ts also holds the CharacterType union (12 humanoid skins)
-  enemies/             ← one EnemyConfig per enemy: hp/speed/aggro/attack/knockback, plus `facingMode` (horizontal|directional) and `boss`; index.ts exports ENEMY_REGISTRY. base.ts also holds PLACEHOLDER_ENEMY_CONFIG / PLACEHOLDER_BOSS_CONFIG, the untuned stand-ins that freshly imported art spreads
-  weapons/             ← one Weapon per <category>/<id>/index.ts (+ <id>.png icon); category base.ts holds defaults; index.ts exports WEAPON_REGISTRY + WeaponId union. Each weapon carries its own fxType; ranged ones carry ammoId + rangedStyle
+  enemies/             ← just the EnemyType id union + EnemyFacingMode (base.ts). Enemies are OO classes on the SERVER (server/src/entities/enemies + /bosses) — there is NO EnemyConfig and NO ENEMY_REGISTRY (that data-driven design was abandoned; see the engineering note)
+  combat/              ← Attack (damage/knockback/source payload) + HitShape geometry (rect/circle/segment/sweptEllipse + shapeHitsPoint). Shared so the client H-overlay can reuse shapes; the resolver itself is server-side
+  weapons/             ← one Weapon per <category>/<id>/index.ts (+ <id>.png icon); category base.ts holds defaults; index.ts exports WEAPON_REGISTRY + WeaponId union. Each weapon carries its own fxType; ranged ones carry ammoId + rangedStyle; staves carry an `aoe` spec (the Mage's blast)
   ammo/                ← projectiles ranged weapons spawn; mirrors weapons/ layout. Behaviour-sharing groups nest under a category base (arrows/, boomerangs/); one-offs (throwing-knife, throwing-star) sit flat. index.ts exports AMMO_REGISTRY + AmmoId union
   debug.ts             ← DebugConfig (the Debug menu's flat settings object) + DEFAULT_DEBUG_CONFIG + toDungeonOptions()
   dungeonGenerator.ts  ← seeded dungeon generation: generateDungeon(seed, opts?) builds a 5×4 grid of 21×16-tile rooms (105×64 tiles total), room graph, type assignment, tile carving, connections/barriers. `opts: DungeonOptions` overrides grid size, forced room type, boss, stairs
@@ -62,14 +63,17 @@ shared/src/
 
 server/src/
   index.ts                  ← Colyseus Server setup (http + ws on port 2567)
-  rooms/GameRoom.ts         ← main 20 Hz game loop; owns the PhysicsWorld; join/leave/input/melee+projectile/AI tick, per-room enemy spawning, shop rolling, floor advancement (stairs → seed+1)
+  rooms/GameRoom.ts         ← main 20 Hz game loop; owns the PhysicsWorld + CombatSystem; join/leave/input/AI tick, then drains every entity's queued effects into the one combat resolve, per-room enemy spawning, shop rolling, floor advancement (stairs → seed+1)
   floor/FloorManager.ts     ← barrier/door system: locks rooms on entry, unlocks on clear, pre-clears empty rooms
-  physics/PhysicsWorld.ts   ← the ONLY file that touches matter-js: engine, wall bodies, collision categories/COLLIDE toggles, px/sec↔matter velocity conversion, sprite-center↔foot-body coordinate mapping
-  entities/Entity.ts        ← base class: move() records velocity intent (physics resolves walls/separation), applyTileEffects(), takeDamage(), teleport() — shared by Player + Enemy
-  entities/Player.ts        ← extends Entity; looks up its CharacterConfig from CHARACTER_REGISTRY; applyInput(), getAttackHitbox(), hitsEnemy(), justAttacked flag + getShotAngle() for ranged fire. Owns the weapon inventory
-  entities/Enemy.ts         ← abstract base; tick() runs AI state machine (patrol/chase/attack), knockback + hitstun (overage threshold; stun suspends AI), death
-  entities/Goo.ts           ← the ONE concrete enemy class: takes any EnemyType, pulls its EnemyConfig from ENEMY_REGISTRY, and picks 4-way vs left/right facing from cfg.facingMode (every enemy and boss spawns as a Goo)
-  entities/Projectile.ts    ← kinematic arrow/thrown-weapon (no matter-js body); integrates position, swept ellipse-vs-enemy hits, pierce, boomerang return, wall/lifetime despawn. Pulls its AmmoConfig from AMMO_REGISTRY
+  physics/PhysicsWorld.ts   ← the ONLY file that touches matter-js: engine, wall bodies, per-body layer/solidMask collision filters (from each entity's InteractionProfile — see shared/src/layers.ts), px/sec↔matter velocity conversion, sprite-center↔foot-body coordinate mapping
+  combat/                   ← the ONE combat resolver. CombatSystem.resolve() applies every HitSource ({shape, affects, attack, claim}) to every CombatTarget when affects&layer + shapes overlap + not-owner + claim passes → target.takeHit(Attack). RehitGate = per-target re-hit dedupe for lingering hitboxes. HitShape geometry + the Attack payload live in shared/src/combat
+  spells/                   ← the unified ability system. Spell (windUp→strike→active→recover + cooldown it OWNS via isReady/markCast); SpellCaster runs the lifecycle (shared by bosses, enemies, players); Caster = the tiny interface a spell needs ({x,y,facing,attackAffects,emitHitSource,spawnProjectile}); builders.ts = volley/radial/tremorLine/dashAttack/whirl; weaponSpell.ts turns a Weapon into a swing / shot / AOE spell
+  entities/Entity.ts        ← base class: move()/knockback/hitstun (overage threshold), takeHit(Attack), applyTileEffects(), teleport(), and the emitHitSource/spawnProjectile effect buffer GameRoom drains — shared by Player + Enemy
+  entities/Player.ts        ← extends Entity, is a Caster; looks up its CharacterConfig; applyInput() drives a SpellCaster running the active weapon's Spell (swing/shot/AOE). Owns the weapon inventory
+  entities/Enemy.ts         ← abstract base; default tick() = patrol/chase AI + contactHitSource() (touch damage as a hitbox); death. Stats are per-class getters, no config
+  entities/enemies/         ← the OO enemy classes (goos/bats/floaters/critters/directional), one Enemy subclass each; REGULAR_ENEMIES = the spawn-pool array (index.ts). No config, no ENEMY_REGISTRY
+  entities/Boss.ts          ← abstract Boss (extends Enemy, is a DashCaster); picks the next Spell and delegates to a SpellCaster; deals no passive contact damage. entities/bosses/ = one Boss subclass each + movement.ts + BOSSES array
+  entities/Projectile.ts    ← kinematic arrow/thrown-weapon (no matter-js body); integrates position, swept-ellipse hitSource(), pierce, boomerang return, wall/lifetime despawn. Pulls its AmmoConfig from AMMO_REGISTRY
   schema/EntityState.ts     ← Colyseus schema base (x, y, health, speedMultiplier)
   schema/PlayerState.ts     ← extends EntityState (facing, isAttacking, attackSeq, characterClass, characterType, weaponId=active, inventory[], activeWeaponIndex)
   schema/EnemyState.ts      ← extends EntityState (aiState, targetId, facing, isDying, stunned, enemyType)
@@ -88,7 +92,7 @@ client/src/
   enemies/directionalEnemy.ts ← makeDirectionalEnemyDef(): 4-row sheets, one row per facing (up/right/down/left), never mirrored
   weapons/index.ts          ← CLIENT_WEAPON_REGISTRY (name + placeholder-art flag; feeds PlaceholderReport)
   entities/Entity.ts        ← base Phaser class: rectangle anchor + HP bar; setupCharacter()/playAnim() for registry-driven characters, useRawSprite() for self-animating sprites (enemies), attack FX with per-frame weapon icon tracking
-  entities/SpriteClips.ts   ← shared clip-definition helpers used by the Humanoid/Goo/Bat sprite modules
+  entities/SpriteClips.ts   ← shared clip-definition helpers used by HumanoidSprites and the enemy sprite factories (client/src/enemies)
   entities/HumanoidSprites.ts ← shared 15-col × 4-row humanoid sheet layout, clip definitions, makeHumanoidSpriteConfig()
   entities/AttackFXSprites.ts ← one-shot slash/stab FX strips, rotated per facing
   entities/RangedWeaponFX.ts ← "held" ranged draw: 2-frame bow/crossbow sheet played 0→1→0→0 beside the player, rotated to fire direction
@@ -127,7 +131,9 @@ client/src/
 
 **Tile system**: `shared/src/types.ts` defines `TILE_PROPS` keyed by tile ID. Server's `Entity.ts` reads these for walkability checks and tile effects. Client's `TileRenderer.ts` renders the same generated `MAP_DATA` using frames from the `dungeon-tiles.png` tileset — same data, no sync needed.
 
-**Data-driven content (registries, not classes)**: all gameplay stats live in plain config objects in `shared/` — `CHARACTER_REGISTRY` (per-class maxHp/speed/defaultWeaponId), `ENEMY_REGISTRY` (per-enemy stats), `WEAPON_REGISTRY` (damage/cooldown/force/`getHurtbox` geometry/`fxType`), `AMMO_REGISTRY` (projectile stats). Server entities (`Player`, `Goo`, `Projectile`) look up their config by id; client visuals live in parallel registries (`client/src/characters`, `client/src/enemies`, `client/src/weapons`). Clients pass `characterClass`/`characterType` as join options; both are synced on `PlayerState` so remote clients render the right skin. **Add content by adding a config + registry entry, not a class.**
+**Two content styles, on purpose.** *Inert* content — characters, weapons, ammo — is plain config in `shared/` registries: `CHARACTER_REGISTRY` (per-class maxHp/speed/defaultWeaponId), `WEAPON_REGISTRY` (damage/cooldown/force/`getHurtbox`/`fxType`/`aoe`), `AMMO_REGISTRY` (projectile stats). Add one by adding a config + registry entry. *Behavioural* content — **enemies and bosses** — is **object-oriented**: one `Enemy`/`Boss` subclass each (`server/src/entities/enemies` + `/bosses`), stats as compiler-checked getters, listed in `REGULAR_ENEMIES` / `BOSSES` arrays. There is **no** `ENEMY_REGISTRY` and no generic `Goo` — behaviour lives on the class, never in a data blob steered by a lookup table (see the engineering note). Client visuals live in parallel registries (`client/src/characters`, `client/src/enemies`, `client/src/weapons`). Clients pass `characterClass`/`characterType` as join options, synced on `PlayerState`.
+
+**Unified combat + spells.** All damage flows through one resolver (`server/src/combat/CombatSystem`): entities emit `HitSource`s during their tick, and it delivers an `Attack` to any `CombatTarget` whose `layer` the source's `affects` mask reaches (directional — see `docs/layers.md`). All abilities are one `Spell` type (`server/src/spells`) run by a shared `SpellCaster` — a boss move, an enemy attack, and a player's weapon swing/shot/AOE are the same shape (windUp→strike→active→recover, cooldown owned by the spell). Anything that casts implements the tiny `Caster` interface. **Add an attack/ability as a `Spell`, not a bespoke code path.**
 
 **Loadout system** (inventory, switching, shops, pause) is server-authoritative and synced. Switching is an instant hotkey; the inventory menu pauses the whole room; the store is an in-world room and does *not* pause. See [docs/loadout.md](docs/loadout.md).
 
@@ -169,9 +175,10 @@ Colyseus fires `onAdd` for items already in the map when the callback is registe
 | Knob | File |
 |---|---|
 | Player/class (maxHp, speed, starting weapon) | `shared/src/characters/<Class>.ts` |
-| Weapon (damage, cooldown, force, swing geometry, fxType) | `shared/src/weapons/<category>/<id>/index.ts` (or category `base.ts`) |
+| Weapon (damage, cooldown, force, swing geometry, fxType, staff `aoe`) | `shared/src/weapons/<category>/<id>/index.ts` (or category `base.ts`) |
 | Ammo/projectile (damage, speed, pierce, hit ellipse, spin/return) | `shared/src/ammo/<id>/index.ts` |
-| Enemy/boss (hp, speed, aggro, attack, knockback resistance) | `shared/src/enemies/<Name>.ts` |
+| Enemy (hp, speed, aggro, attack, knockback resistance) | stat getters on the `Enemy` subclass — `server/src/entities/enemies/<group>.ts` |
+| Boss (moveset, movement, phases, stats) | the `Boss` subclass — `server/src/entities/bosses/<Name>.ts` (spells from `server/src/spells`) |
 | Store (pedestal count, HP cost formula, buy radius) | `server/src/rooms/GameRoom.ts` |
 | Loadout keybinds / acquire freeze | `client/src/input/InputSource.ts`, `ACQUIRE_MS` in `entities/AcquireFX.ts` |
 | Knockback / hitstun feel, tick rate, enemy count, body geometry | `shared/src/types.ts` |
@@ -199,19 +206,19 @@ Classes (gameplay) and character types (visuals) are separate axes, both picked 
 - **New class** (stats + starting weapon): `shared/src/characters/<Class>.ts` with a `CharacterConfig` → add to the `CharacterClass` union in `base.ts` + `CHARACTER_REGISTRY` in `index.ts`. No client-side registry entry needed — attack FX comes from the weapon.
 - **New skin** (spritesheet): drop a PNG following the 15×4 humanoid layout in `assets/`, run `npm run assets:build`, add to the `CharacterType` union (`shared/src/characters/base.ts`) and `CLIENT_CHARACTER_VISUAL_REGISTRY` — `GameScene` preloads/defines from the registry automatically.
 
-### Add a new entity type (e.g. NPC, boss)
+### Add an enemy or a boss
+Enemies and bosses are OO — see [docs/enemies.md](docs/enemies.md) (rank-and-file) and [docs/bosses.md](docs/bosses.md) (movesets). An enemy is an `Enemy` subclass in `server/src/entities/enemies/` + `REGULAR_ENEMIES`; a boss is a `Boss` subclass in `entities/bosses/` (moveset = `abilities(): Spell[]`) + `BOSSES`. No schema/GameState changes — both reuse `EnemyState`.
+
+### Add a genuinely new entity type (e.g. an NPC, not an enemy/boss)
 1. `server/src/schema/` — new schema extending `EntityState`
-2. `server/src/entities/` — new class extending `Entity`; override `tick()` for AI
+2. `server/src/entities/` — new class extending `Entity`; override `tick()` for behaviour
 3. Add schema field to `GameState.ts` (`MapSchema<NewState>`)
-4. Spawn from `GameRoom` (see `spawnFloorEnemies()`/`initFloor()` for the flow), tick in `GameRoom.tick()`
-5. `client/src/entities/` — new class extending `Entity`
+4. Spawn from `GameRoom`, tick in `GameRoom.tick()`
+5. `client/src/entities/` — new class extending the client `Entity`
 6. Wire up `onAdd`/`onRemove`/`onChange` in `GameScene.setupWorldSync()`
 
-### Add a player ability / game mechanic
-- Server: add input fields to `InputMessage` in `shared/src/types.ts`
-- Server: handle in `Player.applyInput()` or `GameRoom.tick()`
-- Client: add key/button to `InputSource` implementations; send in the input message
-- State changes go in the relevant Schema class and get auto-synced by Colyseus
+### Add an attack / ability
+Attacks are `Spell`s (`server/src/spells`), not bespoke code. A weapon's attack comes from `weaponSpell()` (swing / shot / AOE, keyed off the weapon config); a boss/enemy ability is a `Spell` from `builders.ts` (or a new builder). All are run by the shared `SpellCaster` and emit `HitSource`s / projectiles through the `Caster` interface. Only add an input field (`InputMessage` in `shared/src/types.ts`, handled in `Player.applyInput()`) for a genuinely new *control*, not a new attack.
 
 ### Add a new room type (e.g. lobby, dungeon level)
 Define a new `Room` subclass in `server/src/rooms/`, register it in `server/src/index.ts` with `gameServer.define()`, and connect to it by name from the client via `client.joinOrCreate("room-name")`.
@@ -219,7 +226,7 @@ Define a new `Room` subclass in `server/src/rooms/`, register it in `server/src/
 ## Gotchas
 
 - **Tile coordinates vs pixel coordinates**: tiles are 32×32 px. `entity.state.x/y` are pixel coords. To get tile: `Math.floor(x / TILE_SIZE)`. Spawn points are set as `col * TILE_SIZE + 16` (center of tile).
-- **Server physics is matter-js** (`server/src/physics/PhysicsWorld.ts` — the only file that imports it). Each entity is a radius-5 circle at the sprite's *feet* (`body.y = state.y + FOOT_OFFSET(8)`); schema `state.x/y` stays the sprite center. (`ENTITY_RADIUS`/`FOOT_OFFSET` are defined in `shared/src/types.ts` and re-exported from PhysicsWorld, so the client **H** debug overlay can draw the true collision circle.) Movement: `Entity.move()` records px/sec intent → GameRoom calls `commitVelocity()` (converts px/sec ÷ 60 to Matter's per-16.667ms velocity units — get this wrong and everything moves ~3× off) → `Engine.update(50)` → `syncFromBody()`. Who-collides-with-whom is the `COLLIDE` table in PhysicsWorld (currently all pairs on). `ENTITY_RADIUS` must stay ≤ ~14 or one-tile 32px gaps close. Melee `attackRadius` values in enemy configs are center-to-center and must exceed `2 × ENTITY_RADIUS` (10px) or attacks silently never land against rigid separation — that's why the goo configs use `attackRadius: 14`. Dying enemies get a WALL-only collision mask via `setEntityDead()` (corpses don't block). All teleports go through `Entity.teleport()` (never assign `state.x/y` for position changes — the body won't follow).
+- **Server physics is matter-js** (`server/src/physics/PhysicsWorld.ts` — the only file that imports it). Each entity is a radius-5 circle at the sprite's *feet* (`body.y = state.y + FOOT_OFFSET(8)`); schema `state.x/y` stays the sprite center. (`ENTITY_RADIUS`/`FOOT_OFFSET` are defined in `shared/src/types.ts` and re-exported from PhysicsWorld, so the client **H** debug overlay can draw the true collision circle.) Movement: `Entity.move()` records px/sec intent → GameRoom calls `commitVelocity()` (converts px/sec ÷ 60 to Matter's per-16.667ms velocity units — get this wrong and everything moves ~3× off) → `Engine.update(50)` → `syncFromBody()`. Who-collides-with-whom is each body's `layer`/`solidMask` (from its `InteractionProfile` in `shared/src/layers.ts` — currently every body blocks WALL|PLAYER|ENEMY). `ENTITY_RADIUS` must stay ≤ ~14 or one-tile 32px gaps close. Melee `attackRadius` getters on enemy classes are center-to-center and must exceed `2 × ENTITY_RADIUS` (10px) or attacks silently never land against rigid separation — that's why the goos use `attackRadius: 14`. Dying enemies get a WALL-only collision mask via `setEntityDead()` (corpses don't block). All teleports go through `Entity.teleport()` (never assign `state.x/y` for position changes — the body won't follow).
 - **Enemies stay dead — there is no respawn.** Cleared rooms stay cleared; everything is wiped and respawned fresh only when `advanceFloor()` regenerates the floor. Details in [docs/enemies.md](docs/enemies.md).
 - **Camera is room-locked (Zelda-style)**: every frame, `GameScene.update()` snaps `camera.setBounds()` to the 21×16-tile room containing the local players' centroid, at 2× zoom, then `centerOn(centroid)`. Crossing a doorway hard-cuts the camera to the next room. Split-screen for spread-out local players is still an open idea.
 - **No persistence**: all state is in-memory. Server restart = everyone disconnects and rejoins fresh.

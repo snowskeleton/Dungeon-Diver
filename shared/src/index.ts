@@ -1,5 +1,6 @@
 export * from "./types";
 export * from "./layers";
+export * from "./combat";
 export * from "./tileData";
 export { generateDungeon, ROOM_W, ROOM_H } from "./dungeonGenerator";
 export type { RoomData, ConnectionData, BarrierRect, DungeonResult, RoomType, DungeonOptions } from "./dungeonGenerator";

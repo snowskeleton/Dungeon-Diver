@@ -1,5 +1,6 @@
 import { EnemyType } from "shared";
-import { Boss, BossAbility, volley } from "../Boss";
+import { Boss } from "../Boss";
+import { Spell, volley } from "../../spells";
 
 // Batwing Buttstomper — wide 5-orb spray to weave through.
 // TODO: the airborne buttstomp AOE (needs airborne state + tracking marker).
@@ -13,7 +14,7 @@ export class BatwingButtstomper extends Boss {
   ];
 
   protected preferredRange = 200;
-  protected abilities(): BossAbility[] {
+  protected abilities(): Spell[] {
     return [volley({ id: "orb-spray", ammoId: "magic-orb", count: 5, spreadDeg: 60, windUpMs: 800, recoverMs: 600, cooldownMs: 2600, range: 430 })];
   }
 }

@@ -57,8 +57,13 @@ export const ENEMY_BODY_PROFILE: InteractionProfile = {
 /** A dead corpse still respects walls but neither shoves nor is shoved. */
 export const CORPSE_SOLID_MASK = Layer.WALL;
 
-// ── Projectile affect-masks (directional) ─────────────────────────────────────
-// Player shots damage enemies and props but spare players; flip on Layer.PLAYER
-// to enable friendly fire (see docs/layers.md — designed to be a one-bit change).
-export const PLAYER_PROJECTILE_AFFECTS = Layer.ENEMY | Layer.PROP;
-export const ENEMY_PROJECTILE_AFFECTS = Layer.PLAYER;
+// ── Attack affect-masks (directional) ─────────────────────────────────────────
+// What each team's hit sources (melee swings, projectiles, AOE) are allowed to
+// damage. Player attacks reach enemies and props but spare players; flip on
+// Layer.PLAYER to enable friendly fire (see docs/layers.md — a one-bit change).
+// Projectiles share these — a shot is just another player/enemy attack — so the
+// PROJECTILE aliases stay for existing call sites.
+export const PLAYER_ATTACK_AFFECTS = Layer.ENEMY | Layer.PROP;
+export const ENEMY_ATTACK_AFFECTS = Layer.PLAYER;
+export const PLAYER_PROJECTILE_AFFECTS = PLAYER_ATTACK_AFFECTS;
+export const ENEMY_PROJECTILE_AFFECTS = ENEMY_ATTACK_AFFECTS;

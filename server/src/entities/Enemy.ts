@@ -1,7 +1,8 @@
-import { KNOCKBACK_SCALE, KNOCKBACK_STUN_MS_PER_UNIT, KNOCKBACK_STUN_MAX_MS, AiState, SERVER_TICK_MS, EnemyType, EnemyFacingMode, ENEMY_BODY_PROFILE } from "shared";
+import { AiState, SERVER_TICK_MS, EnemyType, EnemyFacingMode, ENEMY_BODY_PROFILE, ENEMY_ATTACK_AFFECTS } from "shared";
 import { EnemyState } from "../schema/EnemyState";
 import { PlayerState } from "../schema/PlayerState";
-import { Entity, KNOCKBACK_DECAY } from "./Entity";
+import { Entity } from "./Entity";
+import { HitSource } from "../combat/HitSource";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
 
 const PATROL_RANGE = 64;
@@ -49,9 +50,6 @@ export abstract class Enemy extends Entity {
   protected patrolOriginY: number;
   private patrolAngle: number = Math.random() * Math.PI * 2;
   private attackCooldown: number = 0;
-  // Remaining hitstun (ms). While > 0 the enemy suspends its AI (no chase, no
-  // attack) so the knockback push isn't immediately cancelled by chasing.
-  private stunMs: number = 0;
 
   // ── Stats (override per enemy) ──────────────────────────────────────────────
   protected get maxHp(): number { return 60; }
@@ -93,6 +91,36 @@ export abstract class Enemy extends Entity {
     return this.state.isDying;
   }
 
+  /** A dying enemy plays its death animation but takes no further hits. */
+  override get damageable(): boolean {
+    return !this.state.isDying;
+  }
+
+  // A contact/touch attack: while alive, un-stunned, and off cooldown, the enemy's
+  // body is a hazard out to attackRadius. Emitted each tick to the combat resolver
+  // (see GameRoom.tick); the claim consumes the shared attack cooldown so one
+  // eruption lands on one player per cooldown, matching the old melee behaviour.
+  // Bosses deal no passive contact damage and override this to null.
+  contactHitSource(id: string): HitSource | null {
+    if (this.state.isDying || this.state.stunned || this.attackCooldown > 0 || this.attackDamage <= 0) {
+      return null;
+    }
+    let claimed = false;
+    return {
+      shape: { kind: "circle", cx: this.state.x, cy: this.state.y, r: this.attackRadius },
+      affects: ENEMY_ATTACK_AFFECTS,
+      ownerId: id,
+      // Contact deals no knockback to players (matches the old dealDamageToPlayer path).
+      attack: { damage: this.attackDamage, knockback: 0, sourceX: this.state.x, sourceY: this.state.y },
+      claim: () => {
+        if (claimed) return false;
+        claimed = true;
+        this.attackCooldown = this.attackCooldownMs;
+        return true;
+      },
+    };
+  }
+
   takeDamage(amount: number): void {
     if (this.state.isDying) return;
     super.takeDamage(amount);
@@ -104,54 +132,11 @@ export abstract class Enemy extends Entity {
     }
   }
 
-  // Push + stun the enemy away from (fromX, fromY). `overage = force − resistance`
-  // is how much the hit cleared the enemy's resistance: overage ≤ 0 → the hit is
-  // fully shrugged off (no push, no stun — heavy enemies ignore weak hits). Above
-  // the threshold, push distance = overage * KNOCKBACK_SCALE px (delivered as a
-  // decaying impulse the physics step sweeps against walls) and the enemy is
-  // stunned for a scaled duration so its chase can't immediately eat the push.
-  applyKnockback(fromX: number, fromY: number, force: number): void {
-    if (this.state.isDying) return;
-    const overage = force - this.knockbackResistance;
-    if (overage <= 0) return; // didn't clear resistance → ignored entirely
-
-    const dx = this.state.x - fromX;
-    const dy = this.state.y - fromY;
-    const dist = Math.hypot(dx, dy);
-    if (dist === 0) return;
-
-    const push = overage * KNOCKBACK_SCALE;
-    // Geometric series: total displacement = v0*dt / (1 − decay) = push.
-    const v0 = (push * (1 - KNOCKBACK_DECAY)) / (SERVER_TICK_MS / 1000);
-    this.addKnockback((dx / dist) * v0, (dy / dist) * v0);
-
-    this.stunMs = Math.min(KNOCKBACK_STUN_MAX_MS, overage * KNOCKBACK_STUN_MS_PER_UNIT);
-    this.state.stunned = true;
-  }
-
-  // Advances the hitstun timer. Returns true while still stunned — callers skip
-  // the rest of their AI so the knockback impulse (carried by commitVelocity)
-  // lands cleanly. Shared by the default melee tick and Boss's own tick.
-  protected updateStun(dtMs: number): boolean {
-    if (this.stunMs > 0) {
-      this.stunMs -= dtMs;
-      if (this.stunMs <= 0) {
-        this.stunMs = 0;
-        this.state.stunned = false;
-      }
-      return true;
-    }
-    return false;
-  }
-
   // Standard enemy AI: patrol until a player is in aggro range, chase, and melee
-  // in attack range. Bosses override this entirely.
-  tick(
-    players: Map<string, PlayerState>,
-    dtMs: number,
-    dealDamageToPlayer: (sessionId: string, amount: number) => void,
-    _spawnProjectile?: SpawnProjectile,
-  ): void {
+  // in attack range. Bosses override this entirely. Contact damage itself is no
+  // longer dealt here — it's emitted as a HitSource (contactHitSource) and applied
+  // by the combat resolver; this only drives movement and the attack animation.
+  tick(players: Map<string, PlayerState>, dtMs: number): void {
     if (this.state.isDying) return;
     if (this.updateStun(dtMs)) return;
 
@@ -168,10 +153,6 @@ export abstract class Enemy extends Entity {
     if (dist <= this.attackRadius) {
       this.transition("attack");
       this.state.targetId = id;
-      if (this.attackCooldown <= 0) {
-        dealDamageToPlayer(id, this.attackDamage);
-        this.attackCooldown = this.attackCooldownMs;
-      }
     } else if (dist <= this.aggroRadius) {
       this.transition("chase");
       this.state.targetId = id;

@@ -11,6 +11,19 @@ export interface CircleHitRegion { shape: "circle"; cx: number; cy: number; r: n
 export type HitRegion = RectHitRegion | CircleHitRegion;
 export type GetHurtbox = (px: number, py: number, facing: Facing) => HitRegion | null;
 
+/** An area-of-effect blast a weapon casts (the Mage's staff): after a brief
+ *  wind-up the caster erupts a damaging circle around itself for `blastMs`. Marks
+ *  the weapon as an AOE caster — the server builds a wind-up+AOE Spell from it
+ *  (see server weaponSpell), instead of a melee swing or a ranged shot. */
+export interface AoeSpec {
+  /** Blast radius (px) centred on the caster. */
+  radius: number;
+  /** Telegraph time (ms) before the blast lands. */
+  windUpMs: number;
+  /** How long (ms) the blast hitbox stays active. */
+  blastMs: number;
+}
+
 const CATEGORY_DIRS: Record<WeaponCategory, string> = {
   sword: "swords", axe: "axes", spear: "spears", rapier: "rapiers",
   mace: "maces", dagger: "daggers", hammer: "hammers",
@@ -46,6 +59,11 @@ export interface WeaponOpts {
    * projectile is the whole visual (knives, stars, boomerangs).
    */
   rangedStyle?: RangedStyle;
+  /**
+   * If set, this weapon casts an area-of-effect blast around the caster (the
+   * Mage's staff) rather than swinging or shooting. See AoeSpec.
+   */
+  aoe?: AoeSpec;
 }
 
 export class Weapon {
@@ -60,6 +78,7 @@ export class Weapon {
   readonly iconAngle: number;
   readonly ammoId?: string;
   readonly rangedStyle?: RangedStyle;
+  readonly aoe?: AoeSpec;
   /** Client-side sprite path served from public/sprites/weapons/. */
   readonly iconPath: string;
 
@@ -75,12 +94,18 @@ export class Weapon {
     this.iconAngle = opts.iconAngle;
     this.ammoId = opts.ammoId;
     this.rangedStyle = opts.rangedStyle;
+    this.aoe = opts.aoe;
     this.iconPath = `/sprites/weapons/${CATEGORY_DIRS[opts.category]}/${opts.id}/${opts.id}.png`;
   }
 
   /** True when attacking fires a projectile rather than swinging a melee arc. */
   get isRanged(): boolean {
     return this.ammoId !== undefined;
+  }
+
+  /** True when attacking erupts an AOE blast rather than a swing/shot. */
+  get isAoe(): boolean {
+    return this.aoe !== undefined;
   }
 }
 

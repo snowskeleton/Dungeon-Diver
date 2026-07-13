@@ -1,5 +1,6 @@
 import { EnemyType } from "shared";
-import { Boss, BossAbility, volley } from "../Boss";
+import { Boss } from "../Boss";
+import { Spell, volley } from "../../spells";
 
 // Big Beast — lobs a boulder; a slow, heavy single shot.
 // TODO: rolling charge (dash) + ground-slam shockwave (AOE ring).
@@ -13,7 +14,7 @@ export class BigBeast extends Boss {
   ];
 
   protected preferredRange = 150;
-  protected abilities(): BossAbility[] {
+  protected abilities(): Spell[] {
     return [volley({ id: "boulder", ammoId: "fireball", count: 1, spreadDeg: 0, windUpMs: 900, recoverMs: 650, cooldownMs: 2600, range: 380 })];
   }
 }

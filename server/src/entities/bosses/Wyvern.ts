@@ -1,5 +1,6 @@
 import { EnemyType } from "shared";
-import { Boss, BossAbility, volley } from "../Boss";
+import { Boss } from "../Boss";
+import { Spell, volley } from "../../spells";
 
 // Fire Wyvern — aerial zoner: a 3-shot fire-breath cone, held at range.
 export class Wyvern extends Boss {
@@ -11,7 +12,7 @@ export class Wyvern extends Boss {
   ];
 
   protected preferredRange = 220;
-  protected abilities(): BossAbility[] {
+  protected abilities(): Spell[] {
     return [volley({ id: "fire-breath", ammoId: "fireball", count: 3, spreadDeg: 26, windUpMs: 800, recoverMs: 550, cooldownMs: 2600, range: 420 })];
   }
 }

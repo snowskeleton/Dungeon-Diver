@@ -1,10 +1,22 @@
 import type Matter from "matter-js";
-import { TILE_PROPS, TileId, TILE_DAMAGE_INTERVAL_MS, InteractionProfile } from "shared";
+import {
+  TILE_PROPS, TileId, TILE_DAMAGE_INTERVAL_MS, InteractionProfile, Attack,
+  KNOCKBACK_SCALE, KNOCKBACK_STUN_MS_PER_UNIT, KNOCKBACK_STUN_MAX_MS, SERVER_TICK_MS,
+} from "shared";
 import { EntityState } from "../schema/EntityState";
+import { HitSource } from "../combat/HitSource";
+import type { SpawnProjectile, SpawnOpts } from "./Enemy";
 import { PhysicsWorld, syncStateFromBody } from "../physics/PhysicsWorld";
 
+// A damage effect an entity produced during its tick, drained by GameRoom into the
+// combat resolver / projectile pool. A boss channel, a player's swing, and a
+// ranged shot all queue these; GameRoom stamps team + owner at drain time.
+export type PendingEffect =
+  | { kind: "hit"; source: HitSource }
+  | { kind: "projectile"; ammoId: string; x: number; y: number; angle: number; opts?: SpawnOpts };
+
 // Knockback velocity is multiplied by this each tick; combined with the v0
-// math in Enemy.applyKnockback it reproduces the old total push distance.
+// math in applyKnockback it reproduces the old total push distance.
 export const KNOCKBACK_DECAY = 0.5;
 const KNOCKBACK_CUTOFF = 5; // px/sec — below this, snap to zero
 
@@ -19,6 +31,13 @@ export abstract class Entity {
   private moveVel = { x: 0, y: 0 };
   // Decaying knockback velocity in px/sec; persists across ticks.
   private knockbackVel = { x: 0, y: 0 };
+  // Remaining hitstun (ms). While > 0 the entity suspends its own control
+  // (enemy AI / player input) so the knockback push isn't immediately walked off.
+  protected stunMs = 0;
+  // Damage effects queued this tick (swing/channel hitboxes, projectile spawns),
+  // drained by GameRoom. This is the `emitHitSource`/`spawnProjectile` half of the
+  // spell Caster interface — shared so players and enemies emit effects the same way.
+  private pendingEffects: PendingEffect[] = [];
 
   protected attachBody(
     physics: PhysicsWorld,
@@ -67,6 +86,25 @@ export abstract class Entity {
     syncStateFromBody(this.state, this.body);
   }
 
+  // ── Effect emission (the Caster half shared by players + enemies) ────────────
+  /** Queue a transient hit region for this tick (a swing / channel hitbox). */
+  emitHitSource(source: HitSource): void {
+    this.pendingEffects.push({ kind: "hit", source });
+  }
+
+  /** Queue a projectile to spawn this tick. GameRoom stamps team + owner on drain. */
+  spawnProjectile: SpawnProjectile = (ammoId, x, y, angle, opts) => {
+    this.pendingEffects.push({ kind: "projectile", ammoId, x, y, angle, opts });
+  };
+
+  /** Hand this tick's queued effects to GameRoom and clear the buffer. */
+  drainEffects(): PendingEffect[] {
+    if (this.pendingEffects.length === 0) return this.pendingEffects;
+    const out = this.pendingEffects;
+    this.pendingEffects = [];
+    return out;
+  }
+
   teleport(x: number, y: number): void {
     this.physics.setEntityPosition(this.body, x, y);
     this.state.x = x;
@@ -102,6 +140,86 @@ export abstract class Entity {
 
   takeDamage(amount: number): void {
     this.state.health = Math.max(0, this.state.health - amount);
+  }
+
+  // ── CombatTarget: how a hit lands on this body (see combat/CombatSystem) ──────
+  // Receive a resolved hit: take the damage, then get shoved + stunned away from
+  // the blow's origin. Symmetric — players and enemies both flinch (the Attack's
+  // knockback may be 0, e.g. plain contact, in which case there's no push).
+  takeHit(attack: Attack): void {
+    this.takeDamage(attack.damage);
+    this.applyKnockback(attack.sourceX, attack.sourceY, attack.knockback);
+  }
+
+  /** How much knockback force this body absorbs before it's shoved. 0 = takes the
+   *  full hit (players default). Enemies override with a per-type resistance. */
+  protected get knockbackResistance(): number {
+    return 0;
+  }
+
+  get isStunned(): boolean {
+    return this.stunMs > 0;
+  }
+
+  // Push + stun away from (fromX, fromY). `overage = force − resistance` is how
+  // much the hit cleared this body's resistance: overage ≤ 0 → fully shrugged off
+  // (no push, no stun). Above the threshold, push distance = overage ×
+  // KNOCKBACK_SCALE px (delivered as a decaying impulse the physics step sweeps
+  // against walls) and the body is stunned for a scaled duration. A corpse/dead
+  // body is never shoved.
+  applyKnockback(fromX: number, fromY: number, force: number): void {
+    if (this.isDead) return;
+    const overage = force - this.knockbackResistance;
+    if (overage <= 0) return; // didn't clear resistance → ignored entirely
+
+    const dx = this.state.x - fromX;
+    const dy = this.state.y - fromY;
+    const dist = Math.hypot(dx, dy);
+    if (dist === 0) return;
+
+    const push = overage * KNOCKBACK_SCALE;
+    // Geometric series: total displacement = v0*dt / (1 − decay) = push.
+    const v0 = (push * (1 - KNOCKBACK_DECAY)) / (SERVER_TICK_MS / 1000);
+    this.addKnockback((dx / dist) * v0, (dy / dist) * v0);
+
+    this.stunMs = Math.min(KNOCKBACK_STUN_MAX_MS, overage * KNOCKBACK_STUN_MS_PER_UNIT);
+    this.state.stunned = true;
+  }
+
+  // Advances the hitstun timer. Returns true while still stunned — callers skip
+  // the rest of their control tick so the knockback impulse (carried by
+  // commitVelocity) lands cleanly. Shared by enemy AI and player input.
+  updateStun(dtMs: number): boolean {
+    if (this.stunMs > 0) {
+      this.stunMs -= dtMs;
+      if (this.stunMs <= 0) {
+        this.stunMs = 0;
+        this.state.stunned = false;
+      }
+      return true;
+    }
+    return false;
+  }
+
+  /** Radius this body occupies for hit tests (inflates the source shape). 0 keeps
+   *  the old point-target behaviour; raise it to model a real hurt circle. */
+  get hurtRadius(): number {
+    return 0;
+  }
+
+  /** False once dead so a corpse takes no further hits. Enemies override to gate
+   *  on their death animation (isDying) rather than raw health. */
+  get damageable(): boolean {
+    return !this.isDead;
+  }
+
+  /** Sprite-centre world position (the schema x/y). Convenience for combat/spell
+   *  code that shouldn't reach through `.state`. */
+  get x(): number {
+    return this.state.x;
+  }
+  get y(): number {
+    return this.state.y;
   }
 
   get isDead(): boolean {

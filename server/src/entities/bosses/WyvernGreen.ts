@@ -1,5 +1,6 @@
 import { EnemyType } from "shared";
-import { Boss, BossAbility, volley } from "../Boss";
+import { Boss } from "../Boss";
+import { Spell, volley } from "../../spells";
 
 // Green Wyvern — heavier zoning: a wide 5-shot spread, slower cadence.
 // TODO: swap fireballs for poison globs + lingering puddles (needs HAZARD tiles).
@@ -12,7 +13,7 @@ export class WyvernGreen extends Boss {
   ];
 
   protected preferredRange = 220;
-  protected abilities(): BossAbility[] {
+  protected abilities(): Spell[] {
     return [volley({ id: "acid-spray", ammoId: "fireball", count: 5, spreadDeg: 44, windUpMs: 900, recoverMs: 600, cooldownMs: 3000, range: 400 })];
   }
 }

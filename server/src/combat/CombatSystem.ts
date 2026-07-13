@@ -1,0 +1,52 @@
+import { Attack, canAffect, shapeHitsPoint } from "shared";
+import { HitSource } from "./HitSource";
+
+// A thing a HitSource can land on: a body with a position, a hurt radius, a
+// vulnerability flag, and a takeHit receiver. Players and enemies implement this
+// (Entity provides the defaults). Its map key is passed in separately so the
+// resolver can do owner self-exclusion without the target knowing its own id.
+export interface CombatTarget {
+  readonly state: { x: number; y: number };
+  /** Radius the target occupies for hit tests — inflates the source shape. */
+  readonly hurtRadius: number;
+  /** False while dead/dying so a corpse takes no further hits. */
+  readonly damageable: boolean;
+  takeHit(attack: Attack): void;
+}
+
+// One group of candidate targets sharing a Layer (all players, all enemies). The
+// group carries the layer so targets don't each store a copy, and the resolver's
+// team check is one bit test per group rather than per target.
+export interface TargetGroup {
+  layer: number;
+  targets: Map<string, CombatTarget>;
+}
+
+// The single combat resolver — replaces the hand-rolled per-pair loops that used
+// to live in GameRoom.tick (player-melee→enemy, projectile→enemy/player, and the
+// enemy-contact callback). Every damage source in the game flows through here:
+//
+//   for each source × candidate target:
+//     land the hit iff  source.affects reaches the target's layer
+//                  AND  the shapes overlap
+//                  AND  the target isn't the source's own owner
+//                  AND  the source's dedupe policy claims it
+//
+// New content (boss AOE, cuttable props, hazard tiles) is a new source or a new
+// TargetGroup — never a new loop. See docs/layers.md.
+export class CombatSystem {
+  resolve(sources: HitSource[], groups: TargetGroup[]): void {
+    for (const src of sources) {
+      for (const group of groups) {
+        if (!canAffect(src.affects, group.layer)) continue;
+        group.targets.forEach((target, id) => {
+          if (!target.damageable) return;
+          if (src.ownerId === id) return;
+          if (!shapeHitsPoint(src.shape, target.state.x, target.state.y, target.hurtRadius)) return;
+          if (!src.claim(id)) return;
+          target.takeHit(src.attack);
+        });
+      }
+    }
+  }
+}

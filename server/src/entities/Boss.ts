@@ -1,103 +1,32 @@
-import { TILE_PROPS, TileId, FOOT_OFFSET, ENTITY_RADIUS, SERVER_TICK_MS } from "shared";
-import { Enemy, SpawnProjectile } from "./Enemy";
+import { TILE_PROPS, TileId, Facing, FOOT_OFFSET, ENTITY_RADIUS, SERVER_TICK_MS, ENEMY_ATTACK_AFFECTS } from "shared";
+import { Enemy } from "./Enemy";
 import { PlayerState } from "../schema/PlayerState";
+import { Spell, SpellCaster, DashCaster, AimPoint } from "../spells";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
 import { MovementBehavior, approachAbility } from "./bosses/movement";
 
-// A boss's attack. Every move follows the same wind-up → strike → recovery beat
-// (see docs/bosses.md): the boss telegraphs for `windUpMs` (client draws the
-// tell), fires on the strike frame via `execute`, then is committed/vulnerable
-// for `recoverMs` — the player's punish window — before the move goes on
-// `cooldownMs`. `range` gates when the boss will even consider the ability.
-//
-// Most attacks are instantaneous strikes (`execute`). A `channel` turns the
-// strike into an *extended* active phase (a dash, a beam) the boss runs for
-// `channel.durationMs` before recovering — the boss body itself becomes the
-// hazard. An ability has one or the other, never both.
-export interface BossAbility {
-  id: string;
-  cooldownMs: number;
-  windUpMs: number;
-  recoverMs: number;
-  range: number;
-  /** How long before the strike the aim freezes. The boss tracks the player for
-   *  the first (windUpMs − aimLockMs), then locks the aim point — the final
-   *  aimLockMs is the player's window to step out of the line. 0 aims at the
-   *  player's exact position at the moment of firing (no dodge window). */
-  aimLockMs: number;
-  /** Fired once, on the strike frame, at the locked aim point. */
-  execute(boss: Boss, aim: AimPoint, spawn: SpawnProjectile): void;
-  /** If set, the strike is an extended active phase (dash/beam) instead of a
-   *  one-shot execute. `execute` is unused in that case. */
-  channel?: BossChannel;
-  /** Optional gate beyond `range`: the boss only starts the ability when this
-   *  returns true for the current target. Fixed-pattern moves (radials) use it so
-   *  they don't fire when the player sits in a safe gap the attack can't reach. */
-  canHit?(boss: Boss, target: TargetInfo): boolean;
-}
-
-/** An extended active phase (dash, beam, spin) run every tick after the wind-up.
- *  The boss is mid-strike, not committed-and-still — it moves and can damage on
- *  contact. Reusable across bosses (spin, gallop, roll, thunder-dash). */
-export interface BossChannel {
-  /** Max length of the active phase; it also ends early if `update` returns true. */
-  durationMs: number;
-  /** True to ignore knockback for the duration (a spinning/charging boss can't
-   *  be shoved off its line — the recover window is where it becomes vulnerable). */
-  knockbackImmune?: boolean;
-  /** Called once when the active phase begins, with the locked aim point. */
-  start(boss: Boss, aim: AimPoint): void;
-  /** Called every tick during the active phase. Return true to end it early. */
-  update(boss: Boss, dtMs: number, ctx: ChannelContext): boolean | void;
-  /** Called once when the active phase ends (timer or early-out), before recover. */
-  end(boss: Boss): void;
-}
-
-export interface ChannelContext {
-  players: Map<string, PlayerState>;
-  dealDamageToPlayer: (sessionId: string, amount: number) => void;
-  spawn: SpawnProjectile;
-}
-
-/** A world-space point a boss has locked its aim onto. */
-export interface AimPoint {
-  x: number;
-  y: number;
-}
-
-export interface TargetInfo {
-  id: string;
-  dist: number;
-  dx: number; // target.x − boss.x
-  dy: number; // target.y − boss.y
-}
-
-type BossMode = "position" | "windup" | "channel" | "recover";
-
 // Base class for the 8 bosses. Bosses deal no passive contact damage — every hit
-// comes from a telegraphed ability, so a perfect player can dodge everything
-// (docs/bosses.md). Subclasses override `abilities()` (their moveset), optionally
-// `movement()` (how they reposition between attacks) and `phaseKey()` (HP-gated
-// phase switches); everything else — the wind-up/strike/recovery loop, cooldowns,
-// channels, range-keeping — lives here. Boss-scale stats default below.
-export abstract class Boss extends Enemy {
-  private mode: BossMode = "position";
-  private phaseTimer = 0;
+// comes from a telegraphed Spell, so a perfect player can dodge everything
+// (docs/bosses.md). A boss is a Caster: it hands its spells to a shared
+// SpellCaster that runs the wind-up → strike → recovery beat, and it decides
+// (here) WHICH spell to cast — the highest-priority one that's off cooldown, in
+// range, and able to hit — repositioning via a movement behaviour otherwise.
+//
+// Subclasses override `abilities()` (their Spell list), optionally `movement()`
+// and `phaseKey()` (HP-gated phase switches). Spell instances persist per phase
+// (built once, cached) so each spell's cooldown state survives; everything else —
+// the cast lifecycle, aim-lock, range-keeping — lives in Boss/SpellCaster.
+export abstract class Boss extends Enemy implements DashCaster {
+  private readonly spellCaster = new SpellCaster();
   // Enforced lull after each attack (see globalCooldownMs): while > 0 the boss
-  // repositions but starts no new ability, so the fight breathes.
+  // repositions but starts no new spell, so the fight breathes.
   private restTimer = 0;
-  private activeAbility?: BossAbility;
-  private cooldowns: Record<string, number> = {};
-  private cachedAbilities?: BossAbility[];
-  private cachedMovement?: MovementBehavior;
-  private lastPhaseKey = "";
-  // The current wind-up's aim point (world coords) and whether it's frozen yet.
-  // The boss tracks the player into these until the ability's aimLockMs, then
-  // stops updating them so a moving player can leave the line of fire.
-  private aimX = 0;
-  private aimY = 0;
-  private aimLocked = false;
-  // While true, applyKnockback is ignored (set during a knockback-immune channel).
+  // Persistent per-phase spell lists / movers, so spell cooldown state survives.
+  private readonly movesetByPhase = new Map<string, Spell[]>();
+  private readonly moverByPhase = new Map<string, MovementBehavior>();
+  // While true, applyKnockback is ignored. Derived each tick from the SpellCaster
+  // (true during a knockback-immune spell's active phase) — the boss owns the flag
+  // rather than the SpellCaster pushing it.
   private knockbackImmune = false;
   // Pixel rectangle the boss is confined to (its room). Because the body is
   // static and moves by setPosition, it would otherwise teleport straight
@@ -112,8 +41,8 @@ export abstract class Boss extends Enemy {
 
   // Boss-scaled placeholder stats: a big HP pool, wide aggro so it commits the
   // moment you enter, and enough knockback resistance to shrug off light hits.
-  // A well-tuned boss overrides these; damage/cooldown are unused (bosses deal
-  // no passive contact damage — every hit is a telegraphed ability).
+  // A well-tuned boss overrides these; attack damage/cooldown are unused (bosses
+  // deal no passive contact damage — every hit is a telegraphed spell).
   protected get maxHp(): number { return 600; }
   protected get speed(): number { return 55; }
   protected get aggroRadius(): number { return 400; }
@@ -135,36 +64,45 @@ export abstract class Boss extends Enemy {
 
   /** A mandatory rest (ms) after every attack finishes recovering, before the
    *  boss may start another — the global cooldown that keeps it from chaining
-   *  moves back-to-back. Per-ability `cooldownMs` gates each move individually;
+   *  moves back-to-back. Per-spell `cooldownMs` gates each move individually;
    *  this gates the boss as a whole. Default 0 (no rest); subclasses raise it. */
   protected get globalCooldownMs(): number {
     return 0;
   }
 
-  /** The boss's moveset. Subclasses override this. Re-read when the phase key
-   *  changes (see phaseKey), so an enrage can hand back a different list. */
-  protected abstract abilities(): BossAbility[];
+  /** The boss's moveset, highest priority first. Subclasses override. Re-read per
+   *  phase (see phaseKey) so an enrage can hand back a different list. */
+  protected abstract abilities(): Spell[];
 
   /** How the boss repositions between attacks. Defaults to the smart range-keeper
-   *  that closes to whatever ability it wants to use next. Subclasses override
-   *  with any behaviour from ./bosses/movement. */
+   *  that closes to whatever spell it wants to use next. Subclasses override with
+   *  any behaviour from ./bosses/movement. */
   protected movement(): MovementBehavior {
     return approachAbility();
   }
 
-  /** A key identifying the current combat phase. When it changes the moveset is
-   *  rebuilt — the hook for HP-threshold enrages. Default = single phase. */
+  /** A key identifying the current combat phase. When it changes the boss uses a
+   *  different (persistent) moveset — the hook for HP-threshold enrages. Crossing
+   *  a phase gives that phase's spells fresh cooldowns (they're distinct objects);
+   *  since HP only falls, this is a one-way base → enrage step. Default = one phase. */
   protected phaseKey(): string {
     return "base";
   }
 
-  // Built lazily (not in the constructor) so subclass field initializers —
-  // preferredRange and anything abilities() reads — are set before it runs.
-  private get moveset(): BossAbility[] {
-    return (this.cachedAbilities ??= this.abilities());
+  // Built once per phase (not in the constructor) so subclass field initializers —
+  // preferredRange and anything abilities() reads — run first, and so each spell's
+  // cooldown state persists across ticks.
+  private get moveset(): Spell[] {
+    const key = this.phaseKey();
+    let m = this.movesetByPhase.get(key);
+    if (!m) { m = this.abilities(); this.movesetByPhase.set(key, m); }
+    return m;
   }
   private get mover(): MovementBehavior {
-    return (this.cachedMovement ??= this.movement());
+    const key = this.phaseKey();
+    let m = this.moverByPhase.get(key);
+    if (!m) { m = this.movement(); this.moverByPhase.set(key, m); }
+    return m;
   }
 
   /** Fraction of max HP remaining (1 → 0). Subclasses use it in phaseKey(). */
@@ -172,11 +110,34 @@ export abstract class Boss extends Enemy {
     return this.state.health / this.maxHp;
   }
 
-  /** The distance a boss holds when it has no specific ability to set up. */
+  /** The distance a boss holds when it has no specific spell to set up. */
   get idealRange(): number {
     return this.preferredRange;
   }
 
+  // ── Caster / DashCaster interface ────────────────────────────────────────────
+  // x / y come from Entity; emitHitSource / spawnProjectile come from Entity.
+  get attackAffects(): number {
+    return ENEMY_ATTACK_AFFECTS;
+  }
+  get facing(): Facing {
+    return this.state.facing as Facing;
+  }
+
+  /** One dash step: advance along (dirX, dirY), reflecting off any wall/arena edge
+   *  hit this step. Collision + reflection are the mover's job here, so the dash
+   *  spell never queries walls — it just carries the heading we hand back. */
+  dashStep(dirX: number, dirY: number, pxPerSec: number): { dirX: number; dirY: number; bounces: number } {
+    // Look a little ahead so we turn before the (static-body) mover clamps us.
+    const look = ENTITY_RADIUS + 8;
+    let bounces = 0;
+    if (dirX !== 0 && this.isBoundaryAt(this.state.x + dirX * look, this.state.y)) { dirX = -dirX; bounces++; }
+    if (dirY !== 0 && this.isBoundaryAt(this.state.x, this.state.y + dirY * look)) { dirY = -dirY; bounces++; }
+    this.moveAtSpeed(dirX, dirY, pxPerSec);
+    return { dirX, dirY, bounces };
+  }
+
+  // ── Self-movement (static body) ──────────────────────────────────────────────
   /** Move at the boss's base speed in a world direction (need not be normalized).
    *  speedScale lets a behaviour crawl (0.5) or hustle (1). Used by movement
    *  behaviours. Position-based (the body is static) — see moveAtSpeed. */
@@ -217,7 +178,7 @@ export abstract class Boss extends Enemy {
   }
 
   /** True if (x, y) in world px lands on a non-walkable (wall) tile — used by
-   *  dash channels to ricochet off walls without fighting the matter solver. */
+   *  dash spells to ricochet off walls without fighting the matter solver. */
   isWallAt(x: number, y: number): boolean {
     const tile = this.physics.tileAt(x, y);
     return tile === null || !TILE_PROPS[tile as TileId].walkable;
@@ -241,8 +202,11 @@ export abstract class Boss extends Enemy {
     return this.isWallAt(cx, cy + FOOT_OFFSET);
   }
 
-  setKnockbackImmune(v: boolean): void {
-    this.knockbackImmune = v;
+  // Bosses deal NO passive contact damage — every hit is a telegraphed spell
+  // (docs/bosses.md), so a player can body-check a boss safely. Opt out of the
+  // base enemy's contact hitbox.
+  override contactHitSource(): null {
+    return null;
   }
 
   override applyKnockback(fromX: number, fromY: number, force: number): void {
@@ -250,521 +214,83 @@ export abstract class Boss extends Enemy {
     super.applyKnockback(fromX, fromY, force);
   }
 
-  override tick(
-    players: Map<string, PlayerState>,
-    dtMs: number,
-    dealDamageToPlayer: (sessionId: string, amount: number) => void,
-    spawnProjectile?: SpawnProjectile,
-  ): void {
+  // The boss AI: advance any in-flight cast, or pick the next spell / reposition.
+  // The wind-up/strike/recover beat itself lives in the shared SpellCaster; the
+  // boss just mirrors that cast state onto its schema (telegraph/channel flags +
+  // knockback immunity) each tick, reading the phase rather than being pushed it.
+  override tick(players: Map<string, PlayerState>, dtMs: number): void {
     if (this.state.isDying) return;
-    // A knockback stun interrupts whatever the boss was doing (including a
-    // wind-up) — a well-timed hit can cancel a telegraphed attack. A channel is
-    // knockback-immune, so it can't be interrupted here.
+    this.spellCaster.tickClock(dtMs);
+    this.think(players, dtMs);
+    this.syncCastState();
+  }
+
+  private think(players: Map<string, PlayerState>, dtMs: number): void {
+    // A knockback stun interrupts a wind-up — a well-timed hit cancels a
+    // telegraphed attack. Channels are knockback-immune, so they aren't hit here.
     if (this.updateStun(dtMs)) {
-      this.clearTelegraph();
-      this.mode = "position";
+      this.spellCaster.interrupt();
       return;
     }
 
-    for (const key of Object.keys(this.cooldowns)) {
-      if (this.cooldowns[key] > 0) this.cooldowns[key] = Math.max(0, this.cooldowns[key] - dtMs);
-    }
     if (this.restTimer > 0) this.restTimer = Math.max(0, this.restTimer - dtMs);
 
     const closest = this.closestPlayer(players);
     if (!closest) {
-      this.clearTelegraph();
-      this.mode = "position";
+      this.spellCaster.interrupt();
       this.transition("patrol");
       this.state.targetId = "";
       return;
     }
 
-    const target: TargetInfo = { id: closest.id, dist: closest.dist, dx: closest.dx, dy: closest.dy };
+    const target = { id: closest.id, dist: closest.dist, dx: closest.dx, dy: closest.dy };
+    // The boss aims at the current target position; the SpellCaster freezes it
+    // aimLockMs before the strike.
+    const aim: AimPoint = { x: this.state.x + target.dx, y: this.state.y + target.dy };
     this.updateFacing(target.dx, target.dy);
     this.state.targetId = target.id;
-    const spawn = spawnProjectile ?? (() => {});
 
-    switch (this.mode) {
-      case "windup":
-        // Committed to the tell — stand still. Track the player into the aim
-        // point until aimLockMs before the strike, then hold it so a moving
-        // player can slip out of the line before it fires.
-        this.phaseTimer -= dtMs;
-        if (this.activeAbility) {
-          if (!this.aimLocked) {
-            this.aimX = this.state.x + target.dx;
-            this.aimY = this.state.y + target.dy;
-            if (this.phaseTimer <= this.activeAbility.aimLockMs) this.aimLocked = true;
-          }
-          if (this.phaseTimer <= 0) this.beginStrike(this.activeAbility, spawn);
-        }
-        return;
-
-      case "channel": {
-        // Extended active strike (dash/beam): the boss moves and hazards on
-        // contact until the channel ends or its duration expires.
-        this.phaseTimer -= dtMs;
-        const ab = this.activeAbility;
-        let done = false;
-        if (ab?.channel) {
-          done = ab.channel.update(this, dtMs, { players, dealDamageToPlayer, spawn }) === true;
-        }
-        if (done || this.phaseTimer <= 0) {
-          ab?.channel?.end(this);
-          this.setKnockbackImmune(false);
-          this.state.channeling = false;
-          if (ab) this.cooldowns[ab.id] = ab.cooldownMs;
-          this.mode = "recover";
-          this.phaseTimer = ab?.recoverMs ?? 0;
-          this.clearTelegraph();
-        }
-        return;
-      }
-
-      case "recover":
-        // Vulnerable punish window — no movement, no new attack.
-        this.phaseTimer -= dtMs;
-        this.transition("attack");
-        if (this.phaseTimer <= 0) {
-          this.mode = "position";
-          this.activeAbility = undefined;
-          this.restTimer = this.globalCooldownMs; // breathe before the next attack
-        }
-        return;
-
-      case "position": {
-        this.refreshPhase();
-        // Resting between attacks: reposition but don't start anything new.
-        if (this.restTimer > 0) {
-          this.mover({ boss: this, target, players, dtMs, intended: undefined });
-          this.transition(target.dist <= this.aggroRadius ? "chase" : "patrol");
-          return;
-        }
-        // Fire the highest-priority ability that's off cooldown, in range, and
-        // (if it gates on it) actually able to hit the target; otherwise let
-        // movement set up the one it wants next.
-        const offCooldown = this.moveset.filter((a) => (this.cooldowns[a.id] ?? 0) <= 0);
-        const ready = offCooldown.find(
-          (a) => target.dist <= a.range && (!a.canHit || a.canHit(this, target)),
-        );
-        if (ready) {
-          this.startWindUp(ready, target);
-          return;
-        }
-        this.mover({ boss: this, target, players, dtMs, intended: offCooldown[0] });
-        this.transition(target.dist <= this.aggroRadius ? "chase" : "patrol");
-      }
-    }
-  }
-
-  // Enter the wind-up (telegraph) for an ability, starting the aim tracking.
-  private startWindUp(ability: BossAbility, target: TargetInfo): void {
-    this.activeAbility = ability;
-    this.mode = "windup";
-    this.phaseTimer = ability.windUpMs;
-    this.aimLocked = false;
-    this.aimX = this.state.x + target.dx; // start tracking from current pos
-    this.aimY = this.state.y + target.dy;
-    this.state.telegraph = true;
-    this.state.abilityId = ability.id;
-    this.transition("attack");
-  }
-
-  // Wind-up finished: either begin a channel (extended active phase) or fire the
-  // instant strike, then go to recover.
-  private beginStrike(ability: BossAbility, spawn: SpawnProjectile): void {
-    const aim: AimPoint = { x: this.aimX, y: this.aimY };
-    if (ability.channel) {
-      this.mode = "channel";
-      this.phaseTimer = ability.channel.durationMs;
-      this.state.telegraph = false; // strike started; keep abilityId for the action clip
-      this.state.channeling = true;
-      if (ability.channel.knockbackImmune) this.setKnockbackImmune(true);
-      ability.channel.start(this, aim);
+    // Mid-cast: advance it. When it fully finishes recovering, take the global
+    // rest before the boss may act again.
+    if (this.spellCaster.busy) {
+      const finished = this.spellCaster.update(this, dtMs, aim);
+      if (finished) this.restTimer = this.globalCooldownMs;
+      this.transition("attack");
       return;
     }
-    ability.execute(this, aim, spawn);
-    this.cooldowns[ability.id] = ability.cooldownMs;
-    this.mode = "recover";
-    this.phaseTimer = ability.recoverMs;
-    this.clearTelegraph();
+
+    // Resting between attacks: reposition but start nothing new.
+    if (this.restTimer > 0) {
+      this.mover({ boss: this, target, players, dtMs, intended: undefined });
+      this.transition(target.dist <= this.aggroRadius ? "chase" : "patrol");
+      return;
+    }
+
+    // Cast the highest-priority spell that's off cooldown, in range, and (if it
+    // gates on it) actually able to hit; otherwise let movement set up the one it
+    // wants next.
+    const now = this.spellCaster.now;
+    const ready = this.moveset.find(
+      (s) => target.dist <= s.range && s.isReady(now) && s.canHit(this, target),
+    );
+    if (ready) {
+      this.spellCaster.begin(ready, aim);
+      this.transition("attack");
+      return;
+    }
+    const intended = this.moveset.find((s) => s.isReady(now));
+    this.mover({ boss: this, target, players, dtMs, intended });
+    this.transition(target.dist <= this.aggroRadius ? "chase" : "patrol");
   }
 
-  // Rebuild the moveset (and re-read movement) when the boss crosses a phase
-  // threshold. Called only from `position` — a safe point where no ability is
-  // mid-flight. Cooldowns carry over; abilities new this phase start ready.
-  private refreshPhase(): void {
-    const key = this.phaseKey();
-    if (key === this.lastPhaseKey) return;
-    this.lastPhaseKey = key;
-    this.cachedAbilities = undefined;
-    this.cachedMovement = undefined;
+  // Mirror the SpellCaster's phase onto the schema (drives the client's tell /
+  // action animation) and onto our own knockback immunity. Telegraph and channel
+  // are just "which phase of the move we're in" — derived, not pushed.
+  private syncCastState(): void {
+    const phase = this.spellCaster.phase;
+    this.state.telegraph = phase === "windup";
+    this.state.channeling = phase === "active";
+    this.state.abilityId = this.spellCaster.activeSpellId;
+    this.knockbackImmune = this.spellCaster.knockbackImmuneActive;
   }
-
-  private clearTelegraph(): void {
-    if (this.state.telegraph) this.state.telegraph = false;
-    if (this.state.abilityId) this.state.abilityId = "";
-    if (this.state.channeling) this.state.channeling = false;
-  }
-}
-
-// ── Ability builders (shared by boss subclasses) ──────────────────────────────
-// A volley fires `count` projectiles fanned across `spreadDeg`, centred on the
-// locked aim point. count=1 is a single aimed shot; odd counts always put one
-// shot dead-on (so standing still is punished). `aimLockMs` (default 0) sets how
-// early the aim freezes during the wind-up — raise it to give a moving player
-// room to dodge out of the line (see BossAbility.aimLockMs / docs/bosses.md).
-export function volley(o: {
-  id: string; ammoId: string; count: number; spreadDeg: number;
-  windUpMs: number; recoverMs: number; cooldownMs: number; range: number;
-  aimLockMs?: number;
-}): BossAbility {
-  return {
-    id: o.id,
-    cooldownMs: o.cooldownMs,
-    windUpMs: o.windUpMs,
-    recoverMs: o.recoverMs,
-    range: o.range,
-    aimLockMs: o.aimLockMs ?? 0,
-    execute: (boss, aim, spawn) => {
-      const base = Math.atan2(aim.y - boss.state.y, aim.x - boss.state.x);
-      const spread = (o.spreadDeg * Math.PI) / 180;
-      for (let i = 0; i < o.count; i++) {
-        const off = o.count === 1 ? 0 : (i / (o.count - 1) - 0.5) * spread;
-        spawn(o.ammoId, boss.state.x, boss.state.y, base + off);
-      }
-    },
-  };
-}
-
-// A radial burst fires `count` projectiles in fixed world directions evenly
-// spaced around 360° from the boss centre — NOT aimed at the player, so the
-// player dodges by standing between the spokes (the Turtle Dragon's tremor
-// cracks: 4 cardinals leave the diagonals safe; 8 forces you through the ring).
-export function radial(o: {
-  id: string;
-  ammoId: string;
-  count: number;
-  offsetDeg?: number;
-  windUpMs: number;
-  recoverMs: number;
-  cooldownMs: number;
-  range: number;
-  /** Half-width (px) of a spoke's danger lane, for the canHit gate — roughly the
-   *  ammo's side hit radius plus slack. Default 28. */
-  laneHalfWidth?: number;
-}): BossAbility {
-  const offset = ((o.offsetDeg ?? 0) * Math.PI) / 180;
-  const step = (Math.PI * 2) / o.count;
-  const laneHalf = o.laneHalfWidth ?? 28;
-  return {
-    id: o.id,
-    cooldownMs: o.cooldownMs,
-    windUpMs: o.windUpMs,
-    recoverMs: o.recoverMs,
-    range: o.range,
-    aimLockMs: 0,
-    // Only fire when the player sits in a spoke's lane: the perpendicular distance
-    // from the player to some spoke ray is within laneHalf. A player in a safe gap
-    // (a diagonal, for 4 cardinals) doesn't draw the attack.
-    canHit: (_boss, target) => {
-      const ang = Math.atan2(target.dy, target.dx);
-      for (let i = 0; i < o.count; i++) {
-        const delta = ang - (offset + i * step);
-        const perp = target.dist * Math.sin(Math.atan2(Math.sin(delta), Math.cos(delta)));
-        if (Math.abs(perp) <= laneHalf) return true;
-      }
-      return false;
-    },
-    execute: (boss, _aim, spawn) => {
-      for (let i = 0; i < o.count; i++) {
-        spawn(o.ammoId, boss.state.x, boss.state.y, offset + i * step);
-      }
-    },
-  };
-}
-
-// A tremor line: instead of firing moving projectiles, the boss cracks the
-// ground and stationary shards ERUPT outward along each spoke — a growing line
-// that rises ring-by-ring to a fixed distance, holds for a beat, then all vanish
-// together:
-//
-//     >              (t0: first ring)
-//     >>>            (rings racing out…)
-//     >>>>>>         (fully extended, then holds)
-//     ·              (all clear at once)
-//
-// Fixed world directions like radial() (4 cardinals leave diagonals safe, 8
-// forces you through the ring), but the shards stand where they rose rather than
-// flying. A channel drives the staggered eruption; each shard's lifetime is set
-// so the whole cast clears on one tick regardless of when it rose. The shard ammo
-// is stationary (speed 0) and persistent (high pierce) — see ammo/rock-shard.
-export function tremorLine(o: {
-  id: string;
-  ammoId: string;
-  /** Number of spokes radiating from the boss (4 cardinals, 8 with diagonals). */
-  count: number;
-  offsetDeg?: number;
-  /** Shards per spoke — the line's length in segments. */
-  rings: number;
-  /** Distance between successive shards; ring i sits at (i + 1) × this from the boss. */
-  ringSpacing: number;
-  /** Time to extend all rings (the line races out over this window). */
-  growthMs: number;
-  /** How long the fully-extended line holds before every shard clears. */
-  holdMs: number;
-  /** Damage per hit from the consolidated line hitbox. */
-  damage: number;
-  /** Per-player re-hit cooldown (ms) while standing in the line — the whole
-   *  ability is one hitbox, so this gates repeat damage, not per-shard overlap. */
-  hitCooldownMs: number;
-  /** Half-width (px) of the damaging line, matched to the shard visuals. Default 12. */
-  hazardHalfWidth?: number;
-  windUpMs: number;
-  recoverMs: number;
-  cooldownMs: number;
-  range: number;
-  /** Half-width (px) of a spoke's danger lane for the canHit gate. Default 28. */
-  laneHalfWidth?: number;
-}): BossAbility {
-  const offset = ((o.offsetDeg ?? 0) * Math.PI) / 180;
-  const stepAng = (Math.PI * 2) / o.count;
-  const laneHalf = o.laneHalfWidth ?? 28;
-  return {
-    id: o.id,
-    cooldownMs: o.cooldownMs,
-    windUpMs: o.windUpMs,
-    recoverMs: o.recoverMs,
-    range: o.range,
-    aimLockMs: 0,
-    // Same gate as radial(): only erupt when the player stands in some spoke's
-    // lane, so a player in a safe gap (a diagonal, for 4 cardinals) is left alone.
-    canHit: (_boss, target) => {
-      const ang = Math.atan2(target.dy, target.dx);
-      for (let i = 0; i < o.count; i++) {
-        const delta = ang - (offset + i * stepAng);
-        const perp = target.dist * Math.sin(Math.atan2(Math.sin(delta), Math.cos(delta)));
-        if (Math.abs(perp) <= laneHalf) return true;
-      }
-      return false;
-    },
-    execute: () => {}, // the channel erupts the shards over time; no instant strike
-    channel: tremorLineChannel(o, offset, stepAng),
-  };
-}
-
-// The channel behind tremorLine: no movement — the boss holds while shards erupt
-// ring-by-ring along every spoke, then holds the finished line, then lets it
-// expire. Knockback-immune so a hit can't cancel the eruption mid-line (the
-// recover phase is the punish window).
-//
-// The shards are INERT visual markers; the whole attack is ONE hitbox owned here.
-// Each tick we damage any player standing within hazardHalf of a spoke and inside
-// the length that has erupted so far, gated by a per-player cooldown so overlapping
-// spokes (which all cross at the boss centre) can't stack multiple hits at once.
-function tremorLineChannel(
-  o: {
-    ammoId: string;
-    count: number;
-    rings: number;
-    ringSpacing: number;
-    growthMs: number;
-    holdMs: number;
-    damage: number;
-    hitCooldownMs: number;
-    hazardHalfWidth?: number;
-  },
-  offset: number,
-  stepAng: number,
-): BossChannel {
-  const totalMs = o.growthMs + o.holdMs;
-  const ringStepMs = o.growthMs / o.rings; // gap between successive rings erupting
-  const hazardHalf = o.hazardHalfWidth ?? 12;
-  // Precompute each spoke's unit direction once.
-  const dirs = Array.from({ length: o.count }, (_, s) => ({
-    x: Math.cos(offset + s * stepAng),
-    y: Math.sin(offset + s * stepAng),
-  }));
-  let elapsed = 0;
-  let ringsSpawned = 0;
-  const hitAt = new Map<string, number>(); // sessionId → ms until it can be hit again
-  return {
-    durationMs: totalMs,
-    knockbackImmune: true,
-    start() {
-      elapsed = 0;
-      ringsSpawned = 0;
-      hitAt.clear();
-    },
-    update(boss, dtMs, ctx) {
-      elapsed += dtMs;
-      // Erupt ring i (0-based) once elapsed reaches its scheduled time. Each
-      // shard's lifetime is (totalMs − scheduledTime) so it dies at totalMs — the
-      // whole line clears together no matter when each ring rose. The shards are
-      // inert (no hitbox); they only render the growing line.
-      while (ringsSpawned < o.rings && elapsed >= ringsSpawned * ringStepMs) {
-        const i = ringsSpawned;
-        const dist = (i + 1) * o.ringSpacing;
-        const life = totalMs - i * ringStepMs;
-        for (const d of dirs) {
-          const sx = boss.state.x + d.x * dist;
-          const sy = boss.state.y + d.y * dist;
-          ctx.spawn(o.ammoId, sx, sy, Math.atan2(d.y, d.x), { lifetimeMs: life, inert: true });
-        }
-        ringsSpawned++;
-      }
-
-      // Single consolidated hitbox: the danger reaches out to the furthest ring
-      // that has erupted so far. Damage each player once per hitCooldownMs.
-      const reach = ringsSpawned * o.ringSpacing;
-      for (const [id, ms] of hitAt) {
-        const next = ms - dtMs;
-        if (next <= 0) hitAt.delete(id); else hitAt.set(id, next);
-      }
-      ctx.players.forEach((p, id) => {
-        if ((hitAt.get(id) ?? 0) > 0) return;
-        const relX = p.x - boss.state.x;
-        const relY = p.y - boss.state.y;
-        for (const d of dirs) {
-          const along = relX * d.x + relY * d.y; // distance out along the spoke
-          if (along < 0 || along > reach) continue;
-          const perp = relX * -d.y + relY * d.x; // perpendicular offset from the spoke
-          if (Math.abs(perp) <= hazardHalf) {
-            ctx.dealDamageToPlayer(id, o.damage);
-            hitAt.set(id, o.hitCooldownMs);
-            break; // one hit for the whole ability, not one per overlapping spoke
-          }
-        }
-      });
-    },
-    end() {
-      // No cleanup: the shards expire on their own timed lifetimes; recover follows.
-    },
-  };
-}
-
-// A dash attack: after the wind-up the boss rockets toward the telegraphed point
-// as a channelled active phase, its body a contact hazard. Reusable for every
-// charging boss (spin, gallop, roll, thunder-dash) — tune the numbers per boss.
-export function dashAttack(o: {
-  id: string; windUpMs: number; recoverMs: number; cooldownMs: number; range: number;
-  aimLockMs?: number;
-  speed: number; maxBounces: number; durationMs: number;
-  hitRadius: number; damage: number; hitCooldownMs: number;
-}): BossAbility {
-  return {
-    id: o.id,
-    cooldownMs: o.cooldownMs,
-    windUpMs: o.windUpMs,
-    recoverMs: o.recoverMs,
-    range: o.range,
-    aimLockMs: o.aimLockMs ?? 0,
-    execute: () => {}, // the channel does the work; no instant strike
-    channel: dashChannel(o),
-  };
-}
-
-// The channel behind dashAttack: aim at the locked point, rush there, ricochet
-// off walls tile-by-tile (axis-separable, DVD-bounce style), and deal contact
-// damage with a short per-player cooldown so one pass is one hit. Ends when it
-// runs out of bounces or its duration expires; the ability's recover phase is
-// the dizzy punish window.
-function dashChannel(o: {
-  speed: number; maxBounces: number; durationMs: number;
-  hitRadius: number; damage: number; hitCooldownMs: number;
-}): BossChannel {
-  let dirX = 0;
-  let dirY = 0;
-  let bounces = 0;
-  const hitAt = new Map<string, number>(); // sessionId → ms until it can be hit again
-  return {
-    durationMs: o.durationMs,
-    knockbackImmune: true,
-    start(boss, aim) {
-      const dx = aim.x - boss.state.x, dy = aim.y - boss.state.y;
-      const len = Math.hypot(dx, dy) || 1;
-      dirX = dx / len; dirY = dy / len;
-      bounces = o.maxBounces;
-      hitAt.clear();
-    },
-    update(boss, dtMs, ctx) {
-      // Reflect the axis that would drive the boss into a wall OR its arena edge
-      // (a doorway is walkable floor, so only the arena stops it leaving the
-      // room), one bounce spent per reflection. Checking a little ahead means we
-      // turn before the matter solver ever stops us.
-      const look = ENTITY_RADIUS + 8;
-      if (dirX !== 0 && boss.isBoundaryAt(boss.state.x + dirX * look, boss.state.y)) { dirX = -dirX; bounces--; }
-      if (dirY !== 0 && boss.isBoundaryAt(boss.state.x, boss.state.y + dirY * look)) { dirY = -dirY; bounces--; }
-
-      for (const [id, ms] of hitAt) {
-        const next = ms - dtMs;
-        if (next <= 0) hitAt.delete(id); else hitAt.set(id, next);
-      }
-      ctx.players.forEach((p, id) => {
-        if ((hitAt.get(id) ?? 0) > 0) return;
-        if (Math.hypot(p.x - boss.state.x, p.y - boss.state.y) <= o.hitRadius) {
-          ctx.dealDamageToPlayer(id, o.damage);
-          hitAt.set(id, o.hitCooldownMs);
-        }
-      });
-
-      boss.rush(dirX, dirY, o.speed);
-      return bounces < 0; // spent its last ricochet → burst out into recover
-    },
-    end() {
-      // No cleanup: the recover phase (stunned/dizzy) is handled by the loop.
-    },
-  };
-}
-
-// A whirl: a stationary spin-in-place melee that batters anything within `reach`
-// — the boss's basic close-range answer to a player who hugs it. Reuses the
-// channel primitive (the boss holds position and spins), dealing damage once per
-// player over the spin. `range` is the reach, so it only triggers up close.
-export function whirl(o: {
-  id: string;
-  windUpMs: number;
-  recoverMs: number;
-  cooldownMs: number;
-  durationMs: number;
-  reach: number;
-  damage: number;
-}): BossAbility {
-  return {
-    id: o.id,
-    cooldownMs: o.cooldownMs,
-    windUpMs: o.windUpMs,
-    recoverMs: o.recoverMs,
-    range: o.reach,
-    aimLockMs: 0,
-    execute: () => {}, // the channel does the work; no instant strike
-    channel: whirlChannel(o),
-  };
-}
-
-// The channel behind whirl: no movement — the boss spins in place and damages
-// each player within reach once. Knockback-immune so a hugging player can't
-// interrupt the spin by trading hits.
-function whirlChannel(o: { durationMs: number; reach: number; damage: number }): BossChannel {
-  const hit = new Set<string>();
-  return {
-    durationMs: o.durationMs,
-    knockbackImmune: true,
-    start() {
-      hit.clear();
-    },
-    update(boss, _dtMs, ctx) {
-      ctx.players.forEach((p, id) => {
-        if (hit.has(id)) return;
-        if (Math.hypot(p.x - boss.state.x, p.y - boss.state.y) <= o.reach) {
-          ctx.dealDamageToPlayer(id, o.damage);
-          hit.add(id);
-        }
-      });
-    },
-    end() {
-      // No cleanup: the recover phase is the punish window.
-    },
-  };
 }

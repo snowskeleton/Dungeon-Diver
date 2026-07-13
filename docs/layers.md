@@ -1,15 +1,15 @@
 # Interaction Layers — collision & combat design
 
-Design spec for a single, data-driven layer system that governs **both** physical blocking
-and combat hits. Replaces two ad-hoc mechanisms:
+A single, data-driven layer system that governs **both** physical blocking and combat hits.
+**Built** (this is no longer a spec) — it replaced two ad-hoc mechanisms:
 
-- **Physical blocking** — matter-js bodies, today filtered by `CAT` + a global `COLLIDE`
-  toggle table (`server/src/physics/PhysicsWorld.ts`).
-- **Combat hits** — hand-rolled per-pair loops in `GameRoom.tick()`
-  (`player.tryHitEnemy(...)`, `proj.tryHit(...)`), where the projectile loop is **hardcoded
-  to enemies** — the exact thing that can't express a boss projectile.
+- **Physical blocking** — matter-js bodies, once filtered by a `CAT` + global `COLLIDE`
+  toggle table; now per-body `layer` / `solidMask` from each entity's `InteractionProfile`
+  (`server/src/physics/PhysicsWorld.ts`, profiles in `shared/src/layers.ts`).
+- **Combat hits** — once hand-rolled per-pair loops in `GameRoom.tick()`; now **one resolver**
+  (`server/src/combat/CombatSystem`) over hit sources and targets.
 
-Both get unified under one **Layer** vocabulary. This is a spec, not built yet.
+Both are unified under one **Layer** vocabulary (`shared/src/layers.ts`).
 
 ---
 
@@ -96,35 +96,44 @@ there — a shot shouldn't hit *its own owner* the instant it spawns — handled
 
 ---
 
-## The payoff: one resolver instead of N loops
+## The payoff: one resolver, no per-pair loops
 
-Today `GameRoom.tick()` has separate hardcoded passes (player-melee→enemy, projectile→enemy,
-and would need more for boss→player). Under this model they collapse into **one generic
-interaction resolver**:
+`GameRoom.tick()` used to have separate hardcoded passes (player-melee→enemy, projectile→enemy,
+and would have needed more for boss→player). They are now **one generic resolver**
+(`server/src/combat/CombatSystem.resolve`):
 
-1. Collect **hit sources** this tick: melee swings, projectiles, AOE bursts, hazard tiles —
-   each an `{ shape, affects, onHit(target), ownerId? }`.
-2. Collect **targets**: any body/entity with `{ layer, shape, takeDamage() }`.
-3. For each source × candidate target, fire `onHit` **only when `source.affects & target.layer`**
-   (and shapes overlap, and it's not the source's own owner).
+1. Every entity queues its **hit sources** during its own tick — melee swings, projectiles, AOE
+   bursts, boss channels — each a `HitSource` `{ shape, affects, attack, claim(targetId), ownerId? }`
+   (`server/src/combat/HitSource.ts`). `GameRoom` drains them (`Entity.drainEffects`).
+2. **Targets** are any `CombatTarget` (`{ state.x/y, hurtRadius, damageable, takeHit(attack) }`) —
+   players and enemies, grouped by `layer`.
+3. For each source × candidate target, deliver the `Attack` **only when `source.affects & target.layer`**,
+   the shapes overlap, it isn't the source's own owner, and the source's `claim` allows it (per-source
+   dedupe — once-per-swing, pierce, or a `RehitGate` for lingering hitboxes).
 
-New content — boss projectiles, AOE, cuttable props, pickups, hazard tiles — is a new source
-or target *profile*, never a new loop. The matter-js side mirrors this: per-body
-`layer`/`solidMask` replaces the global `COLLIDE`/`maskFor`, so blocking is per-entity (the
-corpse's `WALL`-only mask at `PhysicsWorld.ts:215` becomes just swapping to the corpse
-profile).
+New content — boss projectiles, AOE, cuttable props, pickups, hazard tiles — is a new source or
+target, never a new loop. The matter-js side mirrors this: per-body `layer`/`solidMask` replaces the
+old global `COLLIDE`/`maskFor`, so blocking is per-entity (a corpse just swaps to a `WALL`-only mask
+via `setEntityDead`).
 
 ---
 
-## Migration sketch (when we build it)
+## How it's built (map to the code)
 
-1. Add `Layer` enum + an `InteractionProfile` type to `shared/`.
-2. `PhysicsWorld`: replace `CAT`/`COLLIDE`/`maskFor` with `layer`/`solidMask` on each body;
-   the H-overlay debug draw reads the same layers.
-3. `Projectile`: carry `layer`/`affects`/`blockedBy`; sweep test filters by `affects & layer`;
-   wall stop uses `blockedBy`.
-4. Melee: player swings and (new) boss/enemy attacks become hit sources with an `affects` mask.
-5. `GameRoom.tick()`: replace the per-pair loops with the single resolver.
+1. `shared/src/layers.ts` — `Layer` enum, `InteractionProfile`, `canAffect`, and the per-team
+   attack masks (`PLAYER_ATTACK_AFFECTS` / `ENEMY_ATTACK_AFFECTS`).
+2. `shared/src/combat/` — the `Attack` value object + `HitShape` geometry (`shapeHitsPoint`).
+3. `server/src/physics/PhysicsWorld.ts` — bodies carry `layer`/`solidMask` from their profile; the
+   H-overlay debug draw reads the same layers.
+4. `server/src/entities/Projectile.ts` — carries `affects`; its swept-ellipse `hitSource()` flows
+   through the resolver like any other source.
+5. `server/src/combat/CombatSystem.ts` — the single resolver; `Entity.takeHit(attack)` is the
+   receiver (damage + knockback, shared by players and enemies).
+6. Attacks are produced by the unified Spell system (`server/src/spells/`): a boss move, an enemy
+   attack, or a player's weapon swing/shot all emit hit sources or projectiles through the same
+   `Caster` interface. See [bosses.md](bosses.md), [weapons-and-ammo.md](weapons-and-ammo.md).
 
-This is the substrate the boss movesets in [bosses.md](bosses.md) sit on — item 2 there
-("enemy-owned projectiles") *is* giving projectiles an `affects: PLAYER` profile.
+### Friendly fire, still a one-bit flip
+`PLAYER_ATTACK_AFFECTS = ENEMY | PROP`. OR in `PLAYER` to let player attacks hit players — one
+data edit, no new code, because `affects` is directional per-source data (the `ownerId`
+self-exclusion keeps a shot from hitting its own caster).

@@ -1,9 +1,13 @@
-import { InputMessage, CharacterClass, CharacterType, CharacterConfig, getCharacterConfig, WeaponId, Weapon, WEAPON_REGISTRY, PLAYER_BODY_PROFILE } from "shared";
+import {
+  InputMessage, CharacterClass, CharacterType, CharacterConfig, getCharacterConfig,
+  WeaponId, Weapon, WEAPON_REGISTRY, PLAYER_BODY_PROFILE, PLAYER_ATTACK_AFFECTS, Facing,
+} from "shared";
 import { PlayerState } from "../schema/PlayerState";
 import { Entity } from "./Entity";
+import { Spell, SpellCaster, Caster, AimPoint, weaponSpell } from "../spells";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
 
-export class Player extends Entity {
+export class Player extends Entity implements Caster {
   state: PlayerState;
   readonly charConfig: CharacterConfig;
   // Owned weapon ids + the index of the active one. `weapon` derives from these
@@ -11,11 +15,12 @@ export class Player extends Entity {
   readonly inventory: string[] = [];
   private activeIndex = 0;
   lastInput: InputMessage = { dx: 0, dy: 0, attack: false };
-  // Set true on the tick a new swing/shot starts; GameRoom reads it to spawn a
-  // projectile for ranged weapons, then clears it.
-  justAttacked = false;
-  private attackCooldown: number = 0;
-  private hitThisSwing = new Set<string>();
+  // Runs the active weapon's spell (the swing/shot lifecycle) — the same shared
+  // runner bosses use. Attacks are just zero-wind-up spells now.
+  private readonly spellCaster = new SpellCaster();
+  // One persistent Spell per owned weapon (built on first use), so its per-swing
+  // dedupe state lives with it.
+  private readonly weaponSpells = new Map<string, Spell>();
   // Previous tick's attack-button state, for rising-edge detection (melee fires
   // once per press; ranged auto-fires while held).
   private prevAttack = false;
@@ -54,8 +59,16 @@ export class Player extends Entity {
     return WEAPON_REGISTRY[this.inventory[this.activeIndex]] ?? WEAPON_REGISTRY["broadsword"];
   }
 
-  /** Cycle the active weapon by `delta` (wraps). Does NOT reset attackCooldown —
-   *  switching mid-cooldown can't be used to fire faster. */
+  // ── Caster interface (x/y/emitHitSource/spawnProjectile come from Entity) ─────
+  get facing(): Facing {
+    return this.state.facing;
+  }
+  get attackAffects(): number {
+    return PLAYER_ATTACK_AFFECTS;
+  }
+
+  /** Cycle the active weapon by `delta` (wraps). Does NOT reset the attack — you
+   *  can't switch mid-swing to fire faster (the in-flight cast keeps running). */
   switchWeapon(delta: number): void {
     const n = this.inventory.length;
     if (n <= 1) return;
@@ -79,12 +92,47 @@ export class Player extends Entity {
     return true;
   }
 
+  // The persistent Spell for a weapon (built once, cached so its swing dedupe state
+  // persists across swings).
+  private spellFor(weapon: Weapon): Spell {
+    let spell = this.weaponSpells.get(weapon.id);
+    if (!spell) {
+      spell = weaponSpell(weapon);
+      this.weaponSpells.set(weapon.id, spell);
+    }
+    return spell;
+  }
+
+  // A point in the facing direction — a ranged spell turns it into the shot angle.
+  private facingAim(): AimPoint {
+    const d = 100;
+    switch (this.state.facing) {
+      case "right": return { x: this.state.x + d, y: this.state.y };
+      case "left":  return { x: this.state.x - d, y: this.state.y };
+      case "down":  return { x: this.state.x, y: this.state.y + d };
+      case "up":    return { x: this.state.x, y: this.state.y - d };
+    }
+  }
+
   applyInput(input: InputMessage, dtMs: number): void {
+    this.spellCaster.tickClock(dtMs);
+
+    // Hitstun freezes control — movement, attack, facing all pause — while the
+    // knockback impulse (carried by commitVelocity) sweeps the player. The in-flight
+    // cast is frozen too. prevAttack is tracked so a held attack doesn't auto-fire
+    // the instant stun ends.
+    if (this.updateStun(dtMs)) {
+      this.prevAttack = input.attack;
+      return;
+    }
+
     const risingEdge = input.attack && !this.prevAttack;
-    // While a ranged weapon is held down we freeze facing so you can strafe /
-    // back away while keeping your aim — except on the first frame of the press,
-    // which still turns you toward the direction you're moving so you can aim.
-    const facingLocked = this.weapon.isRanged && input.attack && !risingEdge;
+    const weapon = this.weapon;
+    const spell = this.spellFor(weapon);
+
+    // Ranged weapons freeze facing while held so you can strafe under your aim —
+    // except the first press frame, which still turns you to aim.
+    const facingLocked = weapon.isRanged && input.attack && !risingEdge;
     if (!facingLocked) {
       if (input.dx > 0) this.state.facing = "right";
       else if (input.dx < 0) this.state.facing = "left";
@@ -94,59 +142,24 @@ export class Player extends Entity {
 
     this.move(input.dx, input.dy, this.charConfig.speed);
 
-    if (this.attackCooldown > 0) {
-      this.attackCooldown -= dtMs;
-      if (this.attackCooldown <= 0) {
-        this.state.isAttacking = false;
-        this.attackCooldown = 0;
+    // Advance an in-flight attack; then — the same tick it finishes — a held/pressed
+    // attack may start the next one, so the cadence matches the old attack cooldown.
+    const aim = this.facingAim();
+    if (this.spellCaster.busy) {
+      this.spellCaster.update(this, dtMs, aim);
+    }
+    if (!this.spellCaster.busy) {
+      const wantsToFire = spell.fireMode === "hold" ? input.attack : risingEdge;
+      if (wantsToFire && spell.isReady(this.spellCaster.now)) {
+        this.state.attackSeq = (this.state.attackSeq + 1) % 65536;
+        this.spellCaster.begin(spell, aim);
+        this.spellCaster.update(this, dtMs, aim); // zero wind-up: strike this tick
       }
     }
-
-    // Ranged weapons auto-fire while the button is held; melee only fires on the
-    // rising edge, so you can't hold to chain-swing.
-    const wantsToFire = this.weapon.isRanged ? input.attack : risingEdge;
-    if (wantsToFire && this.attackCooldown <= 0) {
-      this.state.isAttacking = true;
-      this.state.attackSeq = (this.state.attackSeq + 1) % 65536;
-      this.hitThisSwing.clear();
-      this.attackCooldown = this.weapon.attackCooldownMs;
-      this.justAttacked = true;
-    }
+    // isAttacking tracks the cast: true through the swing/shot window (drives the
+    // client attack animation), false when idle.
+    this.state.isAttacking = this.spellCaster.busy;
 
     this.prevAttack = input.attack;
-  }
-
-  // Fire direction in radians derived from facing (right=0, down=+π/2,
-  // left=π, up=−π/2). Matches screen coords where +y points down.
-  getShotAngle(): number {
-    switch (this.state.facing) {
-      case "right": return 0;
-      case "down":  return Math.PI / 2;
-      case "left":  return Math.PI;
-      case "up":    return -Math.PI / 2;
-    }
-  }
-
-  tryHitEnemy(enemyId: string, ex: number, ey: number): boolean {
-    if (this.hitThisSwing.has(enemyId)) return false;
-    if (!this.hitsEnemy(ex, ey)) return false;
-    this.hitThisSwing.add(enemyId);
-    return true;
-  }
-
-  getAttackHitbox(): { x: number; y: number; w: number; h: number } | null {
-    if (!this.state.isAttacking) return null;
-    const box = this.weapon.getHurtbox(this.state.x, this.state.y, this.state.facing);
-    if (!box || box.shape !== "rect") return null;
-    return { x: box.x, y: box.y, w: box.w, h: box.h };
-  }
-
-  hitsEnemy(ex: number, ey: number): boolean {
-    const box = this.getAttackHitbox();
-    if (!box) return false;
-    return (
-      ex >= box.x && ex <= box.x + box.w &&
-      ey >= box.y && ey <= box.y + box.h
-    );
   }
 }

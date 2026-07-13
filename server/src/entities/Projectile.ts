@@ -1,5 +1,6 @@
 import { AmmoConfig, TILE_PROPS, TileId } from "shared";
 import { ProjectileState } from "../schema/ProjectileState";
+import { HitSource } from "../combat/HitSource";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
 
 // A kinematic projectile (arrow, fireball, thrown weapon). Not a matter-js body:
@@ -94,41 +95,42 @@ export class Projectile {
     }
   }
 
-  // Returns true the first time this projectile overlaps a given target (player
-  // or enemy). Caller is responsible for the `affects & layer` check; this only
-  // tests geometry + dedupe. Consumes one point of pierce; the projectile dies
-  // once pierce is exhausted.
-  tryHit(targetId: string, ex: number, ey: number): boolean {
-    if (this.dead || this.hitTargets.has(targetId)) return false;
-
-    // Elliptical overlap aligned to travel direction: `along` runs down the
-    // flight line (forward = the hitbox "length"), `perp` across it (side = the
-    // "width"). A wide side radius lets a shot miss left/right without reaching
-    // farther ahead.
-    //
-    // Crucially this is a SWEPT test against the whole segment travelled this
-    // tick (prevX/prevY → state.x/y), not just the endpoint: a fast arrow moves
-    // ~25px/tick but has only a ~10px forward radius, so a point-at-endpoint test
-    // tunnels straight through enemies sitting in the gap between samples.
-    const fwd = this.cfg.hitRadiusForward;
-    const side = this.cfg.hitRadiusSide;
+  // This projectile as a hit source for the combat resolver. The shape is the
+  // swept ellipse from prevX/prevY → state.x/y (thick enough to not tunnel past a
+  // target between ticks); `affects` decides which team its hits reach; `claim`
+  // holds the pierce/dedupe policy. Gather only while `!dead`.
+  hitSource(): HitSource {
     const speed = Math.hypot(this.vx, this.vy) || 1;
-    const ux = this.vx / speed;
-    const uy = this.vy / speed;
-    // Distance travelled this tick along the flight line (segment [0, segLen]).
-    const segLen = (this.state.x - this.prevX) * ux + (this.state.y - this.prevY) * uy;
+    return {
+      shape: {
+        kind: "sweptEllipse",
+        x0: this.prevX,
+        y0: this.prevY,
+        x1: this.state.x,
+        y1: this.state.y,
+        ux: this.vx / speed,
+        uy: this.vy / speed,
+        forward: this.cfg.hitRadiusForward,
+        side: this.cfg.hitRadiusSide,
+      },
+      affects: this.affects,
+      ownerId: this.ownerSessionId,
+      attack: {
+        damage: this.cfg.damage,
+        knockback: this.cfg.knockback,
+        // Push targets along the arrow's travel direction (its previous position).
+        sourceX: this.prevX,
+        sourceY: this.prevY,
+      },
+      claim: (targetId) => this.claimHit(targetId),
+    };
+  }
 
-    const dx = ex - this.prevX;
-    const dy = ey - this.prevY;
-    const along = dx * ux + dy * uy; // enemy position along the segment (from prev)
-    const perp = dx * -uy + dy * ux; // enemy perpendicular offset from the line
-
-    const k = (perp * perp) / (side * side);
-    if (k > 1) return false; // beyond the side radius — no ellipse can reach it
-    // Nearest point of the swept centre-line to the enemy, then compare against
-    // the ellipse's forward half-width there (the elliptical end caps).
-    const gap = along < 0 ? -along : along > segLen ? along - segLen : 0;
-    if (gap > fwd * Math.sqrt(1 - k)) return false;
+  // Dedupe + pierce: the first overlap with a given target lands and consumes one
+  // point of pierce; the projectile dies once pierce is exhausted. Geometry is the
+  // resolver's job (the swept-ellipse shape); this is pure bookkeeping.
+  private claimHit(targetId: string): boolean {
+    if (this.dead || this.hitTargets.has(targetId)) return false;
     this.hitTargets.add(targetId);
     this.pierceLeft -= 1;
     if (this.pierceLeft <= 0) this.dead = true;

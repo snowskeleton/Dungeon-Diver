@@ -6,16 +6,18 @@ import {
   generateDungeon, DungeonResult, DungeonOptions, FloorChangeMessage,
   MAP_SEED, EnemyType, AMMO_REGISTRY, WEAPON_REGISTRY,
   DebugConfig, toDungeonOptions,
-  Layer, canAffect, PLAYER_PROJECTILE_AFFECTS, ENEMY_PROJECTILE_AFFECTS,
+  Layer, PLAYER_ATTACK_AFFECTS, ENEMY_ATTACK_AFFECTS,
 } from "shared";
 import { GameState } from "../schema/GameState";
 import { ShopState, ShopItemState } from "../schema/ShopState";
 import { Player } from "../entities/Player";
 import { Enemy, EnemyClass, SpawnOpts } from "../entities/Enemy";
+import { PendingEffect } from "../entities/Entity";
 import { REGULAR_ENEMIES } from "../entities/enemies";
 import { BOSSES } from "../entities/bosses";
 import { Projectile } from "../entities/Projectile";
 import { PlayerState } from "../schema/PlayerState";
+import { CombatSystem, HitSource } from "../combat";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
 import { FloorManager } from "../floor/FloorManager";
 const SHOP_ITEM_COUNT = 3;
@@ -28,6 +30,7 @@ export class GameRoom extends Room<GameState> {
   private players = new Map<string, Player>();
   private enemies = new Map<string, Enemy>();
   private projectiles = new Map<string, Projectile>();
+  private readonly combat = new CombatSystem();
   private spawnIndex = 0;
   private enemyCounter = 0;
   private projectileCounter = 0;
@@ -408,60 +411,42 @@ export class GameRoom extends Room<GameState> {
         }
       });
 
-      enemy.tick(
-        visiblePlayers as unknown as Map<string, PlayerState>,
-        dtMs,
-        (targetSessionId, damage) => { this.players.get(targetSessionId)?.takeDamage(damage); },
-        // Bosses fire projectiles through this hook; stamped with the enemy team
-        // mask so the shot damages players, not other enemies (docs/layers.md).
-        (ammoId, x, y, angle, opts) => this.spawnProjectile(ammoId, x, y, angle, id, ENEMY_PROJECTILE_AFFECTS, opts),
-      );
+      enemy.tick(visiblePlayers as unknown as Map<string, PlayerState>, dtMs);
     });
 
-    // 3. Player melee attacks. (Ranged weapons have a null hurtbox → no hits here.)
-    this.players.forEach((player) => {
-      this.enemies.forEach((enemy, enemyId) => {
-        if (enemy.isDying) return;
-        if (player.tryHitEnemy(enemyId, enemy.state.x, enemy.state.y)) {
-          enemy.takeDamage(player.weapon.damage);
-          enemy.applyKnockback(player.state.x, player.state.y, player.weapon.attackForce);
-        }
-      });
-    });
-
-    // 3b. Ranged weapons: spawn a projectile on the tick a shot starts. Player
-    //     shots damage enemies (and props); never other players (docs/layers.md).
-    this.players.forEach((player, sid) => {
-      if (!player.justAttacked) return;
-      player.justAttacked = false;
-      const ammoId = player.weapon.ammoId;
-      if (!player.weapon.isRanged || !ammoId) return;
-      this.spawnProjectile(ammoId, player.state.x, player.state.y, player.getShotAngle(), sid, PLAYER_PROJECTILE_AFFECTS);
-    });
-
-    // 3c. Move projectiles and resolve hits against whichever team the shot's
-    //     `affects` mask reaches. One loop serves player and enemy projectiles.
-    this.projectiles.forEach((proj, id) => {
-      proj.tick(dtMs);
-      if (!proj.dead) {
-        if (canAffect(proj.affects, Layer.ENEMY)) {
-          this.enemies.forEach((enemy, eid) => {
-            if (enemy.isDying) return;
-            if (proj.tryHit(eid, enemy.state.x, enemy.state.y)) {
-              enemy.takeDamage(proj.cfg.damage);
-              enemy.applyKnockback(proj.prevX, proj.prevY, proj.cfg.knockback);
-            }
-          });
-        }
-        if (canAffect(proj.affects, Layer.PLAYER)) {
-          this.players.forEach((player, pid) => {
-            if (pid === proj.ownerSessionId || player.isDead) return; // no self-hit
-            if (proj.tryHit(pid, player.state.x, player.state.y)) {
-              player.takeDamage(proj.cfg.damage);
-            }
-          });
-        }
+    // 3. Combat resolution. Every entity (players' swings/shots, enemies' contact +
+    //    boss abilities) queued its damage effects during its own tick; drain them
+    //    into hit sources + newly-spawned projectiles, stamping team + owner here.
+    //    Then advance all projectiles and hand every live hit source to the one
+    //    resolver (see combat/CombatSystem).
+    const sources: HitSource[] = [];
+    const drain = (ownerId: string, affects: number, effects: PendingEffect[]) => {
+      for (const e of effects) {
+        if (e.kind === "hit") sources.push(e.source);
+        else this.spawnProjectile(e.ammoId, e.x, e.y, e.angle, ownerId, affects, e.opts);
       }
+    };
+    this.players.forEach((player, sid) => drain(sid, PLAYER_ATTACK_AFFECTS, player.drainEffects()));
+    this.enemies.forEach((enemy, id) => {
+      const contact = enemy.contactHitSource(id);
+      if (contact) sources.push(contact);
+      drain(id, ENEMY_ATTACK_AFFECTS, enemy.drainEffects());
+    });
+
+    // Advance all projectiles (including any just spawned above) and add the live
+    // ones as hit sources, so a shot moves and can connect on its spawn tick.
+    this.projectiles.forEach((proj) => proj.tick(dtMs));
+    this.projectiles.forEach((proj) => {
+      if (!proj.dead) sources.push(proj.hitSource());
+    });
+
+    this.combat.resolve(sources, [
+      { layer: Layer.PLAYER, targets: this.players },
+      { layer: Layer.ENEMY, targets: this.enemies },
+    ]);
+
+    // Reap projectiles that hit a wall, aged out, or spent their pierce.
+    this.projectiles.forEach((proj, id) => {
       if (proj.dead) {
         this.projectiles.delete(id);
         this.state.projectiles.delete(id);

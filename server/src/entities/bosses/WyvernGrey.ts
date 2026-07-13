@@ -1,5 +1,6 @@
 import { EnemyType } from "shared";
-import { Boss, BossAbility, volley } from "../Boss";
+import { Boss } from "../Boss";
+import { Spell, volley } from "../../spells";
 
 // Grey Wyvern — fast & precise: a single quick shot on a short tell.
 // TODO: replace with the marked lightning-strike AOE (needs bolt art + AOE support).
@@ -12,7 +13,7 @@ export class WyvernGrey extends Boss {
   ];
 
   protected preferredRange = 240;
-  protected abilities(): BossAbility[] {
+  protected abilities(): Spell[] {
     return [volley({ id: "spark", ammoId: "fireball", count: 1, spreadDeg: 0, windUpMs: 450, recoverMs: 350, cooldownMs: 1500, range: 460 })];
   }
 }

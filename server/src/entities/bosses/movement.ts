@@ -1,5 +1,6 @@
 import type { PlayerState } from "../../schema/PlayerState";
-import type { Boss, BossAbility, TargetInfo } from "../Boss";
+import type { Boss } from "../Boss";
+import type { Spell, TargetInfo } from "../../spells";
 
 // ── Boss movement behaviours ──────────────────────────────────────────────────
 // A boss's *ability selection* (what to do next) lives in Boss; its *movement*
@@ -21,10 +22,10 @@ export interface MovementContext {
   target: TargetInfo;
   players: Map<string, PlayerState>;
   dtMs: number;
-  /** The ability the boss intends to use next (highest-priority one off
-   *  cooldown), so movement can position for its range. Undefined when every
-   *  ability is on cooldown — behaviours then fall back to the boss's idealRange. */
-  intended?: BossAbility;
+  /** The spell the boss intends to use next (highest-priority one off cooldown),
+   *  so movement can position for its range. Undefined when every spell is on
+   *  cooldown — behaviours then fall back to the boss's idealRange. */
+  intended?: Spell;
 }
 
 export type MovementBehavior = (ctx: MovementContext) => void;

@@ -1,0 +1,278 @@
+import { RehitGate } from "../combat/RehitGate";
+import { Spell, SpellEffect, DashCaster } from "./Spell";
+
+// ── Spell builders (shared by bosses; reusable by ranged enemies / players) ────
+// Each returns a persistent Spell instance. They are written against the Caster
+// interface, not any concrete entity, so the same volley works for a boss or a
+// future ranged enemy — only the caster's team mask (attackAffects) differs.
+
+// A volley fires `count` projectiles fanned across `spreadDeg`, centred on the
+// locked aim point. count=1 is a single aimed shot; odd counts always put one
+// shot dead-on (so standing still is punished). `aimLockMs` (default 0) sets how
+// early the aim freezes during the wind-up — raise it to give a moving target
+// room to dodge out of the line.
+export function volley(o: {
+  id: string; ammoId: string; count: number; spreadDeg: number;
+  windUpMs: number; recoverMs: number; cooldownMs: number; range: number;
+  aimLockMs?: number;
+}): Spell {
+  return new Spell({
+    id: o.id,
+    windUpMs: o.windUpMs,
+    activeMs: 0,
+    recoverMs: o.recoverMs,
+    cooldownMs: o.cooldownMs,
+    range: o.range,
+    aimLockMs: o.aimLockMs ?? 0,
+    effect: {
+      onActivate: (caster, aim) => {
+        const base = Math.atan2(aim.y - caster.y, aim.x - caster.x);
+        const spread = (o.spreadDeg * Math.PI) / 180;
+        for (let i = 0; i < o.count; i++) {
+          const off = o.count === 1 ? 0 : (i / (o.count - 1) - 0.5) * spread;
+          caster.spawnProjectile(o.ammoId, caster.x, caster.y, base + off);
+        }
+      },
+    },
+  });
+}
+
+// A radial burst fires `count` projectiles in fixed world directions evenly
+// spaced around 360° from the caster — NOT aimed at the target, so it dodges by
+// standing between the spokes. `canHit` only fires it when the target sits in a
+// spoke's lane, so a target in a safe gap doesn't draw the attack.
+export function radial(o: {
+  id: string; ammoId: string; count: number; offsetDeg?: number;
+  windUpMs: number; recoverMs: number; cooldownMs: number; range: number;
+  laneHalfWidth?: number;
+}): Spell {
+  const offset = ((o.offsetDeg ?? 0) * Math.PI) / 180;
+  const step = (Math.PI * 2) / o.count;
+  const laneHalf = o.laneHalfWidth ?? 28;
+  return new Spell({
+    id: o.id,
+    windUpMs: o.windUpMs,
+    activeMs: 0,
+    recoverMs: o.recoverMs,
+    cooldownMs: o.cooldownMs,
+    range: o.range,
+    aimLockMs: 0,
+    canHit: (_caster, target) => inSomeSpokeLane(target.dx, target.dy, target.dist, offset, step, o.count, laneHalf),
+    effect: {
+      onActivate: (caster) => {
+        for (let i = 0; i < o.count; i++) {
+          caster.spawnProjectile(o.ammoId, caster.x, caster.y, offset + i * step);
+        }
+      },
+    },
+  });
+}
+
+// A tremor line: the caster cracks the ground and stationary shards erupt outward
+// along fixed spokes, a line racing out ring-by-ring, holding, then clearing
+// together. The shards are inert visual markers; the real hazard is one thick
+// segment per spoke (all sharing a RehitGate so the crossing point near the
+// caster is a single hit). See docs/bosses.md.
+export function tremorLine(o: {
+  id: string; ammoId: string; count: number; offsetDeg?: number;
+  rings: number; ringSpacing: number; growthMs: number; holdMs: number;
+  damage: number; hitCooldownMs: number; hazardHalfWidth?: number;
+  windUpMs: number; recoverMs: number; cooldownMs: number; range: number;
+  laneHalfWidth?: number;
+}): Spell {
+  const offset = ((o.offsetDeg ?? 0) * Math.PI) / 180;
+  const stepAng = (Math.PI * 2) / o.count;
+  const laneHalf = o.laneHalfWidth ?? 28;
+  return new Spell({
+    id: o.id,
+    windUpMs: o.windUpMs,
+    activeMs: o.growthMs + o.holdMs,
+    recoverMs: o.recoverMs,
+    cooldownMs: o.cooldownMs,
+    range: o.range,
+    aimLockMs: 0,
+    knockbackImmuneWhileActive: true,
+    canHit: (_caster, target) => inSomeSpokeLane(target.dx, target.dy, target.dist, offset, stepAng, o.count, laneHalf),
+    effect: tremorEffect(o, offset, stepAng),
+  });
+}
+
+// A dash: after the wind-up the caster rockets toward the telegraphed point, its
+// body a contact hazard, ricocheting off walls/arena until it runs out of bounces
+// or the duration expires. Reusable for any charging boss.
+export function dashAttack(o: {
+  id: string; windUpMs: number; recoverMs: number; cooldownMs: number; range: number;
+  aimLockMs?: number; speed: number; maxBounces: number; durationMs: number;
+  hitRadius: number; damage: number; hitCooldownMs: number;
+}): Spell {
+  return new Spell({
+    id: o.id,
+    windUpMs: o.windUpMs,
+    activeMs: o.durationMs,
+    recoverMs: o.recoverMs,
+    cooldownMs: o.cooldownMs,
+    range: o.range,
+    aimLockMs: o.aimLockMs ?? 0,
+    knockbackImmuneWhileActive: true,
+    effect: dashEffect(o),
+  });
+}
+
+// A whirl: a stationary spin-in-place melee that batters anything within `reach`
+// (the anti-hug answer). `range` is the reach so it only triggers up close; each
+// target is hit once for the whole spin.
+export function whirl(o: {
+  id: string; windUpMs: number; recoverMs: number; cooldownMs: number;
+  durationMs: number; reach: number; damage: number;
+}): Spell {
+  return new Spell({
+    id: o.id,
+    windUpMs: o.windUpMs,
+    activeMs: o.durationMs,
+    recoverMs: o.recoverMs,
+    cooldownMs: o.cooldownMs,
+    range: o.reach,
+    aimLockMs: 0,
+    knockbackImmuneWhileActive: true,
+    effect: whirlEffect(o),
+  });
+}
+
+// ── Effects ──────────────────────────────────────────────────────────────────
+
+function whirlEffect(o: { reach: number; damage: number }): SpellEffect {
+  const gate = new RehitGate(Infinity); // once per target for the whole spin
+  return {
+    onActivate: () => gate.reset(),
+    onActiveTick: (caster, dtMs) => {
+      gate.tick(dtMs);
+      caster.emitHitSource({
+        shape: { kind: "circle", cx: caster.x, cy: caster.y, r: o.reach },
+        affects: caster.attackAffects,
+        attack: { damage: o.damage, knockback: 0, sourceX: caster.x, sourceY: caster.y },
+        claim: (id) => gate.claim(id),
+      });
+    },
+  };
+}
+
+function dashEffect(o: {
+  speed: number; maxBounces: number; hitRadius: number; damage: number; hitCooldownMs: number;
+}): SpellEffect {
+  let dirX = 0;
+  let dirY = 0;
+  let bounces = 0;
+  const gate = new RehitGate(o.hitCooldownMs);
+  return {
+    onActivate: (caster, aim) => {
+      const dx = aim.x - caster.x, dy = aim.y - caster.y;
+      const len = Math.hypot(dx, dy) || 1;
+      dirX = dx / len; dirY = dy / len;
+      bounces = o.maxBounces;
+      gate.reset();
+    },
+    onActiveTick: (caster, dtMs) => {
+      gate.tick(dtMs);
+      // Contact hitbox at the current (pre-move) position — one hit per
+      // hitCooldownMs per target, so a single pass is a single hit.
+      caster.emitHitSource({
+        shape: { kind: "circle", cx: caster.x, cy: caster.y, r: o.hitRadius },
+        affects: caster.attackAffects,
+        attack: { damage: o.damage, knockback: 0, sourceX: caster.x, sourceY: caster.y },
+        claim: (id) => gate.claim(id),
+      });
+
+      // Move + wall-bounce is the mover's job; we just carry the running heading.
+      const step = (caster as DashCaster).dashStep(dirX, dirY, o.speed);
+      dirX = step.dirX; dirY = step.dirY; bounces -= step.bounces;
+      return bounces < 0; // spent its last ricochet → burst out into recover
+    },
+  };
+}
+
+function tremorEffect(
+  o: {
+    ammoId: string; count: number; rings: number; ringSpacing: number;
+    growthMs: number; holdMs: number; damage: number; hitCooldownMs: number;
+    hazardHalfWidth?: number;
+  },
+  offset: number,
+  stepAng: number,
+): SpellEffect {
+  const totalMs = o.growthMs + o.holdMs;
+  const ringStepMs = o.growthMs / o.rings; // gap between successive rings erupting
+  const hazardHalf = o.hazardHalfWidth ?? 12;
+  const dirs = Array.from({ length: o.count }, (_, s) => ({
+    x: Math.cos(offset + s * stepAng),
+    y: Math.sin(offset + s * stepAng),
+  }));
+  let elapsed = 0;
+  let ringsSpawned = 0;
+  // One gate for the whole ability: overlapping spokes (they cross at the caster)
+  // count as a single hit per hitCooldownMs, as the old `break` did.
+  const gate = new RehitGate(o.hitCooldownMs);
+  return {
+    onActivate: () => {
+      elapsed = 0;
+      ringsSpawned = 0;
+      gate.reset();
+    },
+    onActiveTick: (caster, dtMs) => {
+      elapsed += dtMs;
+      // Erupt ring i once elapsed reaches its scheduled time. Each shard's lifetime
+      // is (totalMs − scheduledTime) so the whole line clears together. Shards are
+      // inert visuals; they only render the growing line.
+      while (ringsSpawned < o.rings && elapsed >= ringsSpawned * ringStepMs) {
+        const i = ringsSpawned;
+        const dist = (i + 1) * o.ringSpacing;
+        const life = totalMs - i * ringStepMs;
+        for (const d of dirs) {
+          caster.spawnProjectile(
+            o.ammoId,
+            caster.x + d.x * dist,
+            caster.y + d.y * dist,
+            Math.atan2(d.y, d.x),
+            { lifetimeMs: life, inert: true },
+          );
+        }
+        ringsSpawned++;
+      }
+
+      // The real hitbox: one thick segment per spoke, out to the erupted length.
+      gate.tick(dtMs);
+      const reach = ringsSpawned * o.ringSpacing;
+      if (reach > 0) {
+        for (const d of dirs) {
+          caster.emitHitSource({
+            shape: {
+              kind: "segment",
+              x0: caster.x,
+              y0: caster.y,
+              x1: caster.x + d.x * reach,
+              y1: caster.y + d.y * reach,
+              halfWidth: hazardHalf,
+            },
+            affects: caster.attackAffects,
+            attack: { damage: o.damage, knockback: 0, sourceX: caster.x, sourceY: caster.y },
+            claim: (id) => gate.claim(id),
+          });
+        }
+      }
+    },
+  };
+}
+
+// True if (dx, dy) sits within `laneHalf` of some evenly-spaced spoke ray — the
+// shared gate for radial() and tremorLine() (a target in a safe gap is left be).
+function inSomeSpokeLane(
+  dx: number, dy: number, dist: number,
+  offset: number, step: number, count: number, laneHalf: number,
+): boolean {
+  const ang = Math.atan2(dy, dx);
+  for (let i = 0; i < count; i++) {
+    const delta = ang - (offset + i * step);
+    const perp = dist * Math.sin(Math.atan2(Math.sin(delta), Math.cos(delta)));
+    if (Math.abs(perp) <= laneHalf) return true;
+  }
+  return false;
+}

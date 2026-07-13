@@ -1,5 +1,6 @@
 import { EnemyType } from "shared";
-import { Boss, BossAbility, volley } from "../Boss";
+import { Boss } from "../Boss";
+import { Spell, volley } from "../../spells";
 
 // Tengu — caster: a 5-orb barrage from range (odd count → one shot dead-on).
 // TODO: lightning pillars + teleport + summon/stoneface phase gate.
@@ -13,7 +14,7 @@ export class TenguMask extends Boss {
   ];
 
   protected preferredRange = 250;
-  protected abilities(): BossAbility[] {
+  protected abilities(): Spell[] {
     return [volley({ id: "orb-barrage", ammoId: "magic-orb", count: 5, spreadDeg: 44, windUpMs: 700, recoverMs: 550, cooldownMs: 2400, range: 480 })];
   }
 }
