@@ -110,7 +110,10 @@ export class EnemyEntity extends Entity implements DebugDrawable {
       this.shadow = this.scene.add.ellipse(this.sprite.x, this.sprite.y, w, w * 0.42, 0x000000, 0.4);
       this.shadow.setDepth(1);
     }
-    if (this.dying) {
+    // Only cast a shadow while actually aloft. True flyers cruise above 0 so it's
+    // always shown for them; a mostly-grounded flyer (the Tengu, airborne only for
+    // its Stone Crash) gets a shadow just for the dive, not while it stands.
+    if (this.dying || this.airHeight < 1) {
       this.shadow.setVisible(false);
       return;
     }

@@ -282,6 +282,24 @@ export class GameRoom extends Room<GameState> {
     this.floorManager.assignEnemy(id, pos.x, pos.y);
   }
 
+  // Spawn a boss-summoned minion (the Tengu's Mirror Split). It joins its
+  // summoner's room so the room-clear check counts it — the barrier stays until
+  // both boss and adds are down. If the requested spot is a wall, it drops on the
+  // summoner instead so it never lands inside geometry.
+  private summonEnemy(ownerId: string, Cls: EnemyClass, x: number, y: number): void {
+    const owner = this.enemies.get(ownerId);
+    const tile = this.physics.tileAt(x, y);
+    if (tile === null || !TILE_PROPS[tile].walkable) {
+      x = owner?.state.x ?? x;
+      y = owner?.state.y ?? y;
+    }
+    const id = `enemy_${this.enemyCounter++}`;
+    const enemy = new Cls(this.physics, x, y);
+    this.enemies.set(id, enemy);
+    this.state.enemies.set(id, enemy.state);
+    this.floorManager.assignEnemy(id, x, y);
+  }
+
   private randomPosInRoom(
     colMin: number, rowMin: number, colMax: number, rowMax: number,
   ): { x: number; y: number } | null {
@@ -420,9 +438,13 @@ export class GameRoom extends Room<GameState> {
     //    Then advance all projectiles and hand every live hit source to the one
     //    resolver (see combat/CombatSystem).
     const sources: HitSource[] = [];
+    // Summons are deferred out of the enemies.forEach below: spawning would mutate
+    // the map mid-iteration. Collected here, then materialized after the loop.
+    const summons: { ownerId: string; effect: Extract<PendingEffect, { kind: "summon" }> }[] = [];
     const drain = (ownerId: string, affects: number, effects: PendingEffect[]) => {
       for (const e of effects) {
         if (e.kind === "hit") sources.push(e.source);
+        else if (e.kind === "summon") summons.push({ ownerId, effect: e });
         else this.spawnProjectile(e.ammoId, e.x, e.y, e.angle, ownerId, affects, e.opts);
       }
     };
@@ -432,6 +454,7 @@ export class GameRoom extends Room<GameState> {
       if (contact) sources.push(contact);
       drain(id, ENEMY_ATTACK_AFFECTS, enemy.drainEffects());
     });
+    for (const s of summons) this.summonEnemy(s.ownerId, s.effect.enemy, s.effect.x, s.effect.y);
 
     // Advance all projectiles (including any just spawned above) and add the live
     // ones as hit sources, so a shot moves and can connect on its spawn tick.

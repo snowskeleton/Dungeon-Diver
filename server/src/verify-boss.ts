@@ -38,7 +38,7 @@ for (const BossClass of BOSSES) {
         const src = e.source;
         if (canAffect(src.affects, Layer.PLAYER) && shapeHitsPoint(src.shape, player.x, player.y) && src.claim("p1")) player.health -= src.attack.damage;
         if (canAffect(src.affects, Layer.ENEMY) && shapeHitsPoint(src.shape, bystander.state.x, bystander.state.y) && src.claim("b1")) bystander.takeDamage(src.attack.damage);
-      } else {
+      } else if (e.kind === "projectile") {
         shots++;
         const affects = e.opts?.inert ? 0 : ENEMY_PROJECTILE_AFFECTS;
         projectiles.push(new Projectile(physics, AMMO_REGISTRY[e.ammoId], e.x, e.y, e.angle, "boss", affects, e.opts?.lifetimeMs));

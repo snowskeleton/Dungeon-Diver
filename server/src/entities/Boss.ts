@@ -1,7 +1,7 @@
 import { TILE_PROPS, TileId, Facing, FOOT_OFFSET, ENTITY_RADIUS, SERVER_TICK_MS, ENEMY_ATTACK_AFFECTS } from "shared";
-import { Enemy } from "./Enemy";
+import { Enemy, EnemyClass } from "./Enemy";
 import { PlayerState } from "../schema/PlayerState";
-import { Spell, SpellCaster, DashCaster, AimPoint } from "../spells";
+import { Spell, SpellCaster, DashCaster, SummonCaster, AimPoint } from "../spells";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
 import { MovementBehavior, approachAbility } from "./bosses/movement";
 
@@ -16,7 +16,7 @@ import { MovementBehavior, approachAbility } from "./bosses/movement";
 // and `phaseKey()` (HP-gated phase switches). Spell instances persist per phase
 // (built once, cached) so each spell's cooldown state survives; everything else —
 // the cast lifecycle, aim-lock, range-keeping — lives in Boss/SpellCaster.
-export abstract class Boss extends Enemy implements DashCaster {
+export abstract class Boss extends Enemy implements DashCaster, SummonCaster {
   private readonly spellCaster = new SpellCaster();
   // Enforced lull after each attack (see globalCooldownMs): while > 0 the boss
   // repositions but starts no new spell, so the fight breathes.
@@ -28,6 +28,10 @@ export abstract class Boss extends Enemy implements DashCaster {
   // (true during a knockback-immune spell's active phase) — the boss owns the flag
   // rather than the SpellCaster pushing it.
   private knockbackImmune = false;
+  // While true the boss takes no damage — derived each tick from the SpellCaster
+  // (an invulnerable spell's active phase, e.g. the Tengu's stone flight). Gates
+  // `damageable` so the combat resolver skips it entirely.
+  private invulnerable = false;
   // Pixel rectangle the boss is confined to (its room). Because the body is
   // static and moves by setPosition, it would otherwise teleport straight
   // through doorways and the FloorManager's barrier bodies (the tile map only
@@ -214,6 +218,23 @@ export abstract class Boss extends Enemy implements DashCaster {
     super.applyKnockback(fromX, fromY, force);
   }
 
+  // Invulnerable during an invulnerable spell's active phase (stone flight): the
+  // resolver checks damageable and skips the hit, and this guards any other source
+  // (tile damage) too.
+  override get damageable(): boolean {
+    return super.damageable && !this.invulnerable;
+  }
+  override takeDamage(amount: number): void {
+    if (this.invulnerable) return;
+    super.takeDamage(amount);
+  }
+
+  // SummonCaster: a summon spell (Mirror Split) buffers a minion into the effect
+  // queue GameRoom drains, which places it in this boss's room.
+  summon(enemy: EnemyClass, x: number, y: number): void {
+    this.emitSummon(enemy, x, y);
+  }
+
   // The boss AI: advance any in-flight cast, or pick the next spell / reposition.
   // The wind-up/strike/recover beat itself lives in the shared SpellCaster; the
   // boss just mirrors that cast state onto its schema (telegraph/channel flags +
@@ -295,5 +316,6 @@ export abstract class Boss extends Enemy implements DashCaster {
     this.state.channeling = phase === "active";
     this.state.abilityId = this.spellCaster.activeSpellId;
     this.knockbackImmune = this.spellCaster.knockbackImmuneActive;
+    this.invulnerable = this.spellCaster.invulnerableActive;
   }
 }

@@ -1,5 +1,6 @@
 import { RehitGate } from "../combat/RehitGate";
-import { Spell, SpellEffect, DashCaster, FlightCaster } from "./Spell";
+import { Spell, SpellEffect, DashCaster, FlightCaster, SummonCaster } from "./Spell";
+import type { EnemyClass } from "../entities/Enemy";
 
 // ── Spell builders (shared by bosses; reusable by ranged enemies / players) ────
 // Each returns a persistent Spell instance. They are written against the Caster
@@ -180,7 +181,159 @@ export function whirl(o: {
   });
 }
 
+// A nova burst: the caster charges (the wind-up tell), then detonates a stationary
+// radial blast centred on itself — one hit per target over a short strike window,
+// with knockback (the Tengu's Storm Nova lightning explosion). Unlike whirl (a
+// sustained anti-hug spin) this is a single expanding pop that shoves you off it.
+export function novaBurst(o: {
+  id: string; windUpMs: number; recoverMs: number; cooldownMs: number; range: number;
+  radius: number; damage: number; knockback: number; strikeMs?: number;
+}): Spell {
+  return new Spell({
+    id: o.id,
+    windUpMs: o.windUpMs,
+    activeMs: o.strikeMs ?? 260,
+    recoverMs: o.recoverMs,
+    cooldownMs: o.cooldownMs,
+    range: o.range,
+    aimLockMs: 0,
+    knockbackImmuneWhileActive: true,
+    effect: novaEffect(o),
+  });
+}
+
+// A stone crash: the caster turns to stone and launches straight up (invulnerable
+// and knockback-immune the whole flight — untargetable stone), drifting to hover
+// over the locked aim point, hangs a beat (the shadow telegraph), then slams down
+// for a big AOE crash with heavy knockback (the Tengu's Stone Crash). Dodge by not
+// being under the shadow when it lands. Needs a FlightCaster (drives its height).
+export function stoneDrop(o: {
+  id: string; windUpMs: number; recoverMs: number; cooldownMs: number; range: number;
+  aimLockMs?: number;
+  peakHeight: number; riseMs: number; hangMs: number; dropMs: number;
+  radius: number; damage: number; knockback: number;
+}): Spell {
+  return new Spell({
+    id: o.id,
+    windUpMs: o.windUpMs,
+    activeMs: o.riseMs + o.hangMs + o.dropMs,
+    recoverMs: o.recoverMs,
+    cooldownMs: o.cooldownMs,
+    range: o.range,
+    aimLockMs: o.aimLockMs ?? 0,
+    knockbackImmuneWhileActive: true,
+    invulnerableWhileActive: true,
+    effect: stoneDropEffect(o),
+  });
+}
+
+// A summon: after the wind-up (the split cast tell) the caster conjures `count`
+// minions of `enemy`, ringed evenly around it at `radius` (the Tengu's Mirror
+// Split). Instant — the adds appear on the strike frame. Casts to a SummonCaster.
+export function summonAdds(o: {
+  id: string; enemy: EnemyClass; count: number; radius: number;
+  windUpMs: number; recoverMs: number; cooldownMs: number; range: number;
+}): Spell {
+  return new Spell({
+    id: o.id,
+    windUpMs: o.windUpMs,
+    activeMs: 0,
+    recoverMs: o.recoverMs,
+    cooldownMs: o.cooldownMs,
+    range: o.range,
+    aimLockMs: 0,
+    effect: {
+      onActivate: (caster) => {
+        const step = (Math.PI * 2) / o.count;
+        // Offset by half a step so an even count never spawns dead on the facing axis.
+        for (let i = 0; i < o.count; i++) {
+          const ang = i * step + step / 2;
+          (caster as SummonCaster).summon(
+            o.enemy,
+            caster.x + Math.cos(ang) * o.radius,
+            caster.y + Math.sin(ang) * o.radius,
+          );
+        }
+      },
+    },
+  });
+}
+
 // ── Effects ──────────────────────────────────────────────────────────────────
+
+function novaEffect(o: { radius: number; damage: number; knockback: number }): SpellEffect {
+  const gate = new RehitGate(Infinity); // once per target for the whole burst
+  return {
+    onActivate: () => gate.reset(),
+    onActiveTick: (caster) => {
+      caster.emitHitSource({
+        shape: { kind: "circle", cx: caster.x, cy: caster.y, r: o.radius },
+        affects: caster.attackAffects,
+        attack: { damage: o.damage, knockback: o.knockback, sourceX: caster.x, sourceY: caster.y },
+        claim: (id) => gate.claim(id),
+      });
+    },
+  };
+}
+
+function stoneDropEffect(o: {
+  peakHeight: number; riseMs: number; hangMs: number; dropMs: number;
+  radius: number; damage: number; knockback: number;
+}): SpellEffect {
+  let dirX = 0;
+  let dirY = 0;
+  let driftSpeed = 0; // px/sec of horizontal drift toward the landing spot
+  let elapsed = 0;
+  const hoverEnds = o.riseMs + o.hangMs;
+  const gate = new RehitGate(Infinity); // the crash hits each target once
+  return {
+    onActivate: (caster, aim) => {
+      const dx = aim.x - caster.x, dy = aim.y - caster.y;
+      const dist = Math.hypot(dx, dy);
+      dirX = dist === 0 ? 0 : dx / dist;
+      dirY = dist === 0 ? 0 : dy / dist;
+      // Cover the horizontal gap to the aim over the rise+hang, so it hovers over
+      // the landing spot before it drops. Then the drift stops and it falls straight.
+      driftSpeed = dist / (hoverEnds / 1000);
+      elapsed = 0;
+      gate.reset();
+    },
+    onActiveTick: (caster, dtMs) => {
+      const fc = caster as FlightCaster;
+      elapsed += dtMs;
+
+      // Height profile: 0 → peak over the rise, hold at peak through the hang, then
+      // peak → 0 over the drop.
+      let frac: number;
+      if (elapsed < o.riseMs) frac = elapsed / o.riseMs;
+      else if (elapsed < hoverEnds) frac = 1;
+      else frac = Math.max(0, 1 - (elapsed - hoverEnds) / o.dropMs);
+      fc.setAirHeight(o.peakHeight * frac);
+
+      // Drift toward the landing spot while airborne (rise + hang), reflecting off
+      // arena walls; frozen once it starts dropping so the crash lands under the
+      // settled shadow.
+      if (elapsed < hoverEnds && (dirX !== 0 || dirY !== 0)) {
+        const step = fc.dashStep(dirX, dirY, driftSpeed);
+        dirX = step.dirX;
+        dirY = step.dirY;
+      }
+
+      // The crash: once it has touched back down, emit the AOE. The gate keeps it to
+      // a single hit per target even though the source lingers the last couple ticks.
+      if (elapsed >= hoverEnds && frac <= 0) {
+        caster.emitHitSource({
+          shape: { kind: "circle", cx: caster.x, cy: caster.y, r: o.radius },
+          affects: caster.attackAffects,
+          attack: { damage: o.damage, knockback: o.knockback, sourceX: caster.x, sourceY: caster.y },
+          claim: (id) => gate.claim(id),
+        });
+      }
+      return elapsed >= o.riseMs + o.hangMs + o.dropMs;
+    },
+    onDeactivate: (caster) => (caster as FlightCaster).setAirHeight(0),
+  };
+}
 
 function whirlEffect(o: { reach: number; damage: number }): SpellEffect {
   const gate = new RehitGate(Infinity); // once per target for the whole spin

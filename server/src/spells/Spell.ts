@@ -1,6 +1,6 @@
 import { Facing } from "shared";
 import { HitSource } from "../combat/HitSource";
-import { SpawnProjectile } from "../entities/Enemy";
+import type { SpawnProjectile, EnemyClass } from "../entities/Enemy";
 
 // A world-space point a cast has aimed at (the locked target position).
 export interface AimPoint {
@@ -46,6 +46,14 @@ export interface DashCaster extends Caster {
   dashStep(dirX: number, dirY: number, pxPerSec: number): { dirX: number; dirY: number; bounces: number };
 }
 
+// A caster that can conjure minions — a boss whose ability spawns adds (the
+// Tengu's Mirror Split). Only bosses implement it (they buffer the summon into the
+// effect queue GameRoom drains); the summon spell casts to this narrower surface.
+export interface SummonCaster extends Caster {
+  /** Spawn one minion of `enemy` at (x, y) in the caster's room. */
+  summon(enemy: EnemyClass, x: number, y: number): void;
+}
+
 // A caster that can dive: on top of dashStep (horizontal movement) it drives its
 // own airborne height. Any Enemy already has setAirHeight; a flying boss also has
 // dashStep, so it satisfies this. The swoop effect lowers the height to the floor
@@ -83,6 +91,9 @@ export interface SpellOpts {
   aimLockMs: number;
   /** Ignore knockback for the whole active phase (a spin can't be shoved off). */
   knockbackImmuneWhileActive?: boolean;
+  /** Take no damage for the whole active phase — the caster reads this to gate its
+   *  `damageable` (the Tengu is untouchable stone while airborne mid-Stone Crash). */
+  invulnerableWhileActive?: boolean;
   /** How a holder (a player) triggers this: "press" fires once per key press,
    *  "hold" auto-fires while held. Ignored by AI casters (bosses). Default press. */
   fireMode?: "press" | "hold";
@@ -107,6 +118,7 @@ export class Spell {
   readonly range: number;
   readonly aimLockMs: number;
   readonly knockbackImmuneWhileActive: boolean;
+  readonly invulnerableWhileActive: boolean;
   readonly fireMode: "press" | "hold";
   private readonly effect: SpellEffect;
   private readonly canHitFn?: (caster: Caster, target: TargetInfo) => boolean;
@@ -122,6 +134,7 @@ export class Spell {
     this.range = opts.range;
     this.aimLockMs = opts.aimLockMs;
     this.knockbackImmuneWhileActive = opts.knockbackImmuneWhileActive ?? false;
+    this.invulnerableWhileActive = opts.invulnerableWhileActive ?? false;
     this.fireMode = opts.fireMode ?? "press";
     this.effect = opts.effect;
     this.canHitFn = opts.canHit;

@@ -39,7 +39,7 @@ function resolveStep(
   const drain = (ownerId: string, affects: number, effects: ReturnType<Player["drainEffects"]>) => {
     for (const e of effects) {
       if (e.kind === "hit") sources.push(e.source);
-      else projectiles.push(new Projectile(physics, AMMO_REGISTRY[e.ammoId], e.x, e.y, e.angle, ownerId, e.opts?.inert ? 0 : affects, e.opts?.lifetimeMs));
+      else if (e.kind === "projectile") projectiles.push(new Projectile(physics, AMMO_REGISTRY[e.ammoId], e.x, e.y, e.angle, ownerId, e.opts?.inert ? 0 : affects, e.opts?.lifetimeMs));
     }
   };
   players.forEach((p, sid) => drain(sid, PLAYER_ATTACK_AFFECTS, p.drainEffects()));

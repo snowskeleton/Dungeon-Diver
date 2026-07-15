@@ -50,6 +50,12 @@ export class SpellCaster {
     return this._phase === "active" && (this.spell?.knockbackImmuneWhileActive ?? false);
   }
 
+  /** True while mid-active-phase of an invulnerable spell — the caster reads this
+   *  to gate its `damageable` (the Tengu's stone flight). */
+  get invulnerableActive(): boolean {
+    return this._phase === "active" && (this.spell?.invulnerableWhileActive ?? false);
+  }
+
   /** Advance the clock. Call once per tick regardless of phase. */
   tickClock(dtMs: number): void {
     this.elapsed += dtMs;

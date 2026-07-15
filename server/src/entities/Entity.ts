@@ -5,7 +5,7 @@ import {
 } from "shared";
 import { EntityState } from "../schema/EntityState";
 import { HitSource } from "../combat/HitSource";
-import type { SpawnProjectile, SpawnOpts } from "./Enemy";
+import type { SpawnProjectile, SpawnOpts, EnemyClass } from "./Enemy";
 import { PhysicsWorld, syncStateFromBody } from "../physics/PhysicsWorld";
 
 // A damage effect an entity produced during its tick, drained by GameRoom into the
@@ -13,7 +13,10 @@ import { PhysicsWorld, syncStateFromBody } from "../physics/PhysicsWorld";
 // ranged shot all queue these; GameRoom stamps team + owner at drain time.
 export type PendingEffect =
   | { kind: "hit"; source: HitSource }
-  | { kind: "projectile"; ammoId: string; x: number; y: number; angle: number; opts?: SpawnOpts };
+  | { kind: "projectile"; ammoId: string; x: number; y: number; angle: number; opts?: SpawnOpts }
+  // A boss ability spawning a minion enemy (the Tengu's Mirror Split). GameRoom
+  // drains it into a real enemy in the caster's room. Boss-only in practice.
+  | { kind: "summon"; enemy: EnemyClass; x: number; y: number };
 
 // Knockback velocity is multiplied by this each tick; combined with the v0
 // math in applyKnockback it reproduces the old total push distance.
@@ -96,6 +99,12 @@ export abstract class Entity {
   spawnProjectile: SpawnProjectile = (ammoId, x, y, angle, opts) => {
     this.pendingEffects.push({ kind: "projectile", ammoId, x, y, angle, opts });
   };
+
+  /** Queue a minion enemy to spawn this tick (a boss summon). GameRoom places it
+   *  in the caster's room. Protected so only a Boss (via SummonCaster) exposes it. */
+  protected emitSummon(enemy: EnemyClass, x: number, y: number): void {
+    this.pendingEffects.push({ kind: "summon", enemy, x, y });
+  }
 
   /** Hand this tick's queued effects to GameRoom and clear the buffer. */
   drainEffects(): PendingEffect[] {

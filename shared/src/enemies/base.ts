@@ -27,6 +27,8 @@ export type EnemyType =
   | "float-skull"
   | "float-skull-teal"
   | "float-skull-pink"
+  // Boss-summoned: the Tengu Mask's smaller split copies (never in the rabble pool)
+  | "tengu-shade"
   // Directional (up/right/down/left rows)
   | "bones"
   | "bones-blader"

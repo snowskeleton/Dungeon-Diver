@@ -281,8 +281,11 @@ many bosses each unlocks:
    and ground shadow, and the wyvern swoop drives the height dynamically. **Still TODO:**
    *untargetability* while high (the body stays hittable at its ground point) and a tracking
    ground-target marker (buttstomp).
-7. **Summon hook** into the enemy spawner; **invulnerability flag** (Stoneface). Teleport
-   already exists via `Entity.teleport()`.
+7. **Summon hook** into the enemy spawner; **invulnerability flag** (Stoneface). ✅ *Both
+   built for the Tengu Mask:* a `summon` effect (`Entity.emitSummon` → `SummonCaster` →
+   GameRoom places a minion in the caster's room; the `summonAdds` builder rings them) and
+   `Spell.invulnerableWhileActive` → `Boss.invulnerable` gating `damageable` (the Stone Crash
+   is untouchable stone while airborne). Teleport already exists via `Entity.teleport()`.
 8. **Lingering ground hazards** (fire/poison/gas tiles with a lifetime + on-tick effect) —
    wyverns, some AOE residue.
 
