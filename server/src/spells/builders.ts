@@ -1,5 +1,5 @@
 import { RehitGate } from "../combat/RehitGate";
-import { Spell, SpellEffect, DashCaster } from "./Spell";
+import { Spell, SpellEffect, DashCaster, FlightCaster } from "./Spell";
 
 // ── Spell builders (shared by bosses; reusable by ranged enemies / players) ────
 // Each returns a persistent Spell instance. They are written against the Caster
@@ -118,6 +118,48 @@ export function dashAttack(o: {
   });
 }
 
+// A swoop: a flying boss coils at cruise height (the wind-up tell), then dives
+// along the telegraphed heading — dropping to the floor and pulling back up over
+// the active phase. Its claws (a contact circle at the ground position) hurt only
+// while it's low, so the dive is dodged by not being where it skims. The dive
+// speed is chosen so height reaches 0 right as it passes the locked aim point.
+export function swoop(o: {
+  id: string;
+  windUpMs: number;
+  recoverMs: number;
+  cooldownMs: number;
+  range: number;
+  aimLockMs?: number;
+  /** The caster's cruising altitude in px — the top of the dive (match the flyer's
+   *  own `cruiseHeight`). */
+  cruiseHeight: number;
+  /** Time to fall from cruise height to the floor. */
+  diveMs: number;
+  /** Time to climb back to cruise. */
+  riseMs: number;
+  hitRadius: number;
+  damage: number;
+  knockback?: number;
+  hitCooldownMs: number;
+  /** Clamp on the auto-computed dive speed (px/sec). */
+  minSpeed?: number;
+  maxSpeed?: number;
+  /** Claws hurt while height is at or below this fraction of cruise (default 0.5). */
+  hitBelowFrac?: number;
+}): Spell {
+  return new Spell({
+    id: o.id,
+    windUpMs: o.windUpMs,
+    activeMs: o.diveMs + o.riseMs,
+    recoverMs: o.recoverMs,
+    cooldownMs: o.cooldownMs,
+    range: o.range,
+    aimLockMs: o.aimLockMs ?? 0,
+    knockbackImmuneWhileActive: true,
+    effect: swoopEffect(o),
+  });
+}
+
 // A whirl: a stationary spin-in-place melee that batters anything within `reach`
 // (the anti-hug answer). `range` is the reach so it only triggers up close; each
 // target is hit once for the whole spin.
@@ -153,6 +195,64 @@ function whirlEffect(o: { reach: number; damage: number }): SpellEffect {
         claim: (id) => gate.claim(id),
       });
     },
+  };
+}
+
+function swoopEffect(o: {
+  cruiseHeight: number;
+  diveMs: number;
+  riseMs: number;
+  hitRadius: number;
+  damage: number;
+  knockback?: number;
+  hitCooldownMs: number;
+  minSpeed?: number;
+  maxSpeed?: number;
+  hitBelowFrac?: number;
+}): SpellEffect {
+  let dirX = 0;
+  let dirY = 0;
+  let speed = 0;
+  let elapsed = 0;
+  const gate = new RehitGate(o.hitCooldownMs);
+  const hitBelow = o.hitBelowFrac ?? 0.5;
+  return {
+    onActivate: (caster, aim) => {
+      const dx = aim.x - caster.x, dy = aim.y - caster.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      dirX = dx / dist; dirY = dy / dist;
+      // Fall onto the aim point: cover the horizontal distance over the dive, so
+      // height hits 0 just as the boss passes where the target was.
+      speed = Math.min(o.maxSpeed ?? 650, Math.max(o.minSpeed ?? 250, dist / (o.diveMs / 1000)));
+      elapsed = 0;
+      gate.reset();
+    },
+    onActiveTick: (caster, dtMs) => {
+      const fc = caster as FlightCaster;
+      elapsed += dtMs;
+      // Height fraction of cruise: 1 → 0 over the dive, then 0 → 1 over the rise.
+      const frac = elapsed < o.diveMs
+        ? 1 - elapsed / o.diveMs
+        : Math.min(1, (elapsed - o.diveMs) / o.riseMs);
+      fc.setAirHeight(o.cruiseHeight * frac);
+
+      // Keep travelling along the (wall-reflected) dive heading the whole time.
+      const step = fc.dashStep(dirX, dirY, speed);
+      dirX = step.dirX; dirY = step.dirY;
+
+      // Claws are a contact hazard at the ground position, live only while low.
+      gate.tick(dtMs);
+      if (frac <= hitBelow) {
+        caster.emitHitSource({
+          shape: { kind: "circle", cx: caster.x, cy: caster.y, r: o.hitRadius },
+          affects: caster.attackAffects,
+          attack: { damage: o.damage, knockback: o.knockback ?? 0, sourceX: caster.x, sourceY: caster.y },
+          claim: (id) => gate.claim(id),
+        });
+      }
+      return elapsed >= o.diveMs + o.riseMs;
+    },
+    onDeactivate: (caster) => (caster as FlightCaster).setAirHeight(o.cruiseHeight),
   };
 }
 

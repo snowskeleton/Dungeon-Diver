@@ -64,6 +64,12 @@ export abstract class Enemy extends Entity {
   /** "horizontal" art has one side view (flipX for left); "directional" has a
    *  row per facing. Must match the client visual def for this enemy. */
   protected get facingMode(): EnemyFacingMode { return "horizontal"; }
+  /** Airborne cruising height in px above the ground plane; 0 = grounded (default).
+   *  Any flyer — a bat, a floater, or a flying boss — overrides this. The base tick
+   *  keeps state.airHeight here every tick (a dive spell overrides it during its
+   *  active phase); the client lifts the sprite by it and draws a shadow beneath.
+   *  The collision body stays at the ground point, so height is purely visual. */
+  protected get cruiseHeight(): number { return 0; }
 
   /** This enemy's id, read from the concrete subclass's `static readonly type`. */
   protected get typeId(): EnemyType {
@@ -89,6 +95,20 @@ export abstract class Enemy extends Entity {
 
   get isDying(): boolean {
     return this.state.isDying;
+  }
+
+  /** Set the airborne height (px) the client renders the sprite at. Public so a
+   *  dive spell (see FlightCaster) can drive it during a swoop. Guarded so a
+   *  steady hover doesn't re-flag the schema field every tick. */
+  setAirHeight(px: number): void {
+    if (this.state.airHeight !== px) this.state.airHeight = px;
+  }
+
+  /** Re-assert the cruising altitude each tick — 0 when dying, so a flyer falls to
+   *  the ground for its death animation. Called at the top of tick() before the AI
+   *  runs, so a dive spell's active phase can override it for the same tick. */
+  protected applyFlightBaseline(): void {
+    this.setAirHeight(this.state.isDying ? 0 : this.cruiseHeight);
   }
 
   /** A dying enemy plays its death animation but takes no further hits. */
@@ -137,6 +157,7 @@ export abstract class Enemy extends Entity {
   // longer dealt here — it's emitted as a HitSource (contactHitSource) and applied
   // by the combat resolver; this only drives movement and the attack animation.
   tick(players: Map<string, PlayerState>, dtMs: number): void {
+    this.applyFlightBaseline();
     if (this.state.isDying) return;
     if (this.updateStun(dtMs)) return;
 

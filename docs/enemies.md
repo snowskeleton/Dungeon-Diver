@@ -81,6 +81,21 @@ makeSheetEnemyDef("spider", {
 });
 ```
 
+## Flying enemies
+
+Flying is a plain stat, like HP or speed — no separate base class. An enemy hovers by overriding one getter:
+
+```ts
+export class Bat extends Enemy {
+  static readonly type: EnemyType = "bat";
+  protected get cruiseHeight() { return 16; } // px above the floor; 0 (default) = grounded
+}
+```
+
+The base `Enemy.tick()` keeps `state.airHeight` at `cruiseHeight` every tick (and drops it to 0 on death, so the corpse falls). The **collision body never leaves the ground point** — height is purely visual, so a flyer is hit exactly like a grounded enemy. Current flyers: bats (16px) and the floating eyes/skulls (12px); the wyvern bosses cruise at `FLYING_CRUISE_HEIGHT` (44px). A dive attack (the wyvern swoop) drives the height dynamically via `setAirHeight()` from a Spell — see [bosses.md](bosses.md).
+
+On the client, mark the def **`airborne: true`** (a field on `SheetSpec` / `ClientEnemyDef`); `EnemyEntity` then lifts the sprite by the synced `airHeight` and scales a ground shadow beneath it. The shadow's falloff is in absolute px, so it works at any cruise height without extra config.
+
 ## Bosses
 
 A boss is a `Boss` subclass — one per boss, in `server/src/entities/bosses/<Name>.ts`, listed in `BOSSES` in `bosses/index.ts` (not in `REGULAR_ENEMIES`, so a boss can never leak into the normal spawn pool). Its moveset is `abilities(): Spell[]`; the full recipe is [bosses.md](bosses.md). `GameRoom.spawnBoss()` places exactly one in the room the generator typed `"boss"`, rotating through `BOSSES` by floor number so consecutive floors differ. They render at 2× a normal enemy.
@@ -101,7 +116,7 @@ Handled in the `Entity` / `Enemy` base classes — no per-type work needed. Knoc
 
 ## Balance
 
-- **Per enemy** → the stat getters on its `Enemy` subclass (`goos.ts`, `bats.ts`, …): `maxHp`, `speed`, `aggroRadius`, `attackRadius`, `attackDamage`, `attackCooldownMs`, `knockbackResistance`, `facingMode`. Override only what differs from the `Enemy` defaults.
+- **Per enemy** → the stat getters on its `Enemy` subclass (`goos.ts`, `bats.ts`, …): `maxHp`, `speed`, `aggroRadius`, `attackRadius`, `attackDamage`, `attackCooldownMs`, `knockbackResistance`, `facingMode`, `cruiseHeight` (flyers). Override only what differs from the `Enemy` defaults.
 - **Knockback / hitstun feel** → `shared/src/types.ts`: `KNOCKBACK_SCALE` (px pushed per unit of overage), `KNOCKBACK_STUN_MS_PER_UNIT` + `KNOCKBACK_STUN_MAX_MS` (hitstun length per overage, capped). The per-class `knockbackResistance` is the threshold a hit's `force` must clear; per-weapon `attackForce` / per-ammo `knockback` is that force. Players default to resistance 0.
 - **Enemy count** → `GameRoom.enemiesPerRoom()` = `ceil((ENEMY_BASE_COUNT + floor(floorNum / ENEMY_FLOOR_BONUS_INTERVAL)) × (1 + ENEMY_PLAYER_SCALE × (playerCount − 1)))`. **Every combat and maze room** gets that many, **except the start room, which is always left clear** (players spawn there). Boss/shop/shrine get none. The one exception to the clear-start rule is a single-room debug floor (start === exit). Constants in `shared/src/types.ts`. Floor 1 solo = 3 per room; floor 10 four-player = 14 per room. Types are rolled uniformly from `REGULAR_ENEMIES` in `GameRoom.ts`.
 

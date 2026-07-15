@@ -40,6 +40,8 @@ npm run dev          # starts client (localhost:5173) + server (localhost:2567) 
 
 Both are defined in `.claude/launch.json` for the preview panel. The Colyseus server must be running for the client to do anything (it connects on load).
 
+**Ports are overridable** — the server reads `PORT` (default 2567) and the client reads `VITE_SERVER_PORT` (default 2567) for the ws URL it connects to. To run a second isolated instance alongside a running `npm run dev` (e.g. to verify a change without disturbing it): `PORT=3567 npm run dev --workspace=server` and `VITE_SERVER_PORT=3567 npm run dev --workspace=client -- --port 6173`.
+
 **Package manager: npm workspaces** (pnpm is broken on this machine — broken symlinks from an old Node install).
 
 **Edit `shared/src/`, never `shared/dist/`.** The `shared` package's `package.json` sets `"main": "src/index.ts"`, so both the server (`ts-node-dev`) and the client (Vite alias) import the raw TypeScript source — nothing loads compiled output. `shared/dist/` is `.gitignore`d and only appears if you run `npm run build`; if it's present it's stale and editing it does nothing (a real gotcha — changing a `shared/dist/*.js` constant has zero effect). Note: `ts-node-dev` sometimes doesn't watch the symlinked `shared` workspace, so if a `shared/src` edit doesn't take, restart `npm run dev`. (A production `node dist/index.js` server run currently can't resolve `shared` at all since `main` is a `.ts` file — a deferred prod-build concern.)
@@ -50,7 +52,7 @@ Both are defined in `.claude/launch.json` for the preview panel. The Colyseus se
 
 ```
 shared/src/
-  types.ts             ← tile IDs + TILE_PROPS, InputMessage, RoomType, and the few cross-cutting constants (SERVER_TICK_MS, KNOCKBACK_* scale/stun knobs, enemy-count formula, ENTITY_RADIUS/FOOT_OFFSET). Balance does NOT live here — see characters/, enemies/, weapons/, ammo/
+  types.ts             ← tile IDs + TILE_PROPS, InputMessage, RoomType, and the few cross-cutting constants (SERVER_TICK_MS, KNOCKBACK_* scale/stun knobs, enemy-count formula, ENTITY_RADIUS/FOOT_OFFSET, FLYING_CRUISE_HEIGHT). Balance does NOT live here — see characters/, enemies/, weapons/, ammo/
   characters/          ← one CharacterConfig per class (Knight/Rogue/Ranger/Mage): id, name, maxHp, speed, defaultWeaponId; index.ts exports CHARACTER_REGISTRY. Weapon stats live in weapons/, not here. base.ts also holds the CharacterType union (12 humanoid skins)
   enemies/             ← just the EnemyType id union + EnemyFacingMode (base.ts). Enemies are OO classes on the SERVER (server/src/entities/enemies + /bosses) — there is NO EnemyConfig and NO ENEMY_REGISTRY (that data-driven design was abandoned; see the engineering note)
   combat/              ← Attack (damage/knockback/source payload) + HitShape geometry (rect/circle/segment/sweptEllipse + shapeHitsPoint). Shared so the client H-overlay can reuse shapes; the resolver itself is server-side
@@ -70,13 +72,13 @@ server/src/
   spells/                   ← the unified ability system. Spell (windUp→strike→active→recover + cooldown it OWNS via isReady/markCast); SpellCaster runs the lifecycle (shared by bosses, enemies, players); Caster = the tiny interface a spell needs ({x,y,facing,attackAffects,emitHitSource,spawnProjectile}); builders.ts = volley/radial/tremorLine/dashAttack/whirl; weaponSpell.ts turns a Weapon into a swing / shot / AOE spell
   entities/Entity.ts        ← base class: move()/knockback/hitstun (overage threshold), takeHit(Attack), applyTileEffects(), teleport(), and the emitHitSource/spawnProjectile effect buffer GameRoom drains — shared by Player + Enemy
   entities/Player.ts        ← extends Entity, is a Caster; looks up its CharacterConfig; applyInput() drives a SpellCaster running the active weapon's Spell (swing/shot/AOE). Owns the weapon inventory
-  entities/Enemy.ts         ← abstract base; default tick() = patrol/chase AI + contactHitSource() (touch damage as a hitbox); death. Stats are per-class getters, no config
+  entities/Enemy.ts         ← abstract base; default tick() = patrol/chase AI + contactHitSource() (touch damage as a hitbox); death. Stats are per-class getters, no config. Flying is one such getter: `cruiseHeight` (0 = grounded) — a flyer (bat, floater, wyvern) overrides it and the base tick keeps `state.airHeight` there each tick (a dive spell overrides it mid-cast); `setAirHeight()` lets a spell drive it. Collision stays at the ground point — height is purely visual
   entities/enemies/         ← the OO enemy classes (goos/bats/floaters/critters/directional), one Enemy subclass each; REGULAR_ENEMIES = the spawn-pool array (index.ts). No config, no ENEMY_REGISTRY
   entities/Boss.ts          ← abstract Boss (extends Enemy, is a DashCaster); picks the next Spell and delegates to a SpellCaster; deals no passive contact damage. entities/bosses/ = one Boss subclass each + movement.ts + BOSSES array
   entities/Projectile.ts    ← kinematic arrow/thrown-weapon (no matter-js body); integrates position, swept-ellipse hitSource(), pierce, boomerang return, wall/lifetime despawn. Pulls its AmmoConfig from AMMO_REGISTRY
   schema/EntityState.ts     ← Colyseus schema base (x, y, health, speedMultiplier)
   schema/PlayerState.ts     ← extends EntityState (facing, isAttacking, attackSeq, characterClass, characterType, weaponId=active, inventory[], activeWeaponIndex)
-  schema/EnemyState.ts      ← extends EntityState (aiState, targetId, facing, isDying, stunned, enemyType)
+  schema/EnemyState.ts      ← extends EntityState (aiState, targetId, facing, isDying, stunned, enemyType, telegraph/channeling/abilityId for bosses, airHeight for flyers)
   schema/ProjectileState.ts ← extends EntityState (angle, ammoId, ownerSessionId)
   schema/ShopState.ts       ← ShopItemState (weaponId, cost, purchased, x/y pedestal pos) + ShopState (roomId, items[])
   schema/GameState.ts       ← root schema: MapSchema of players + enemies + projectiles + shops (keyed by room id), floor number, `paused` flag
@@ -87,7 +89,7 @@ client/src/
   scenes/MenuScene.ts       ← title screen: Start / Options / Debug. Start and Debug both run pickLoadout() then `scene.start("GameScene", config)`
   scenes/GameScene.ts       ← main scene; init(LaunchConfig) resets per-run state, async create() connects to server, wires state sync (players/enemies/projectiles/shops) + floor-change/barrier messages, room-locked camera. Owns the inventory HUD, PAUSED overlay, and P1 store card. Esc → menu
   characters/index.ts       ← CLIENT_CHARACTER_VISUAL_REGISTRY (CharacterType → preload/defineAnimations/spriteConfig)
-  enemies/index.ts          ← CLIENT_ENEMY_REGISTRY: per-enemy name + textureKey + displayW/H + preload/defineAnimations/resolve(). Adding an enemy is one entry here
+  enemies/index.ts          ← CLIENT_ENEMY_REGISTRY: per-enemy name + textureKey + displayW/H + `airborne?` flag + preload/defineAnimations/resolve(). Adding an enemy is one entry here
   enemies/sheetEnemy.ts     ← makeSheetEnemyDef(): horizontal art (one side view, flipX for left). Handles multi-row sheets + non-square cells via explicit moveFrames
   enemies/directionalEnemy.ts ← makeDirectionalEnemyDef(): 4-row sheets, one row per facing (up/right/down/left), never mirrored
   weapons/index.ts          ← CLIENT_WEAPON_REGISTRY (name + placeholder-art flag; feeds PlaceholderReport)
@@ -99,7 +101,7 @@ client/src/
   entities/ProjectileEntity.ts ← lightweight (no HP bar) projectile view; lerps to server pos, points along angle or spins per AmmoConfig
   entities/LocalPlayer.ts   ← extends Entity; reads InputSource, sends to server, hp field for HUD. Weapon-swap on active change, cycle/menu/buy actions, shop proximity, acquire-diff → AcquireFX + input freeze
   entities/RemotePlayer.ts  ← extends Entity; lerps toward server position, drives anim from server's facing/isAttacking/attackSeq + inferred movement; swaps weapon visuals on weaponId change
-  entities/EnemyEntity.ts   ← extends Entity; lerps toward server position; asks CLIENT_ENEMY_REGISTRY[enemyType].resolve(isDying, facing) for the clip + whether to mirror
+  entities/EnemyEntity.ts   ← extends Entity; lerps toward server position; asks CLIENT_ENEMY_REGISTRY[enemyType].resolve(state) for the clip/static frame + whether to mirror. For `airborne` defs it lifts the sprite by the synced airHeight and scales a ground shadow beneath it
   entities/ShopItemEntity.ts ← in-world shop pedestal view (icon + HP-cost label); ghosts out when purchased. Not an Entity (no HP bar)
   entities/AcquireFX.ts     ← one-shot "item get!" flourish: weapon icon pops above the head + centered stats panel; fires on inventory growth
   input/InputSource.ts      ← interface + KeyboardInputSource (wasd/arrows) + GamepadInputSource. read()=movement/attack; readActions()=discrete intents (prev/next slot, toggle menu, interact/buy) edge-detected by LocalPlayer
@@ -177,7 +179,7 @@ Colyseus fires `onAdd` for items already in the map when the callback is registe
 | Player/class (maxHp, speed, starting weapon) | `shared/src/characters/<Class>.ts` |
 | Weapon (damage, cooldown, force, swing geometry, fxType, staff `aoe`) | `shared/src/weapons/<category>/<id>/index.ts` (or category `base.ts`) |
 | Ammo/projectile (damage, speed, pierce, hit ellipse, spin/return) | `shared/src/ammo/<id>/index.ts` |
-| Enemy (hp, speed, aggro, attack, knockback resistance) | stat getters on the `Enemy` subclass — `server/src/entities/enemies/<group>.ts` |
+| Enemy (hp, speed, aggro, attack, knockback resistance, flying height) | stat getters on the `Enemy` subclass — `server/src/entities/enemies/<group>.ts` (a flyer overrides `cruiseHeight`) |
 | Boss (moveset, movement, phases, stats) | the `Boss` subclass — `server/src/entities/bosses/<Name>.ts` (spells from `server/src/spells`) |
 | Store (pedestal count, HP cost formula, buy radius) | `server/src/rooms/GameRoom.ts` |
 | Loadout keybinds / acquire freeze | `client/src/input/InputSource.ts`, `ACQUIRE_MS` in `entities/AcquireFX.ts` |

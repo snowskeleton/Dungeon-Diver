@@ -57,7 +57,7 @@ export function makeDirectionalEnemyDef(id: string, spec: DirectionalSpec): Clie
       };
       defineClips(scene, id, clips);
     },
-    resolve: (isDying, facing) => ({
+    resolve: ({ isDying, facing }) => ({
       key: isDying ? deathKey : moveKey(facing),
       flipX: false,
     }),

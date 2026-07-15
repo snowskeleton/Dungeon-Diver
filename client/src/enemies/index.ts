@@ -1,4 +1,4 @@
-import { EnemyType, TILE_SIZE } from "shared";
+import { EnemyType, TILE_SIZE, FLYING_CRUISE_HEIGHT } from "shared";
 import { makeSheetEnemyDef, frameRow, SheetSpec } from "./sheetEnemy";
 import { makeDirectionalEnemyDef } from "./directionalEnemy";
 import { defineClips } from "../entities/SpriteClips";
@@ -20,6 +20,7 @@ const floatSkull = (id: string, name: string, row: number): ClientEnemyDef =>
     moveFrames: frameRow(3, row, 0, 2),
     death: { frames: frameRow(3, row, 2, 1), frameRate: 6 },
     frameRate: 6,
+    airborne: true,
   });
 
 // The beasts, bones and snakes share a layout: 4×4 @16, one row per facing.
@@ -51,10 +52,37 @@ function turtleDragonDef(): ClientEnemyDef {
       });
     },
     // Both the dash and the stationary whirl render as the spin row.
-    resolve: (isDying, facing, action) =>
-      !isDying && (action === "shell-spin" || action === "shell-whirl")
+    resolve: (state) =>
+      !state.isDying && state.channeling && (state.abilityId === "shell-spin" || state.abilityId === "shell-whirl")
         ? { key: spinKey, flipX: false }
-        : base.resolve(isDying, facing),
+        : base.resolve(state),
+  };
+}
+
+// The Wyverns fly: their sprite is a 4×2 sheet — row 0 (frames 0-3) flaps for
+// normal cruising; row 1 (frames 4-7) is the dive. A swoop coils on frame 3 (the
+// wind-up tell), then the dive frame is driven directly by the boss's airHeight —
+// full height → frame 4, floor → frame 7 — so it plays 4→7 dropping and, because
+// the frame is a pure function of height, auto-reverses 7→4 as it climbs back out.
+function wyvernDef(id: string, name: string): ClientEnemyDef {
+  const base = boss(id, name, { frameWidth: 32, cols: 4, frameRate: 10 });
+  const moveKey = `${id}-move`;
+  return {
+    ...base,
+    airborne: true,
+    resolve: (state) => {
+      if (state.isDying) return base.resolve(state);
+      const flipX = state.facing === "left";
+      if (state.abilityId === "swoop") {
+        // Coiled and about to dive: hold the last flap frame during the wind-up.
+        if (state.telegraph) return { key: moveKey, flipX, frame: 3 };
+        if (state.channeling) {
+          const t = Math.min(1, Math.max(0, state.airHeight / FLYING_CRUISE_HEIGHT));
+          return { key: moveKey, flipX, frame: 4 + Math.round(3 * (1 - t)) };
+        }
+      }
+      return base.resolve(state); // normal flapping
+    },
   };
 }
 
@@ -64,13 +92,13 @@ export const CLIENT_ENEMY_REGISTRY: Record<EnemyType, ClientEnemyDef> = {
   "goo-blue":  makeSheetEnemyDef("goo-blue",  { name: "Blue Goo",  frameWidth: 32, cols: 6 }),
   "goo-gold":  makeSheetEnemyDef("goo-gold",  { name: "Gold Goo",  frameWidth: 32, cols: 6 }),
 
-  "bat":       makeSheetEnemyDef("bat",       { name: "Bat",       frameWidth: 16, cols: 6, frameRate: 10, death: BAT_DEATH }),
-  "brown-bat": makeSheetEnemyDef("brown-bat", { name: "Brown Bat", frameWidth: 16, cols: 6, frameRate: 10, death: BAT_DEATH }),
-  "eye-bat":   makeSheetEnemyDef("eye-bat",   { name: "Eye Bat",   frameWidth: 16, cols: 6, frameRate: 10, death: BAT_DEATH }),
-  "gold-eye":  makeSheetEnemyDef("gold-eye",  { name: "Gold Eye",  frameWidth: 16, cols: 6, frameRate: 10, death: BAT_DEATH }),
+  "bat":       makeSheetEnemyDef("bat",       { name: "Bat",       frameWidth: 16, cols: 6, frameRate: 10, death: BAT_DEATH, airborne: true }),
+  "brown-bat": makeSheetEnemyDef("brown-bat", { name: "Brown Bat", frameWidth: 16, cols: 6, frameRate: 10, death: BAT_DEATH, airborne: true }),
+  "eye-bat":   makeSheetEnemyDef("eye-bat",   { name: "Eye Bat",   frameWidth: 16, cols: 6, frameRate: 10, death: BAT_DEATH, airborne: true }),
+  "gold-eye":  makeSheetEnemyDef("gold-eye",  { name: "Gold Eye",  frameWidth: 16, cols: 6, frameRate: 10, death: BAT_DEATH, airborne: true }),
 
   "smushroom": makeSheetEnemyDef("smushroom", { name: "Smushroom", frameWidth: 16, cols: 6 }),
-  "float-eye": makeSheetEnemyDef("float-eye", { name: "Float Eye", frameWidth: 16, cols: 4, frameRate: 6 }),
+  "float-eye": makeSheetEnemyDef("float-eye", { name: "Float Eye", frameWidth: 16, cols: 4, frameRate: 6, airborne: true }),
 
   "swarm-1":   makeSheetEnemyDef("swarm-1",   { name: "Small Swarm", frameWidth: 16, cols: 4, frameRate: 12 }),
   "swarm-2":   makeSheetEnemyDef("swarm-2",   { name: "Swarm",       frameWidth: 16, cols: 4, frameRate: 12 }),
@@ -113,18 +141,19 @@ export const CLIENT_ENEMY_REGISTRY: Record<EnemyType, ClientEnemyDef> = {
   "hood-fang":    smallDirectional("hood-fang",    "Hood Fang"),
 
   // ── Bosses ───────────────────────────────────────────────────────────────
-  // Each sheet's rows/columns are described in its .txt in the art pack. We only
-  // animate the locomotion clip; the attack/special rows are unused until bosses
-  // get real movesets.
+  // Each sheet's rows/columns are described in its .txt in the art pack. Bosses
+  // with a real moveset drive their special rows from the boss's abilityId /
+  // airHeight (see turtleDragonDef, wyvernDef); the rest still only animate the
+  // locomotion clip until they get movesets.
 
   // 16×1 @32: cols 0-3 idle, 4-9 walk, 10-13 spin, 14-15 damage. The spin row
   // plays while it channels its Shell Spin dash (abilityId "shell-spin").
   "turtle-dragon": turtleDragonDef(),
 
-  // 4×2 @32: row 0 flap, row 1 breath.
-  "wyvern":       boss("wyvern",       "Wyvern",       { frameWidth: 32, cols: 4, frameRate: 10 }),
-  "wyvern-green": boss("wyvern-green", "Green Wyvern", { frameWidth: 32, cols: 4, frameRate: 10 }),
-  "wyvern-grey":  boss("wyvern-grey",  "Grey Wyvern",  { frameWidth: 32, cols: 4, frameRate: 10 }),
+  // 4×2 @32: row 0 flap (cruising), row 1 the diving swoop (see wyvernDef).
+  "wyvern":       wyvernDef("wyvern",       "Wyvern"),
+  "wyvern-green": wyvernDef("wyvern-green", "Green Wyvern"),
+  "wyvern-grey":  wyvernDef("wyvern-grey",  "Grey Wyvern"),
 
   // 8×4 @32: row 0 idle (4), row 1 gallop (4), row 2 club, row 3 lance.
   "centaur-knight": boss("centaur-knight", "Centaur Knight", {

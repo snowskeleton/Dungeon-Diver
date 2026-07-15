@@ -46,6 +46,15 @@ export interface DashCaster extends Caster {
   dashStep(dirX: number, dirY: number, pxPerSec: number): { dirX: number; dirY: number; bounces: number };
 }
 
+// A caster that can dive: on top of dashStep (horizontal movement) it drives its
+// own airborne height. Any Enemy already has setAirHeight; a flying boss also has
+// dashStep, so it satisfies this. The swoop effect lowers the height to the floor
+// and back over its active phase (the caster's cruising altitude is a spell param).
+export interface FlightCaster extends DashCaster {
+  /** Set the current airborne height in px (0 = grounded, claws at the floor). */
+  setAirHeight(px: number): void;
+}
+
 // The effect a spell produces over its lifecycle. `onActivate` fires once on the
 // strike frame — for an INSTANT spell (activeMs 0) it IS the whole effect (a
 // volley spawns its projectiles here); for a CHANNEL it sets up the active phase

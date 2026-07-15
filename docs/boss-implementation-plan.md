@@ -109,7 +109,8 @@ Now the boss brain, still with no specific boss.
    strike effect [projectile / AOE / dash / summon], recovery window, cooldown). Bosses are
    then a *list of abilities + a phase policy*, not bespoke code.
 4. **Schema** — extend `EnemyState` with what clients need to render telegraphs and special
-   states (e.g. current ability id / phase; airborne flag reserved for Stage 4).
+   states (current ability id / phase via `telegraph`/`channeling`/`abilityId`; `airHeight`
+   for flyers — now shipped with the wyvern swoop, see Stage 4).
 
 **Checkpoint:** a stub boss with one telegraphed ranged attack shows a readable wind-up, hits
 only on the strike frame, and is punishable during recovery. A perfect player takes zero
@@ -147,9 +148,9 @@ Each adds at most one new primitive, then becomes an ability list + FX:
 |---|---|---|
 | 1 | **Turtle Dragon** | ricochet dash variant + cardinal line-hazards (reuses Stage-3 dash) |
 | 2 | **Big Beast** | slow-homing roll + radial shockwave ring (first AOE ring) |
-| 3 | **Fire / Green / Grey Wyvern** | lingering **hazard tiles** (fire/poison), cone telegraph; 3 recolors differ by element data |
+| 3 | **Fire / Green / Grey Wyvern** | **airborne height + shadow** and the **diving swoop** ✅ shipped (see [enemies.md](enemies.md) → Flying enemies, and `swoop()`); still needs lingering **hazard tiles** (fire/poison) + cone telegraph; 3 recolors differ by element data |
 | 4 | **Tengu Mask** | **summon** hook into the spawner + **invulnerability** flag (Stoneface); teleport reuses `Entity.teleport()` |
-| 5 | **Batwing Buttstomper** | **airborne / untargetable** state + tracking ground-marker (Buttstomp), orb-spread |
+| 5 | **Batwing Buttstomper** | airborne height already exists (Wyvern) — needs **untargetability** while high + a tracking ground-marker (Buttstomp), orb-spread |
 
 Point-radius/ring AOE (introduced with Big Beast) is reused by Buttstomp, Tengu lightning
 pillars, and Beast/Turtle slams. Hazard tiles (Wyverns) reuse the `HAZARD` layer from Stage 0.

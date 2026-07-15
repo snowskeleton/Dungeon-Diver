@@ -219,6 +219,9 @@ export abstract class Boss extends Enemy implements DashCaster {
   // boss just mirrors that cast state onto its schema (telegraph/channel flags +
   // knockback immunity) each tick, reading the phase rather than being pushed it.
   override tick(players: Map<string, PlayerState>, dtMs: number): void {
+    // Hold the cruising altitude (0 for grounded bosses); a flying boss's dive
+    // spell overrides it during think() below. See Enemy.applyFlightBaseline.
+    this.applyFlightBaseline();
     if (this.state.isDying) return;
     this.spellCaster.tickClock(dtMs);
     this.think(players, dtMs);

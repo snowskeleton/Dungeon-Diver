@@ -67,6 +67,12 @@ export const MAX_CLIENTS = 4;
 export const FOOT_OFFSET = 8;
 export const ENTITY_RADIUS = 5;
 
+// Cruising altitude (px) a flying boss holds above the ground plane. The server
+// keeps EnemyState.airHeight here between attacks; the client lifts the sprite by
+// it and scales a shadow beneath. A swoop drives it to 0 (claws at the floor) and
+// back. Shared so the height→dive-frame mapping and the shadow agree.
+export const FLYING_CRUISE_HEIGHT = 44;
+
 // Enemy count per combat/maze room: base + floor(floorNum/2), then scaled by player count.
 export const ENEMY_BASE_COUNT = 3;
 export const ENEMY_FLOOR_BONUS_INTERVAL = 2; // +1 enemy per this many floors

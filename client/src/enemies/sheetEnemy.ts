@@ -26,6 +26,9 @@ export interface SheetSpec {
   frameRate?: number;
   /** Defaults to the move frames played backwards, which reads as a collapse. */
   death?: { frames: number[]; frameRate: number };
+  /** True for flyers — the sprite is lifted by its synced airHeight and a shadow
+   *  is drawn beneath it (see EnemyEntity). */
+  airborne?: boolean;
 }
 
 /** Frame index of (row, col) on a sheet `cols` cells wide. */
@@ -46,6 +49,7 @@ export function makeSheetEnemyDef(id: string, spec: SheetSpec): ClientEnemyDef {
   return {
     name: spec.name,
     textureKey,
+    airborne: spec.airborne,
     displayW: spec.displayW ?? TILE_SIZE,
     displayH: spec.displayH ?? spec.displayW ?? TILE_SIZE,
     preload: (scene) =>
@@ -58,7 +62,7 @@ export function makeSheetEnemyDef(id: string, spec: SheetSpec): ClientEnemyDef {
         [moveKey]: { frames: moveFrames, frameRate: spec.frameRate ?? 8, repeat: -1 },
         [deathKey]: { frames: death.frames, frameRate: death.frameRate, repeat: 0 },
       }),
-    resolve: (isDying, facing) => ({
+    resolve: ({ isDying, facing }) => ({
       key: isDying ? deathKey : moveKey,
       flipX: facing === "left",
     }),

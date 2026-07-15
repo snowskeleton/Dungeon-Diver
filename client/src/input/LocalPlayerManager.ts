@@ -4,7 +4,11 @@ import { CharacterClass, CharacterType, DebugConfig, WeaponId } from "shared";
 import { LocalPlayer } from "../entities/LocalPlayer";
 import { KeyboardInputSource, GamepadInputSource } from "./InputSource";
 
-const SERVER_URL = `ws://${window.location.hostname}:2567`;
+// The Colyseus server port defaults to 2567 (matches the server's own PORT
+// default). Override both with VITE_SERVER_PORT (client) + PORT (server) to run an
+// isolated instance alongside another dev server without a port clash.
+const SERVER_PORT = import.meta.env.VITE_SERVER_PORT ?? "2567";
+const SERVER_URL = `ws://${window.location.hostname}:${SERVER_PORT}`;
 const MAX_LOCAL = 4;
 
 export class LocalPlayerManager {

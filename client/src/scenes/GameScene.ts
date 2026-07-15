@@ -424,6 +424,7 @@ export class GameScene extends Phaser.Scene {
           enemyState.x, enemyState.y, enemyState.health,
           enemyState.facing, enemyState.aiState, enemyState.isDying,
           enemyState.telegraph, enemyState.channeling, enemyState.abilityId,
+          enemyState.airHeight,
         ),
       );
     });

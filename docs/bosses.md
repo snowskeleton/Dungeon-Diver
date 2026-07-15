@@ -110,7 +110,17 @@ space* and forces you to fight on its terms, then over-commits so you can strike
 ## 🐉 Wyvern (Fire) — *the Scorch*
 **Role:** mobile aerial zoner. Stays airborne and at range, raining projectiles; only
 drops low (meleeable) during recovery windows. High knockback resistance. **Sprite rows:**
-flap / breath. **Structure:** flat rotation + a desperation dive under ~25% HP.
+flap / dive (row 1 is repurposed for the swoop — see below). **Structure:** flat rotation
++ a desperation dive under ~25% HP.
+
+> **Implemented (all three wyverns):** they fly at `FLYING_CRUISE_HEIGHT` (airborne
+> baseline + ground shadow, see [enemies.md](enemies.md) → Flying enemies) and share a
+> **Diving Swoop** — the `swoop()` spell builder: coil at cruise height (wind-up, holds the
+> last flap frame), dive claws-first to the floor along the locked aim, then pull back up.
+> The claws are a contact hitbox live only while low. The dive frame is driven off the synced
+> `airHeight`, so it plays row-1 forward on the way down and auto-reverses on the climb. Fire
+> Breath currently spawns fireballs (the cone + hazard tiles below are still TODO). Green/Grey
+> differ only in swoop tuning + their volley, pending element-specific projectiles/hazards.
 
 - **Fire Breath Cone** — Wind-up (~0.9s): inhales, head glows, a **cone telegraph** fans
   out in its facing. Strike: sweeps a cone of flame and **leaves 2–3 Looping-Fire hazard
@@ -266,8 +276,11 @@ many bosses each unlocks:
    pillars, static burst.
 5. **Dash / charge movement mode** with an active contact hitbox and wall-stun-on-impact —
    spin, gallop, roll, thunder dash.
-6. **Airborne / untargetable state** + ground-target marker — buttstomp (needs a schema
-   flag + client render of the shadow).
+6. **Airborne state** + ground-target marker — buttstomp. ✅ *Airborne height is built:*
+   `EnemyState.airHeight` + `Enemy.cruiseHeight` (the flying baseline) + the client sprite-lift
+   and ground shadow, and the wyvern swoop drives the height dynamically. **Still TODO:**
+   *untargetability* while high (the body stays hittable at its ground point) and a tracking
+   ground-target marker (buttstomp).
 7. **Summon hook** into the enemy spawner; **invulnerability flag** (Stoneface). Teleport
    already exists via `Entity.teleport()`.
 8. **Lingering ground hazards** (fire/poison/gas tiles with a lifetime + on-tick effect) —
