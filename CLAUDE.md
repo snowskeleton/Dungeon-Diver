@@ -89,7 +89,9 @@ client/src/
   scenes/MenuScene.ts       ← title screen: Start / Options / Debug. Start and Debug both run pickLoadout() then `scene.start("GameScene", config)`
   scenes/GameScene.ts       ← main scene; init(LaunchConfig) resets per-run state, async create() connects to server, wires state sync (players/enemies/projectiles/shops) + floor-change/barrier messages, room-locked camera. Owns the inventory HUD, PAUSED overlay, and P1 store card. Esc → menu
   characters/index.ts       ← CLIENT_CHARACTER_VISUAL_REGISTRY (CharacterType → preload/defineAnimations/spriteConfig)
-  enemies/index.ts          ← CLIENT_ENEMY_REGISTRY: per-enemy name + textureKey + displayW/H + `airborne?` flag + preload/defineAnimations/resolve(). Adding an enemy is one entry here
+  enemies/index.ts          ← CLIENT_ENEMY_REGISTRY: a thin `Record<EnemyType, ClientEnemyDef>` wiring table — each id maps to a named def imported from a group module. No definitions here; the annotation makes the compiler flag any id missing a def
+  enemies/{goos,bats,floaters,critters,directional}.ts ← per-group visual defs (name + textureKey + displayW/H + `airborne?` + preload/defineAnimations/resolve()), mirroring the server's entities/enemies/*.ts grouping. Add an enemy by exporting its def here + one line in index.ts
+  enemies/bosses/           ← one visual-def module per boss (TurtleDragon/Wyvern/TenguMask + simple.ts) — where the ability-driven row-swap closures live — plus factory.ts (the boss() 2×-size helper). Mirrors server entities/bosses/
   enemies/sheetEnemy.ts     ← makeSheetEnemyDef(): horizontal art (one side view, flipX for left). Handles multi-row sheets + non-square cells via explicit moveFrames
   enemies/directionalEnemy.ts ← makeDirectionalEnemyDef(): 4-row sheets, one row per facing (up/right/down/left), never mirrored
   weapons/index.ts          ← CLIENT_WEAPON_REGISTRY (name + placeholder-art flag; feeds PlaceholderReport)

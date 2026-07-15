@@ -53,15 +53,15 @@ export class GooGold extends Enemy {
 
 Related enemies share a file — `goos.ts`, `bats.ts`, `floaters.ts`, `critters.ts`, `directional.ts` — grouped by art/behaviour, not one file each. The default `tick()` (patrol → chase → contact-melee) covers the rank-and-file; contact damage is emitted by `Enemy.contactHitSource()` (a hitbox the combat resolver applies), not dealt inline. Only override `tick()` for genuinely custom AI, or give the enemy a Spell (below).
 
-**No client sprite module.** An enemy is one line in `CLIENT_ENEMY_REGISTRY` (below); the factory builds the preload/clip/resolve bundle from the sheet's cell size and column count. The death clip defaults to the move frames reversed; pass `death` to override (bats collapse on `[5,4,3]`).
+**No client sprite module.** An enemy is one `makeSheetEnemyDef(...)` / `makeDirectionalEnemyDef(...)` def in its group module under `client/src/enemies/` (`goos.ts`, `bats.ts`, `floaters.ts`, `critters.ts`, `directional.ts`, or `bosses/<Name>.ts`) — the same grouping as the server classes; the factory builds the preload/clip/resolve bundle from the sheet's cell size and column count. The death clip defaults to the move frames reversed; pass `death` to override (bats collapse on `[5,4,3]`).
 
 ## Files to touch (three edits per enemy type)
 
 1. `shared/src/enemies/base.ts` — add the new id to the `EnemyType` union.
 2. `server/src/entities/enemies/index.ts` — add the class to the `REGULAR_ENEMIES: EnemyClass[]` array (import it). `EnemyClass` requires a `static readonly type`, so a missing or mistyped id is a compile error — no id→class map to keep in sync.
-3. `client/src/enemies/index.ts` — add a `makeSheetEnemyDef(...)` or `makeDirectionalEnemyDef(...)` entry to `CLIENT_ENEMY_REGISTRY`.
+3. `client/src/enemies/` — export a `makeSheetEnemyDef(...)` or `makeDirectionalEnemyDef(...)` def from the matching group module (`bats.ts`, `directional.ts`, `bosses/<Name>.ts`, …), then wire its id to that named export in the `CLIENT_ENEMY_REGISTRY` table in `index.ts` (pure wiring — no definitions live there).
 
-Everything else is derived. `GameRoom` rolls its spawn pool from `REGULAR_ENEMIES`; `GameScene` iterates `CLIENT_ENEMY_REGISTRY` to preload sheets (deduped by `textureKey`) and define clips; `EnemyEntity` looks the enemy up by type. The class's `facingMode` getter must match the client def (horizontal vs directional).
+Everything else is derived. `GameRoom` rolls its spawn pool from `REGULAR_ENEMIES`; `GameScene` iterates `CLIENT_ENEMY_REGISTRY` to preload sheets (deduped by `textureKey`) and define clips; `EnemyEntity` looks the enemy up by type. The class's `facingMode` getter must match the client def (horizontal vs directional). The `Record<EnemyType, ClientEnemyDef>` on the registry makes the compiler flag any id that's missing a def.
 
 The sheet's texture key defaults to the enemy id, so `assets/<id>.png` must match — then `npm run assets:build`. Several enemies can share one sheet by passing an explicit `textureKey` (the three float-skull colours are three rows of `float-skull.png`).
 
