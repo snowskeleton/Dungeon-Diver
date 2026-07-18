@@ -4,7 +4,8 @@
 // PhysicsWorld + Player + Enemy + Projectile, runs the exact gather+resolve step
 // GameRoom.tick now runs, and asserts damage, knockback, and team-filtering all
 // behave. Run: npx ts-node --transpile-only src/verify-combat.ts
-import { TILE, Layer, SERVER_TICK_MS, WEAPON_REGISTRY, AMMO_REGISTRY, PLAYER_ATTACK_AFFECTS, ENEMY_ATTACK_AFFECTS, PLAYER_PROJECTILE_AFFECTS, ENEMY_PROJECTILE_AFFECTS } from "shared";
+import { TILE, Layer, SERVER_TICK_MS, WEAPON_REGISTRY, AMMO_REGISTRY, PLAYER_ATTACK_AFFECTS, ENEMY_ATTACK_AFFECTS, PLAYER_PROJECTILE_AFFECTS, ENEMY_PROJECTILE_AFFECTS, Staff } from "shared";
+import { weaponSpell } from "./spells/weaponSpell";
 import { PhysicsWorld } from "./physics/PhysicsWorld";
 import { Player } from "./entities/Player";
 import { Enemy } from "./entities/Enemy";
@@ -195,32 +196,64 @@ function resolveStep(
   check("ranged: facing locks while held", p2.state.facing === "right", `facing=${p2.state.facing}`);
 }
 
-// ── Scenario 6 (Phase 5): the Mage's AOE staff — a player casting a wind-up + area
-//    blast, the first spell that isn't a boss's. Validates the shared SpellCaster
-//    serves players: no damage during the tell, then a nova hits enemies in radius
-//    (and spares those outside), once each. ──
+// ── Scenario 6: the Mage's staff is a ranged caster — attacking conjures the
+//    staff's elemental bolt (see ammo/bolts). Damage comes from the BOLT, not the
+//    staff: like bows, a staff carries damage 0 and controls only fire rate + which
+//    ammo, so balance lives on the ammo. ──
 {
   const physics = newPhysics();
-  const player = new Player(physics, 300, 300, "mage", "guy", "oak-staff");
-  const near = new GooGreen(physics, 360, 300); // 60px — inside the 76px blast
-  const far = new GooGreen(physics, 500, 300);   // 200px — outside
+  const px = 300, py = 300;
+  const player = new Player(physics, px, py, "mage", "guy", "oak-staff");
+  const enemy = new GooGreen(physics, px + 90, py); // downrange to the right
   const players = new Map([["p1", player]]);
-  const enemies = new Map([["near", near], ["far", far]]);
-  const staff = WEAPON_REGISTRY["oak-staff"];
-  const windupTicks = Math.ceil(staff.aoe!.windUpMs / SERVER_TICK_MS);
+  const enemies = new Map([["e1", enemy]]);
+  const projectiles: Projectile[] = [];
+  const bolt = AMMO_REGISTRY["magic-bolt"];
 
-  // First tick: the cast is still in its wind-up — nothing is hit yet.
-  player.applyInput({ dx: 0, dy: 0, attack: true }, SERVER_TICK_MS);
-  resolveStep(physics, players, enemies, []);
-  check("AOE: no damage during wind-up", near.state.health === 60, `nearHp=${near.state.health}`);
-
-  // Hold through the wind-up and the blast.
-  for (let t = 0; t < windupTicks + 4; t++) {
-    player.applyInput({ dx: 0, dy: 0, attack: true }, SERVER_TICK_MS);
-    resolveStep(physics, players, enemies, []);
+  const hp0 = enemy.state.health;
+  // Press aiming right, then hold while the bolt travels downrange.
+  for (let t = 0; t < 25 && enemy.state.health === hp0; t++) {
+    player.applyInput({ dx: t === 0 ? 1 : 0, dy: 0, attack: true }, SERVER_TICK_MS);
+    resolveStep(physics, players, enemies, projectiles);
   }
-  check("AOE: blast hits enemy in radius", near.state.health === 60 - staff.damage, `nearHp 60→${near.state.health} (−${staff.damage})`);
-  check("AOE: spares enemy outside radius", far.state.health === 60, `farHp=${far.state.health}`);
+
+  check("staff: casting conjures a bolt", projectiles.length > 0, `spawned=${projectiles.length}`);
+  check("staff: bolt carries the damage", enemy.state.health === hp0 - bolt.damage,
+    `enemyHp ${hp0}→${enemy.state.health} (−${bolt.damage})`);
+  check("staff: staff itself deals none", WEAPON_REGISTRY["oak-staff"].damage === 0,
+    `staffDamage=${WEAPON_REGISTRY["oak-staff"].damage}`);
+}
+
+// Each staff conjures its own element — the per-staff differentiation.
+{
+  const expected: Record<string, string> = {
+    "oak-staff": "magic-bolt",
+    "cane": "magic-bolt",
+    "arcane-staff": "arcane-bolt",
+    "ruby-staff": "flame-bolt",
+    "emerald-staff": "verdant-bolt",
+    "crystal-wand": "frost-bolt",
+  };
+  const wrong = Object.entries(expected)
+    .filter(([id, ammoId]) => WEAPON_REGISTRY[id]?.ammoId !== ammoId)
+    .map(([id, ammoId]) => `${id}≠${ammoId}`);
+  check("staff: each staff fires its element", wrong.length === 0,
+    wrong.length ? wrong.join(",") : `all ${Object.keys(expected).length} mapped`);
+}
+
+// ── Scenario 7: the AOE spell path stays wired for the staff's planned nova
+//    ability. No weapon uses an AoeSpec today (staves now shoot bolts), so this
+//    guards weaponSpell's AOE branch against rotting before the ability lands. ──
+{
+  const novaStaff = new Staff({
+    id: "test-nova-staff",
+    name: "Nova Staff (test)",
+    aoe: { radius: 76, windUpMs: 260, blastMs: 130 },
+  });
+  const spell = weaponSpell(novaStaff);
+  check("AOE: still builds a wind-up + blast from an AoeSpec",
+    spell.windUpMs === 260 && spell.activeMs === 130,
+    `windUp=${spell.windUpMs} active=${spell.activeMs}`);
 }
 
 console.log(allPass ? "\n✅ COMBAT SUBSTRATE OK" : "\n❌ COMBAT SUBSTRATE FAILED");

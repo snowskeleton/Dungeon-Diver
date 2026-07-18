@@ -56,7 +56,7 @@ shared/src/
   characters/          ← one CharacterConfig per class (Knight/Rogue/Ranger/Mage): id, name, maxHp, speed, defaultWeaponId; index.ts exports CHARACTER_REGISTRY. Weapon stats live in weapons/, not here. base.ts also holds the CharacterType union (12 humanoid skins)
   enemies/             ← just the EnemyType id union + EnemyFacingMode (base.ts). Enemies are OO classes on the SERVER (server/src/entities/enemies + /bosses) — there is NO EnemyConfig and NO ENEMY_REGISTRY (that data-driven design was abandoned; see the engineering note)
   combat/              ← Attack (damage/knockback/source payload) + HitShape geometry (rect/circle/segment/sweptEllipse + shapeHitsPoint). Shared so the client H-overlay can reuse shapes; the resolver itself is server-side
-  weapons/             ← one Weapon per <category>/<id>/index.ts (+ <id>.png icon); category base.ts holds defaults; index.ts exports WEAPON_REGISTRY + WeaponId union. Each weapon carries its own fxType; ranged ones carry ammoId + rangedStyle; staves carry an `aoe` spec (the Mage's blast)
+  weapons/             ← one Weapon per <category>/<id>/index.ts (+ <id>.png icon); category base.ts holds defaults; index.ts exports WEAPON_REGISTRY + WeaponId union. Each weapon carries its own fxType; ranged ones carry ammoId + rangedStyle (staves are ranged: `rangedStyle: "cast"` + a per-staff elemental bolt). An `aoe` spec is still supported by `weaponSpell` (wind-up + nova) but no weapon uses it today — it's reserved for the Mage's nova ability
   ammo/                ← projectiles ranged weapons spawn; mirrors weapons/ layout. Behaviour-sharing groups nest under a category base (arrows/, boomerangs/); one-offs (throwing-knife, throwing-star) sit flat. index.ts exports AMMO_REGISTRY + AmmoId union
   debug.ts             ← DebugConfig (the Debug menu's flat settings object) + DEFAULT_DEBUG_CONFIG + toDungeonOptions()
   dungeonGenerator.ts  ← seeded dungeon generation: generateDungeon(seed, opts?) builds a 5×4 grid of 21×16-tile rooms (105×64 tiles total), room graph, type assignment, tile carving, connections/barriers. `opts: DungeonOptions` overrides grid size, forced room type, boss, stairs
@@ -179,7 +179,8 @@ Colyseus fires `onAdd` for items already in the map when the callback is registe
 | Knob | File |
 |---|---|
 | Player/class (maxHp, speed, starting weapon) | `shared/src/characters/<Class>.ts` |
-| Weapon (damage, cooldown, force, swing geometry, fxType, staff `aoe`) | `shared/src/weapons/<category>/<id>/index.ts` (or category `base.ts`) |
+| Weapon (damage, cooldown, force, swing geometry, fxType) | `shared/src/weapons/<category>/<id>/index.ts` (or category `base.ts`) |
+| Staff feel (which element, fire rate) | the staff's `ammoId` + `attackCooldownMs`; the bolt's damage/speed/pierce live in `shared/src/ammo/bolts/<id>/index.ts` |
 | Ammo/projectile (damage, speed, pierce, hit ellipse, spin/return) | `shared/src/ammo/<id>/index.ts` |
 | Enemy (hp, speed, aggro, attack, knockback resistance, flying height) | stat getters on the `Enemy` subclass — `server/src/entities/enemies/<group>.ts` (a flyer overrides `cruiseHeight`) |
 | Boss (moveset, movement, phases, stats) | the `Boss` subclass — `server/src/entities/bosses/<Name>.ts` (spells from `server/src/spells`) |

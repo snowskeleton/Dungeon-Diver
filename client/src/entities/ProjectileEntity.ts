@@ -37,6 +37,8 @@ export class ProjectileEntity implements DebugDrawable {
     this.sprite.setOrigin(0.5, 0.5);
     this.sprite.setDepth(2.7);
     this.sprite.setDisplaySize(24, 24);
+    // Elemental bolts share one piece of orb art, recoloured per element.
+    if (ammo?.tint !== undefined) this.sprite.setTint(ammo.tint);
     this.setAngleFromTravel(angleRad);
   }
 

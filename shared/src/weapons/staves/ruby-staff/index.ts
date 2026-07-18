@@ -1,9 +1,9 @@
 import { Staff } from "../base";
 
+// Fire: a slow, heavy flame bolt on a slower fire interval — big hits, low cadence.
 export default new Staff({
   id: "ruby-staff",
   name: "Ruby Staff",
-  damage: 32,
-  attackCooldownMs: 550,
-
+  ammoId: "flame-bolt",
+  attackCooldownMs: 620,
 });

@@ -1,10 +1,14 @@
 import { Facing } from "../types";
 
-export type AttackFXType = "slash" | "long-slash" | "stab" | "long-stab";
+export type AttackFXType = "slash" | "long-slash" | "stab" | "long-stab" | "nova";
 export type WeaponCategory = "sword" | "axe" | "spear" | "rapier" | "mace" | "dagger" | "hammer" | "bow" | "crossbow" | "staff" | "thrown";
 
-/** How a ranged weapon renders its attack client-side (see Entity.setupCharacter). */
-export type RangedStyle = "held" | "thrown";
+/** How a ranged weapon renders its attack client-side (see Entity.setupCharacter).
+ *  "held"  — a 2-frame draw sheet played beside the player (bows, crossbows).
+ *  "thrown" — nothing stays in hand; the flying projectile is the whole visual.
+ *  "cast"  — the weapon icon stays in hand and pulses/raises on cast (staves),
+ *            reusing the single icon PNG rather than needing a draw sheet. */
+export type RangedStyle = "held" | "thrown" | "cast";
 
 export interface RectHitRegion  { shape: "rect";   x: number; y: number; w: number; h: number }
 export interface CircleHitRegion { shape: "circle"; cx: number; cy: number; r: number }

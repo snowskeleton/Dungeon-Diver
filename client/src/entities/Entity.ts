@@ -1,18 +1,26 @@
 import Phaser from "phaser";
-import { TILE_SIZE, Facing, RangedStyle, FOOT_OFFSET, ENTITY_RADIUS } from "shared";
+import { TILE_SIZE, Facing, RangedStyle, FOOT_OFFSET, ENTITY_RADIUS, WEAPON_REGISTRY } from "shared";
 import type { DebugShape } from "../debug/DebugDraw";
 import {
   AttackFXType,
+  StripFXType,
   createAttackFXSprite,
   playAttackFX,
   syncAttackFX,
   WEAPON_ICON_DISPLAY_SIZE,
 } from "./AttackFXSprites";
+import { NovaFX } from "./NovaFX";
 import {
   createBowSprite,
   playBowFX,
   syncBowFX,
 } from "./RangedWeaponFX";
+import {
+  createCastSprite,
+  playCastFX,
+  syncCastFX,
+  showHeldStaff,
+} from "./CastFX";
 
 const HP_BAR_W = 24;
 const HP_BAR_H = 4;
@@ -40,12 +48,19 @@ export abstract class Entity {
   private lastHp?: number;
   private isHurt = false;
   private fxSprite?: Phaser.GameObjects.Sprite;
-  private fxType?: AttackFXType;
+  private fxType?: StripFXType;
+  // AOE staves (fxType "nova") render an expanding blast instead of a swing strip.
+  private novaFx?: NovaFX;
   private weaponIconImage?: Phaser.GameObjects.Image;
   // Ranged weapons (bows/crossbows) render a draw sheet instead of a melee FX
   // strip + icon. When set, the attack plays this bow sprite's draw clip.
   private bowSprite?: Phaser.GameObjects.Sprite;
   private rangedWeaponId?: string;
+  // Staves (rangedStyle "cast"): the icon stays in hand and pulses on each cast.
+  private castSprite?: Phaser.GameObjects.Image;
+  // Last facing the anim update saw — the held staff needs it every frame, but
+  // syncSpritePosition() runs outside the anim path where facing is passed in.
+  private lastFacing: Facing = "down";
   protected hpBar: Phaser.GameObjects.Rectangle;
   protected hpBarBg: Phaser.GameObjects.Rectangle;
   protected scene: Phaser.Scene;
@@ -124,9 +139,25 @@ export abstract class Entity {
       this.bowSprite = createBowSprite(this.scene, weaponIconTextureKey);
       return;
     }
+    if (rangedStyle === "cast" && weaponIconTextureKey) {
+      // Staff: the single weapon icon is held in hand and animated on cast — no
+      // draw sheet needed (see CastFX).
+      this.rangedWeaponId = weaponIconTextureKey;
+      this.castSprite = createCastSprite(this.scene, weaponIconTextureKey);
+      showHeldStaff(this.castSprite, this.sprite.x, this.sprite.y, this.lastFacing);
+      return;
+    }
     if (rangedStyle === "thrown") {
       // Thrown (knife/star/boomerang): the flying projectile is the whole visual;
       // nothing stays in hand.
+      return;
+    }
+
+    if (fxType === "nova") {
+      // AOE staff: size the blast to the weapon's AoeSpec (weaponIconTextureKey is
+      // the weapon id). No in-hand icon or swing strip — the nova is the whole FX.
+      const radius = WEAPON_REGISTRY[weaponIconTextureKey ?? ""]?.aoe?.radius ?? 76;
+      this.novaFx = new NovaFX(this.scene, radius);
       return;
     }
 
@@ -154,9 +185,13 @@ export abstract class Entity {
     this.fxSprite?.destroy();
     this.weaponIconImage?.destroy();
     this.bowSprite?.destroy();
+    this.castSprite?.destroy();
+    this.novaFx?.destroy();
     this.fxSprite = undefined;
     this.weaponIconImage = undefined;
     this.bowSprite = undefined;
+    this.castSprite = undefined;
+    this.novaFx = undefined;
     this.fxType = undefined;
     this.rangedWeaponId = undefined;
     this.configureWeaponVisuals(fxType, weaponIconTextureKey, rangedStyle);
@@ -179,6 +214,7 @@ export abstract class Entity {
     const effective = this.resolveEffectiveAction(action, startedAttack);
 
     this.charSprite.setFlipX(this.spriteConfig!.usesFlipX && facing === "left");
+    this.lastFacing = facing;
     this.setAnim(this.spriteConfig.resolveAnim(effective, facing), startedAttack);
     this.updateAttackFX(startedAttack, facing);
   }
@@ -192,6 +228,9 @@ export abstract class Entity {
     }
     if (this.bowSprite) {
       syncBowFX(this.bowSprite, this.sprite.x, this.sprite.y);
+    }
+    if (this.castSprite) {
+      syncCastFX(this.castSprite, this.sprite.x, this.sprite.y, this.lastFacing);
     }
   }
 
@@ -223,8 +262,16 @@ export abstract class Entity {
 
   private updateAttackFX(startedAttack: boolean, facing: Facing) {
     if (!startedAttack) return;
+    if (this.castSprite) {
+      playCastFX(this.castSprite, this.sprite.x, this.sprite.y, facing);
+      return;
+    }
     if (this.bowSprite && this.rangedWeaponId) {
       playBowFX(this.bowSprite, this.rangedWeaponId, this.sprite.x, this.sprite.y, facing);
+      return;
+    }
+    if (this.novaFx) {
+      this.novaFx.play(this.sprite.x, this.sprite.y);
       return;
     }
     if (!this.fxType || !this.fxSprite) return;
@@ -270,6 +317,8 @@ export abstract class Entity {
     this.fxSprite?.destroy();
     this.weaponIconImage?.destroy();
     this.bowSprite?.destroy();
+    this.castSprite?.destroy();
+    this.novaFx?.destroy();
     this.hpBar.destroy();
     this.hpBarBg.destroy();
   }

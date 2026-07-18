@@ -3,6 +3,11 @@ import { Facing, AttackFXType } from "shared";
 
 export type { AttackFXType };
 
+// The directional swing/stab strips. "nova" is a weapon FX type too, but it's a
+// procedural expanding blast (see NovaFX), not one of these right-facing strips —
+// so the strip tables below are keyed by the strip subset only.
+export type StripFXType = Exclude<AttackFXType, "nova">;
+
 // All FX strips are right-facing, played once at 14fps, then hidden.
 // Rotation: right=0° down=90° left=180° up=270°
 //
@@ -14,7 +19,7 @@ export type { AttackFXType };
 // every frame up, and facing rotation pivots around the body.
 const BODY_ANCHOR_PX = 24;
 
-const FX_CONFIG: Record<AttackFXType, { key: string; file: string; fw: number; fh: number; frames: number }> = {
+const FX_CONFIG: Record<StripFXType, { key: string; file: string; fw: number; fh: number; frames: number }> = {
   "slash":      { key: "slash-generic",      file: "/sprites/slash-generic.png",      fw: 48, fh: 48, frames: 4 },
   "long-slash": { key: "long-slash-generic", file: "/sprites/long-slash-generic.png", fw: 64, fh: 48, frames: 4 },
   "stab":       { key: "stab-generic",       file: "/sprites/stab-generic.png",       fw: 64, fh: 48, frames: 4 },
@@ -34,7 +39,7 @@ const FACING_ROTATION: Record<Facing, number> = {
 // degrees clockwise (icon art points up at 0°). null = icon hidden that frame.
 // Other facings rotate the whole keyframe by FACING_ROTATION.
 type IconKeyframe = { x: number; y: number; angle: number } | null;
-const ICON_KEYFRAMES: Record<AttackFXType, IconKeyframe[]> = {
+const ICON_KEYFRAMES: Record<StripFXType, IconKeyframe[]> = {
   "slash": [
     { x: -12, y:  0, angle: -90 },
     { x: -12, y:  0, angle: 180 },
@@ -77,7 +82,7 @@ export function preloadAttackFX(scene: Phaser.Scene) {
 }
 
 export function defineAttackFXAnimations(scene: Phaser.Scene) {
-  for (const [type, cfg] of Object.entries(FX_CONFIG) as [AttackFXType, typeof FX_CONFIG[AttackFXType]][]) {
+  for (const [type, cfg] of Object.entries(FX_CONFIG) as [StripFXType, typeof FX_CONFIG[StripFXType]][]) {
     const key = `fx-${type}`;
     if (!scene.anims.exists(key)) {
       scene.anims.create({
@@ -92,7 +97,7 @@ export function defineAttackFXAnimations(scene: Phaser.Scene) {
   }
 }
 
-export function createAttackFXSprite(scene: Phaser.Scene, fxType: AttackFXType): Phaser.GameObjects.Sprite {
+export function createAttackFXSprite(scene: Phaser.Scene, fxType: StripFXType): Phaser.GameObjects.Sprite {
   const cfg = FX_CONFIG[fxType];
   const sprite = scene.add.sprite(0, 0, cfg.key);
   sprite.setOrigin(BODY_ANCHOR_PX / cfg.fw, BODY_ANCHOR_PX / cfg.fh);
@@ -124,7 +129,7 @@ function applyIconKeyframe(
 
 export function playAttackFX(
   sprite: Phaser.GameObjects.Sprite,
-  fxType: AttackFXType,
+  fxType: StripFXType,
   px: number,
   py: number,
   facing: Facing,

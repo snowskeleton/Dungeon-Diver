@@ -11,7 +11,7 @@
 // ammo/ preserving that structure, so the derived spritePath resolves at runtime.
 
 // Categories with a shared base subclass. One-offs pass no category and live flat.
-export type AmmoCategory = "arrows" | "boomerangs";
+export type AmmoCategory = "arrows" | "boomerangs" | "bolts";
 
 export interface AmmoConfig {
   id: string;
@@ -42,6 +42,13 @@ export interface AmmoConfig {
   hitRadiusSide: number;
   /** Client sprite path, served from client/public/sprites/ammo/. */
   spritePath: string;
+  /**
+   * If set, the client tints the sprite with this colour. Lets one piece of orb
+   * art serve a family of elemental bolts (arcane violet, frost cyan, verdant
+   * green) without a separate drawing for each. Drop the tint once an ammo gets
+   * its own art. Omitted = the sprite renders at its drawn colours.
+   */
+  tint?: number;
   /** Category folder (arrows/boomerangs). Omitted for flat one-offs. */
   category?: AmmoCategory;
   /**
@@ -95,6 +102,7 @@ export class Ammo implements AmmoConfig {
   readonly ignoresWalls: boolean;
   readonly category?: AmmoCategory;
   readonly spritePath: string;
+  readonly tint?: number;
 
   constructor(o: AmmoOpts) {
     this.id = o.id;
@@ -112,6 +120,7 @@ export class Ammo implements AmmoConfig {
     this.returnsAtMs = o.returnsAtMs;
     this.ignoresWalls = o.ignoresWalls ?? false;
     this.category = o.category;
+    this.tint = o.tint;
     // Category ammo nests under its folder (arrows/, boomerangs/); one-offs are flat.
     const dir = o.category ? `${o.category}/` : "";
     this.spritePath = `/sprites/ammo/${dir}${o.id}/${o.id}.png`;

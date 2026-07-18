@@ -1,9 +1,10 @@
 import { Staff } from "../base";
 
+// Frost: the biggest hit and heaviest knockback in the family, paid for with the
+// slowest fire interval of any staff.
 export default new Staff({
   id: "crystal-wand",
   name: "Crystal Wand",
-  damage: 38,
-  attackCooldownMs: 700,
-
+  ammoId: "frost-bolt",
+  attackCooldownMs: 760,
 });
