@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { WEAPON_REGISTRY, WeaponId } from "shared";
+import { WEAPON_REGISTRY, WeaponId, WeaponSlotView } from "shared";
 
 // A fixed HUD row of the local player's owned weapons, with the active slot
 // highlighted. Rebuilt only when the inventory or active slot actually changes
@@ -21,13 +21,17 @@ export class InventoryHud {
     this.y = y;
   }
 
-  update(inventory: string[], activeIndex: number) {
-    const sig = `${inventory.join(",")}|${activeIndex}`;
+  update(weapons: WeaponSlotView[], activeIndex: number) {
+    // Signature is built from uids, not a join() of the array: these are objects
+    // now, and `[object Object]` for every slot would compare equal forever and
+    // the HUD would silently never rebuild.
+    const sig = `${weapons.map((w) => w.uid).join(",")}|${activeIndex}`;
     if (sig === this.sig) return;
     this.sig = sig;
     this.clear();
 
-    inventory.forEach((id, i) => {
+    weapons.forEach((slot, i) => {
+      const id = slot.weaponId;
       const cx = X0 + i * (SLOT + GAP) + SLOT / 2;
       const cy = this.y + SLOT / 2;
       const active = i === activeIndex;

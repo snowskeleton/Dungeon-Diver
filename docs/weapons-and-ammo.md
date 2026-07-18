@@ -4,6 +4,13 @@ Read this before touching weapons, attack FX, ammo, or projectiles.
 
 A weapon's attack FX type comes from the weapon itself — `WEAPON_REGISTRY[weaponId].fxType` (`shared/src/weapons/base.ts`). There is no per-class FX mapping.
 
+> **Templates vs. instances.** Everything in this doc describes a weapon **template** —
+> the immutable, shared `Weapon` in `WEAPON_REGISTRY`. What a player actually *wields*
+> is a `WeaponInstance` wrapping that template with its own modifiers, so its damage /
+> cooldown / knockback may differ from the numbers here. Visuals and hurtbox geometry
+> delegate straight through, so nothing in this doc changes because of it. Before
+> touching damage numbers or adding a modifier, read [upgrades.md](upgrades.md).
+
 ## Attack FX (melee: one-shot rotated strips)
 
 Attacks render as short FX strips layered over the character, not as a persistent weapon sprite — see `client/src/entities/AttackFXSprites.ts`:
@@ -69,7 +76,7 @@ Once registered, a weapon automatically becomes **buyable in shops** and works i
 
 ## Balance
 
-- **Weapon** → the weapon's `shared/src/weapons/<category>/<id>/index.ts` (or the category `base.ts` defaults). For ranged weapons the weapon controls only fire rate (`attackCooldownMs`) + which `ammoId`; the projectile's damage/speed live on the ammo.
+- **Weapon** → the weapon's `shared/src/weapons/<category>/<id>/index.ts` (or the category `base.ts` defaults). For ranged weapons the weapon controls fire rate (`attackCooldownMs`), which `ammoId`, and a flat `damage` bonus **added to the ammo's damage** at the muzzle — that bonus is what lets a per-weapon modifier matter on a bow. Speed/pierce/knockback live on the ammo. Most ranged weapons leave `damage: 0`.
 - **Ammo/projectile** → `shared/src/ammo/<id>/index.ts`: the `AmmoConfig` fields above.
 
 ## Sprite provenance (asset pack)

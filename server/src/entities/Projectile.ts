@@ -2,6 +2,7 @@ import { AmmoConfig, TILE_PROPS, TileId } from "shared";
 import { ProjectileState } from "../schema/ProjectileState";
 import { HitSource } from "../combat/HitSource";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
+import type { AttackStats } from "../spells/Spell";
 
 // A kinematic projectile (arrow, fireball, thrown weapon). Not a matter-js body:
 // it integrates its own position each tick, despawns on a wall tile or after its
@@ -26,6 +27,11 @@ export class Projectile {
   private vy: number;
   private ageMs = 0;
   private readonly lifetimeMs: number;
+  /** The damage/knockback this shot delivers — resolved at the muzzle, not read
+   *  from the shared AmmoConfig, so two players' arrows can differ. */
+  private readonly attackStats: AttackStats;
+  /** Set by GameRoom when a player fired this, so lifesteal can find its owner. */
+  onDealt?: (targetId: string, damage: number) => void;
   private pierceLeft: number;
   private hitTargets = new Set<string>();
   private reversed = false;
@@ -43,9 +49,14 @@ export class Projectile {
     // same tick regardless of when each was spawned — a synchronized clear. Falls
     // back to the ammo's own lifetimeMs.
     lifetimeMsOverride?: number,
+    // Pre-resolved damage/knockback from the muzzle — a player's shot carries the
+    // firing weapon's modifiers and the shooter's upgrades, both folded before the
+    // projectile existed. Omitted (enemy/boss shots) = the ammo's own numbers.
+    attackOverride?: AttackStats,
   ) {
     this.physics = physics;
     this.cfg = ammo;
+    this.attackStats = attackOverride ?? { damage: ammo.damage, knockback: ammo.knockback };
     this.ownerSessionId = ownerSessionId;
     this.affects = affects;
     this.lifetimeMs = lifetimeMsOverride ?? ammo.lifetimeMs;
@@ -116,13 +127,14 @@ export class Projectile {
       affects: this.affects,
       ownerId: this.ownerSessionId,
       attack: {
-        damage: this.cfg.damage,
-        knockback: this.cfg.knockback,
+        damage: this.attackStats.damage,
+        knockback: this.attackStats.knockback,
         // Push targets along the arrow's travel direction (its previous position).
         sourceX: this.prevX,
         sourceY: this.prevY,
       },
       claim: (targetId) => this.claimHit(targetId),
+      onDealt: this.onDealt,
     };
   }
 

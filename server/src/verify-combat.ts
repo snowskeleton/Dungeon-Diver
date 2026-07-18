@@ -4,10 +4,11 @@
 // PhysicsWorld + Player + Enemy + Projectile, runs the exact gather+resolve step
 // GameRoom.tick now runs, and asserts damage, knockback, and team-filtering all
 // behave. Run: npx ts-node --transpile-only src/verify-combat.ts
-import { TILE, Layer, SERVER_TICK_MS, WEAPON_REGISTRY, AMMO_REGISTRY, PLAYER_ATTACK_AFFECTS, ENEMY_ATTACK_AFFECTS, PLAYER_PROJECTILE_AFFECTS, ENEMY_PROJECTILE_AFFECTS, Staff } from "shared";
+import { TILE, Layer, SERVER_TICK_MS, WEAPON_REGISTRY, AMMO_REGISTRY, PLAYER_ATTACK_AFFECTS, ENEMY_ATTACK_AFFECTS, PLAYER_PROJECTILE_AFFECTS, ENEMY_PROJECTILE_AFFECTS, Staff, WeaponInstance, WeaponMod, viewFromSlot } from "shared";
 import { weaponSpell } from "./spells/weaponSpell";
 import { PhysicsWorld } from "./physics/PhysicsWorld";
-import { Player } from "./entities/Player";
+import { Player, slotStateFor } from "./entities/Player";
+import { KeenEdge, Ferocity, IronSkin, Bloodthirst, Toughness, Berserk } from "./upgrades";
 import { Enemy } from "./entities/Enemy";
 import { GooGreen } from "./entities/enemies/goos";
 import { Projectile } from "./entities/Projectile";
@@ -40,7 +41,12 @@ function resolveStep(
   const drain = (ownerId: string, affects: number, effects: ReturnType<Player["drainEffects"]>) => {
     for (const e of effects) {
       if (e.kind === "hit") sources.push(e.source);
-      else if (e.kind === "projectile") projectiles.push(new Projectile(physics, AMMO_REGISTRY[e.ammoId], e.x, e.y, e.angle, ownerId, e.opts?.inert ? 0 : affects, e.opts?.lifetimeMs));
+      else if (e.kind === "projectile") {
+        projectiles.push(new Projectile(
+          physics, AMMO_REGISTRY[e.ammoId], e.x, e.y, e.angle, ownerId,
+          e.opts?.inert ? 0 : affects, e.opts?.lifetimeMs, e.opts?.attack,
+        ));
+      }
     }
   };
   players.forEach((p, sid) => drain(sid, PLAYER_ATTACK_AFFECTS, p.drainEffects()));
@@ -250,10 +256,186 @@ function resolveStep(
     name: "Nova Staff (test)",
     aoe: { radius: 76, windUpMs: 260, blastMs: 130 },
   });
-  const spell = weaponSpell(novaStaff);
+  const spell = weaponSpell(new WeaponInstance(novaStaff, "test-nova"));
   check("AOE: still builds a wind-up + blast from an AoeSpec",
     spell.windUpMs === 260 && spell.activeMs === 130,
     `windUp=${spell.windUpMs} active=${spell.activeMs}`);
+}
+
+
+// ── 7. Per-instance weapons: two wielders of the "same" weapon can differ, and a
+//    modifier applied AFTER the spell was cached still takes effect. ───────────
+{
+  class PlusDamage extends WeaponMod {
+    readonly label = "+2 damage";
+    constructor(private readonly n: number) { super(); }
+    override get damageFlat() { return this.n; }
+  }
+  class PctDamage extends WeaponMod {
+    readonly label = "+50% damage";
+    constructor(private readonly p: number) { super(); }
+    override get damagePct() { return this.p; }
+  }
+  class FasterSwing extends WeaponMod {
+    readonly label = "+100% attack speed";
+    override get attackSpeedPct() { return 1; }
+  }
+
+  const template = WEAPON_REGISTRY["broadsword"];
+  const plain = new WeaponInstance(template, "a");
+  const rolled = new WeaponInstance(template, "b", [new PlusDamage(2)]);
+
+  check("instance: template stats pass through",
+    plain.damage === template.damage && plain.attackCooldownMs === template.attackCooldownMs,
+    `dmg=${plain.damage} cd=${plain.attackCooldownMs}`);
+  check("instance: a modifier changes only its own copy",
+    rolled.damage === template.damage + 2 && plain.damage === template.damage,
+    `rolled=${rolled.damage} plain=${plain.damage}`);
+  check("instance: mods compose flat-then-percent",
+    new WeaponInstance(template, "c", [new PlusDamage(2), new PctDamage(0.5)]).damage
+      === (template.damage + 2) * 1.5,
+    `${(template.damage + 2) * 1.5}`);
+
+  // The stale-capture regression: build the spell FIRST, then modify the weapon.
+  const late = new WeaponInstance(template, "d", []);
+  const lateSpell = weaponSpell(late);
+  const before = lateSpell.activeMs;
+  const mutable = new WeaponInstance(template, "e", [new FasterSwing()]);
+  const mutableSpell = weaponSpell(mutable);
+  check("instance: attack speed reaches a cached spell",
+    before === template.attackCooldownMs && mutableSpell.activeMs === template.attackCooldownMs / 2,
+    `base=${before} hasted=${mutableSpell.activeMs}`);
+
+  // Two identical weapons must not share swing dedupe state.
+  const physics = newPhysics();
+  const p = new Player(physics, 300, 300);
+  const swordA = p.weapon;
+  const swordB = p.addWeapon(template);
+  check("instance: duplicates are distinct slots",
+    swordA.uid !== swordB.uid && p.weapons.length === 2,
+    `uids=${swordA.uid},${swordB.uid}`);
+}
+
+// ── 8. The attack pipeline: player upgrades scale melee AND ranged damage. ────
+{
+  const physics = newPhysics();
+  const players = new Map<string, Player>();
+  const enemies = new Map<string, Enemy>();
+
+  const p = new Player(physics, 300, 300);
+  players.set("p1", p);
+  const base = p.weapon.damage;
+
+  // No upgrades → the fold is the identity.
+  check("pipeline: no upgrades is the identity",
+    p.scaleAttack({ damage: base, knockback: 5 }).damage === base,
+    `${p.scaleAttack({ damage: base, knockback: 5 }).damage}`);
+
+  p.addUpgrade(new KeenEdge());   // +3 flat
+  p.addUpgrade(new Ferocity());   // +20%
+  const expected = (base + 3) * 1.2;
+  check("pipeline: upgrades fold flat-then-percent",
+    Math.abs(p.scaleAttack({ damage: base, knockback: 0 }).damage - expected) < 1e-9,
+    `got=${p.scaleAttack({ damage: base, knockback: 0 }).damage.toFixed(2)} want=${expected.toFixed(2)}`);
+
+  // And it reaches a real swing, through the spell that was cached before.
+  // Enemy 12px right and facing set to match, mirroring scenario 1's geometry.
+  const e = new GooGreen(physics, 312, 300);
+  enemies.set("e1", e);
+  p.state.facing = "right";
+  const hpBefore = e.state.health;
+  p.applyInput({ dx: 0, dy: 0, attack: true }, SERVER_TICK_MS);
+  resolveStep(physics, players, enemies, []);
+  const dealt = hpBefore - e.state.health;
+  check("pipeline: a swing delivers the scaled damage",
+    Math.abs(dealt - expected) < 1e-6,
+    `dealt=${dealt.toFixed(2)} want=${expected.toFixed(2)}`);
+}
+
+// ── 9. Ranged: the shot carries weapon damage + ammo damage, scaled. ──────────
+{
+  const physics = newPhysics();
+  const players = new Map<string, Player>();
+  const enemies = new Map<string, Enemy>();
+  const projectiles: Projectile[] = [];
+
+  const p = new Player(physics, 200, 300, "ranger", "guy", "longbow");
+  players.set("p1", p);
+  const bow = p.weapon;
+  const arrow = AMMO_REGISTRY[bow.ammoId!];
+  const e = new GooGreen(physics, 300, 300);
+  enemies.set("e1", e);
+
+  const hpBefore = e.state.health;
+  p.state.facing = "right";
+  for (let i = 0; i < 12 && e.state.health === hpBefore; i++) {
+    p.applyInput({ dx: 0, dy: 0, attack: true }, SERVER_TICK_MS);
+    resolveStep(physics, players, enemies, projectiles);
+  }
+  const dealt = hpBefore - e.state.health;
+  check("ranged: shot = ammo damage + weapon damage",
+    Math.abs(dealt - (arrow.damage + bow.damage)) < 1e-6,
+    `dealt=${dealt} ammo=${arrow.damage} weapon=${bow.damage}`);
+}
+
+// ── 10. Defensive stats: armor mitigates, floors at 1; lifesteal heals from
+//     damage actually dealt and can't overheal. ─────────────────────────────────
+{
+  const physics = newPhysics();
+  const p = new Player(physics, 300, 300);
+  const full = p.maxHp;
+
+  p.addUpgrade(new IronSkin()); // −2 flat
+  p.state.health = full;
+  const took = p.takeHit({ damage: 10, knockback: 0, sourceX: 0, sourceY: 0 });
+  check("armor: flat reduction applies", took === 8, `took=${took}`);
+
+  p.state.health = full;
+  const tiny = p.takeHit({ damage: 1, knockback: 0, sourceX: 0, sourceY: 0 });
+  check("armor: never reduces a hit below 1", tiny === 1, `took=${tiny}`);
+
+  const q = new Player(physics, 300, 300);
+  q.addUpgrade(new Bloodthirst()); // 10% lifesteal
+  q.state.health = q.maxHp - 5;
+  q.onDamageDealt(20);
+  check("lifesteal: heals a fraction of damage dealt",
+    Math.abs(q.state.health - (q.maxHp - 3)) < 1e-9,
+    `hp=${q.state.health.toFixed(1)}/${q.maxHp}`);
+  q.onDamageDealt(1000);
+  check("lifesteal: cannot overheal", q.state.health === q.maxHp, `hp=${q.state.health}`);
+}
+
+// ── 11. maxHp upgrades grant their delta rather than preserving the ratio. ────
+{
+  const physics = newPhysics();
+  const p = new Player(physics, 300, 300);
+  const baseMax = p.maxHp;
+  p.state.health = 10; // nearly dead
+  p.addUpgrade(new Toughness()); // +20 max
+  check("maxHp: an increase grants the delta to current health",
+    p.maxHp === baseMax + 20 && p.state.health === 30,
+    `hp=${p.state.health}/${p.maxHp}`);
+
+  const q = new Player(physics, 300, 300);
+  q.addUpgrade(new Berserk()); // −15% max, damage up
+  check("maxHp: a decrease clamps current health to the new max",
+    q.state.health === q.maxHp && q.maxHp < baseMax,
+    `hp=${q.state.health}/${q.maxHp}`);
+}
+
+// ── 12. The wire: a synced slot reconstructs the same stat lines the server has. ─
+{
+  const physics = newPhysics();
+  const p = new Player(physics, 300, 300, "ranger", "guy", "longbow");
+  const slot = slotStateFor(p.weapon);
+  const view = viewFromSlot(slot);
+  check("wire: slot carries the resolved weapon stats",
+    !!view && view.damage === p.weapon.damage && view.attackCooldownMs === Math.round(p.weapon.attackCooldownMs),
+    `dmg=${view?.damage} cd=${view?.attackCooldownMs}`);
+  const ammo = AMMO_REGISTRY[p.weapon.ammoId!];
+  check("wire: ranged slot carries ammo damage + weapon damage",
+    !!view?.ammo && view.ammo.damage === ammo.damage + p.weapon.damage,
+    `ammo=${view?.ammo?.damage} want=${ammo.damage + p.weapon.damage}`);
 }
 
 console.log(allPass ? "\n✅ COMBAT SUBSTRATE OK" : "\n❌ COMBAT SUBSTRATE FAILED");

@@ -1,4 +1,4 @@
-import { DebugConfig, DEFAULT_DEBUG_CONFIG, EnemyType, RoomType } from "shared";
+import { DebugConfig, DEFAULT_DEBUG_CONFIG, EnemyType, RoomType, UPGRADE_IDS } from "shared";
 import { CLIENT_ENEMY_REGISTRY } from "../enemies";
 import { FieldSpec, Preset } from "../ui/FieldPanel";
 
@@ -21,6 +21,10 @@ const ROOM_TYPE_CHOICES = [
 // real Boss class (in whatever rooms get populated), which is how you test a
 // specific boss without relying on the floor-rotated boss room. Bosses are
 // labeled so they're easy to spot; they stay out of the *random* spawn pool.
+// Ids only — the human-readable name lives on the server-side Upgrade class, and
+// this is a debug knob, so the id is a fine label.
+const UPGRADE_CHOICES = UPGRADE_IDS.map((id) => ({ value: id, label: id }));
+
 const ENEMY_CHOICES = (Object.keys(CLIENT_ENEMY_REGISTRY) as EnemyType[])
   .map((id) => {
     const def = CLIENT_ENEMY_REGISTRY[id];
@@ -53,6 +57,10 @@ export const DEBUG_FIELDS: FieldSpec<DebugConfig>[] = [
   {
     kind: "number", key: "enemiesPerRoom", label: "Enemies per room", min: -1, max: 30,
     help: "-1 = normal formula (combat/maze rooms only). 0+ fills every room.",
+  },
+  {
+    kind: "multiselect", key: "startingUpgrades", label: "Starting upgrades", options: UPGRADE_CHOICES,
+    help: "Granted to every player on join, for testing stat folding",
   },
 ];
 

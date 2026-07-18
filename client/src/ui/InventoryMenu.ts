@@ -1,5 +1,5 @@
-import { WEAPON_REGISTRY, WeaponId } from "shared";
-import { weaponStatLines } from "./weaponStats";
+import { WeaponSlotView, UpgradeSlotView } from "shared";
+import { weaponStatLines, viewFromSlot } from "./weaponStats";
 
 // Full-screen pause overlay (opened with the menu key — see LocalPlayer) listing
 // the player's owned weapons with expanded stats, the active one highlighted.
@@ -28,6 +28,7 @@ const CSS = `
   .inv-name { font-size: 13px; color: #fff; margin-bottom: 3px; }
   .inv-name .tag { font-size: 10px; color: #1a1a2e; background: #ffe066; padding: 1px 5px; border-radius: 3px; margin-left: 6px; }
   .inv-stats { font-size: 11px; color: #99aacc; }
+  .inv-mods { font-size: 11px; color: #ffe066; margin-top: 2px; display: flex; gap: 8px; }
   .inv-stats span { display: inline-block; margin-right: 12px; }
   #inv-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
   #inv-hint { font-size: 11px; color: #7777aa; }
@@ -46,7 +47,12 @@ export class InventoryMenu {
 
   // Show the menu. `onClose` is called when the user closes it via the button so
   // the caller can also unpause.
-  show(inventory: string[], activeIndex: number, onClose: () => void) {
+  show(
+    weapons: WeaponSlotView[],
+    activeIndex: number,
+    upgrades: UpgradeSlotView[],
+    onClose: () => void,
+  ) {
     if (this.overlay) return;
     if (!document.getElementById("inv-style")) {
       const style = document.createElement("style");
@@ -67,8 +73,10 @@ export class InventoryMenu {
     title.textContent = "Inventory";
     modal.appendChild(title);
 
-    inventory.forEach((id, i) => {
-      const weapon = WEAPON_REGISTRY[id as WeaponId];
+    weapons.forEach((slot, i) => {
+      // Stats come off the synced slot, so a rolled weapon shows its real numbers
+      // rather than its template's.
+      const weapon = viewFromSlot(slot);
       if (!weapon) return;
       const row = document.createElement("div");
       row.className = "inv-row" + (i === activeIndex ? " active" : "");
@@ -97,10 +105,39 @@ export class InventoryMenu {
       stats.innerHTML = weaponStatLines(weapon).map((s) => `<span>${s.label}: ${s.value}</span>`).join("");
       info.appendChild(name);
       info.appendChild(stats);
+      const modLabels = Array.from(slot.modLabels);
+      if (modLabels.length) {
+        const mods = document.createElement("div");
+        mods.className = "inv-mods";
+        mods.innerHTML = modLabels.map((m) => `<span>${m}</span>`).join("");
+        info.appendChild(mods);
+      }
       row.appendChild(info);
 
       modal.appendChild(row);
     });
+
+    if (upgrades.length) {
+      const heading = document.createElement("h2");
+      heading.textContent = "Upgrades";
+      modal.appendChild(heading);
+      for (const u of upgrades) {
+        const row = document.createElement("div");
+        row.className = "inv-row";
+        const info = document.createElement("div");
+        info.className = "inv-info";
+        const name = document.createElement("div");
+        name.className = "inv-name";
+        name.textContent = u.name;
+        const desc = document.createElement("div");
+        desc.className = "inv-stats";
+        desc.innerHTML = `<span>${u.description}</span>`;
+        info.appendChild(name);
+        info.appendChild(desc);
+        row.appendChild(info);
+        modal.appendChild(row);
+      }
+    }
 
     const footer = document.createElement("div");
     footer.id = "inv-footer";

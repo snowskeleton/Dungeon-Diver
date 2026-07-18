@@ -1,6 +1,15 @@
-import { Facing } from "shared";
+import { Facing, Attack } from "shared";
 import { HitSource } from "../combat/HitSource";
 import type { SpawnProjectile, EnemyClass } from "../entities/Enemy";
+
+// Stage 2 of the attack pipeline: the raw offensive numbers a weapon/ammo produces,
+// BEFORE the caster's own scaling is folded in. Kept as its own type so the future
+// damage-type axis (slashing/fire/blunt) has an obvious home — adding a field here
+// reaches every attack in the game without touching a single spell builder.
+export interface AttackStats {
+  damage: number;
+  knockback: number;
+}
 
 // A world-space point a cast has aimed at (the locked target position).
 export interface AimPoint {
@@ -35,6 +44,29 @@ export interface Caster {
   emitHitSource(source: HitSource): void;
   /** Fire a projectile / inert visual marker (shots, tremor shards). */
   spawnProjectile: SpawnProjectile;
+
+  /**
+   * Fold this caster's own offensive scaling into a set of raw weapon/ammo stats.
+   * `Entity` implements the identity (pass the numbers straight through), so
+   * enemies and bosses are unaffected; `Player` overrides THIS ONE METHOD to apply
+   * its upgrades. It returns stats rather than a finished Attack because a
+   * projectile needs the scaled numbers now but its blow's origin only later, at
+   * the moment of impact.
+   */
+  scaleAttack(base: AttackStats): AttackStats;
+
+  /**
+   * scaleAttack + an origin, giving the finished Attack a hitbox delivers. Spell
+   * builders call this instead of hand-constructing an Attack, which is what lets a
+   * modifier reach every ability without any builder knowing modifiers exist.
+   */
+  buildAttack(base: AttackStats, sourceX: number, sourceY: number): Attack;
+
+  /**
+   * Called with the damage actually dealt, once a hit lands. Optional because only
+   * a Player currently cares (lifesteal); enemies leave it undefined.
+   */
+  onDamageDealt?(damage: number): void;
 }
 
 // A caster that can charge across the room. Movement + wall-bounce is the mover's
@@ -112,10 +144,19 @@ export interface SpellOpts {
 export class Spell {
   readonly id: string;
   readonly windUpMs: number;
-  readonly activeMs: number;
   readonly recoverMs: number;
-  readonly cooldownMs: number;
   readonly range: number;
+  // activeMs/cooldownMs are getters rather than fields so a subclass can derive
+  // them from live state. A weapon's swing window IS its attack cooldown, and that
+  // is modifiable per weapon instance (an attack-speed roll) — baking it in at
+  // construction would freeze the pre-modifier value forever, since spells are
+  // cached for the caster's lifetime. SpellCaster reads them once per cast when it
+  // enters a phase, so a mid-swing change can't retime a swing already in flight.
+  protected readonly baseActiveMs: number;
+  protected readonly baseCooldownMs: number;
+
+  get activeMs(): number { return this.baseActiveMs; }
+  get cooldownMs(): number { return this.baseCooldownMs; }
   readonly aimLockMs: number;
   readonly knockbackImmuneWhileActive: boolean;
   readonly invulnerableWhileActive: boolean;
@@ -128,9 +169,9 @@ export class Spell {
   constructor(opts: SpellOpts) {
     this.id = opts.id;
     this.windUpMs = opts.windUpMs;
-    this.activeMs = opts.activeMs;
+    this.baseActiveMs = opts.activeMs;
     this.recoverMs = opts.recoverMs;
-    this.cooldownMs = opts.cooldownMs;
+    this.baseCooldownMs = opts.cooldownMs;
     this.range = opts.range;
     this.aimLockMs = opts.aimLockMs;
     this.knockbackImmuneWhileActive = opts.knockbackImmuneWhileActive ?? false;

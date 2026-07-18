@@ -1,6 +1,6 @@
-import { Weapon, HitShape } from "shared";
+import { WeaponInstance, HitShape, AMMO_REGISTRY } from "shared";
 import { RehitGate } from "../combat/RehitGate";
-import { Spell, SpellEffect, Caster } from "./Spell";
+import { Spell, SpellOpts, SpellEffect, Caster, AttackStats } from "./Spell";
 
 // A player's weapon attack expressed as a Spell — the "a basic swing is a
 // zero-wind-up spell" unification. A melee weapon's spell has an active phase
@@ -10,33 +10,68 @@ import { Spell, SpellEffect, Caster } from "./Spell";
 // then holds its active phase for the same window so `isAttacking` reads true
 // throughout (matching the old attack-cooldown behaviour). The active phase is the
 // re-fire gate, so cooldownMs is 0.
+//
+// Everything here takes a WeaponInstance, not a Weapon template: the numbers it
+// reads (damage, force, cooldown) are the wielder's own modified values, and it
+// reads them LIVE — see WeaponSpell below for why that matters.
 
-/** Build the Spell a weapon casts. Cached per weapon by the caster. */
-export function weaponSpell(weapon: Weapon): Spell {
-  if (weapon.isAoe) return aoeWeaponSpell(weapon);
-  return weapon.isRanged ? rangedWeaponSpell(weapon) : meleeWeaponSpell(weapon);
+/**
+ * A Spell whose timing follows its weapon instance instead of being frozen at
+ * construction. Player caches one spell per weapon for the run, so a modifier
+ * acquired later (an attack-speed roll, a weapon upgrade) has to be visible to a
+ * spell that was built before it existed. Reading through to the instance on every
+ * access is what makes that work.
+ */
+class WeaponSpell extends Spell {
+  constructor(
+    protected readonly inst: WeaponInstance,
+    opts: SpellOpts,
+  ) {
+    super(opts);
+  }
+
+  /** The swing window IS the weapon's cooldown, so it tracks attack-speed mods. */
+  override get activeMs(): number {
+    return this.inst.attackCooldownMs;
+  }
+}
+
+/** An AOE weapon paces itself by cooldown rather than by its (fixed) blast length. */
+class AoeWeaponSpell extends WeaponSpell {
+  override get activeMs(): number {
+    return this.baseActiveMs; // blastMs — the blast's own duration, not the cooldown
+  }
+  override get cooldownMs(): number {
+    return this.inst.attackCooldownMs;
+  }
+}
+
+/** Build the Spell a weapon casts. Cached per weapon INSTANCE by the caster. */
+export function weaponSpell(inst: WeaponInstance): Spell {
+  if (inst.isAoe) return aoeWeaponSpell(inst);
+  return inst.isRanged ? rangedWeaponSpell(inst) : meleeWeaponSpell(inst);
 }
 
 // The Mage's staff: a brief wind-up telegraph, then a damaging nova around the
 // caster for `blastMs`, hitting each enemy once. The very first player spell with
 // a real wind-up — validating that the shared SpellCaster serves players, not just
 // bosses. Auto-casts while held, paced by the weapon's cooldown.
-function aoeWeaponSpell(weapon: Weapon): Spell {
-  const aoe = weapon.aoe!;
-  return new Spell({
-    id: `weapon:${weapon.id}`,
+function aoeWeaponSpell(inst: WeaponInstance): Spell {
+  const aoe = inst.aoe!;
+  return new AoeWeaponSpell(inst, {
+    id: `weapon:${inst.id}`,
     windUpMs: aoe.windUpMs,
     activeMs: aoe.blastMs,
     recoverMs: 0,
-    cooldownMs: weapon.attackCooldownMs,
+    cooldownMs: inst.attackCooldownMs,
     range: 0,
     aimLockMs: 0,
     fireMode: "hold",
-    effect: aoeEffect(weapon, aoe.radius),
+    effect: aoeEffect(inst, aoe.radius),
   });
 }
 
-function aoeEffect(weapon: Weapon, radius: number): SpellEffect {
+function aoeEffect(inst: WeaponInstance, radius: number): SpellEffect {
   const gate = new RehitGate(Infinity); // one hit per enemy per blast
   return {
     onActivate: () => gate.reset(),
@@ -45,38 +80,34 @@ function aoeEffect(weapon: Weapon, radius: number): SpellEffect {
       caster.emitHitSource({
         shape: { kind: "circle", cx: caster.x, cy: caster.y, r: radius },
         affects: caster.attackAffects,
-        attack: {
-          damage: weapon.damage,
-          knockback: weapon.attackForce,
-          sourceX: caster.x,
-          sourceY: caster.y,
-        },
+        attack: casterAttack(caster, inst),
         claim: (id) => gate.claim(id),
+        onDealt: (_, dmg) => caster.onDamageDealt?.(dmg),
       });
     },
   };
 }
 
-function meleeWeaponSpell(weapon: Weapon): Spell {
-  return new Spell({
-    id: `weapon:${weapon.id}`,
+function meleeWeaponSpell(inst: WeaponInstance): Spell {
+  return new WeaponSpell(inst, {
+    id: `weapon:${inst.id}`,
     windUpMs: 0,
-    activeMs: weapon.attackCooldownMs,
+    activeMs: inst.attackCooldownMs,
     recoverMs: 0,
     cooldownMs: 0,
     range: 0,
     aimLockMs: 0,
     fireMode: "press", // one swing per key press
-    effect: meleeEffect(weapon),
+    effect: meleeEffect(inst),
   });
 }
 
-function meleeEffect(weapon: Weapon): SpellEffect {
+function meleeEffect(inst: WeaponInstance): SpellEffect {
   const gate = new RehitGate(Infinity); // one hit per target for the whole swing
   // Emit the weapon's facing-relative hurtbox for this tick. Called on the strike
   // frame AND every active tick, so the swing is live from its very first frame.
   const emit = (caster: Caster) => {
-    const box = weapon.getHurtbox(caster.x, caster.y, caster.facing);
+    const box = inst.getHurtbox(caster.x, caster.y, caster.facing);
     if (!box) return; // (ranged weapons return null, but they don't use this spell)
     const shape: HitShape = box.shape === "rect"
       ? { kind: "rect", x: box.x, y: box.y, w: box.w, h: box.h }
@@ -84,13 +115,9 @@ function meleeEffect(weapon: Weapon): SpellEffect {
     caster.emitHitSource({
       shape,
       affects: caster.attackAffects,
-      attack: {
-        damage: weapon.damage,
-        knockback: weapon.attackForce,
-        sourceX: caster.x,
-        sourceY: caster.y,
-      },
+      attack: casterAttack(caster, inst),
       claim: (id) => gate.claim(id),
+      onDealt: (_, dmg) => caster.onDamageDealt?.(dmg),
     });
   };
   return {
@@ -99,12 +126,11 @@ function meleeEffect(weapon: Weapon): SpellEffect {
   };
 }
 
-function rangedWeaponSpell(weapon: Weapon): Spell {
-  const ammoId = weapon.ammoId!;
-  return new Spell({
-    id: `weapon:${weapon.id}`,
+function rangedWeaponSpell(inst: WeaponInstance): Spell {
+  return new WeaponSpell(inst, {
+    id: `weapon:${inst.id}`,
     windUpMs: 0,
-    activeMs: weapon.attackCooldownMs, // holds isAttacking for the cooldown window
+    activeMs: inst.attackCooldownMs, // holds isAttacking for the cooldown window
     recoverMs: 0,
     cooldownMs: 0,
     range: 0,
@@ -113,8 +139,33 @@ function rangedWeaponSpell(weapon: Weapon): Spell {
     effect: {
       onActivate: (caster, aim) => {
         const angle = Math.atan2(aim.y - caster.y, aim.x - caster.x);
-        caster.spawnProjectile(ammoId, caster.x, caster.y, angle);
+        // The shot's damage is resolved HERE, at the muzzle, and carried on the
+        // projectile — a projectile in flight has no link back to the bow that
+        // fired it or the player who drew it, so the scaling has to ride along.
+        caster.spawnProjectile(inst.ammoId!, caster.x, caster.y, angle, {
+          attack: rangedAttack(caster, inst),
+        });
       },
     },
+  });
+}
+
+/** Stage 2 → 3: the weapon instance's own numbers, scaled by whoever swings it. */
+function casterAttack(caster: Caster, inst: WeaponInstance) {
+  return caster.buildAttack(
+    { damage: inst.damage, knockback: inst.attackForce },
+    caster.x,
+    caster.y,
+  );
+}
+
+/** Same, for a shot: the ammo carries the base damage and the weapon adds to it.
+ *  Only the STATS are resolved here — the blow's origin is wherever the projectile
+ *  happens to be when it connects, which only the projectile knows. */
+function rangedAttack(caster: Caster, inst: WeaponInstance): AttackStats {
+  const ammo = AMMO_REGISTRY[inst.ammoId!];
+  return caster.scaleAttack({
+    damage: (ammo?.damage ?? 0) + inst.damage,
+    knockback: ammo?.knockback ?? 0,
   });
 }

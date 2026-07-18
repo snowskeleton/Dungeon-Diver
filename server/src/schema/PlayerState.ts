@@ -1,6 +1,15 @@
-import { type, ArraySchema } from "@colyseus/schema";
-import { Facing } from "shared";
+import { Schema, type, ArraySchema } from "@colyseus/schema";
+import { Facing, UpgradeSlotView } from "shared";
 import { EntityState } from "./EntityState";
+import { WeaponSlotState } from "./WeaponSlotState";
+
+/** One held upgrade, for the pause menu's list. Purely descriptive — the effect
+ *  itself lives in the server-side Upgrade class and never crosses the wire. */
+export class UpgradeSlotState extends Schema implements UpgradeSlotView {
+  @type("string") id: string = "";
+  @type("string") name: string = "";
+  @type("string") description: string = "";
+}
 
 export class PlayerState extends EntityState {
   @type("string") facing: Facing = "down";
@@ -11,8 +20,13 @@ export class PlayerState extends EntityState {
   @type("string") characterClass: string = "knight";
   @type("string") characterType: string = "guy";
   // weaponId is the ACTIVE weapon (updated on switch) so remote weapon-visual
-  // swaps key off it; inventory + activeWeaponIndex drive the HUD/switching.
+  // swaps key off it; weapons + activeWeaponIndex drive the HUD/switching.
   @type("string") weaponId: string = "broadsword";
-  @type(["string"]) inventory = new ArraySchema<string>();
+  // Named `weapons` rather than `inventory` because other item lists (consumables,
+  // key items, equipment) are expected to sit beside it as their own typed lists.
+  @type([WeaponSlotState]) weapons = new ArraySchema<WeaponSlotState>();
   @type("uint8") activeWeaponIndex: number = 0;
+  // Folded max HP — the client HUD draws the bar against this, and upgrades move it.
+  @type("uint16") maxHp: number = 100;
+  @type([UpgradeSlotState]) upgrades = new ArraySchema<UpgradeSlotState>();
 }

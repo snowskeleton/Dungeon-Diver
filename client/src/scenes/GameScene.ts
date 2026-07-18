@@ -17,7 +17,8 @@ import { CLIENT_ENEMY_REGISTRY } from "../enemies";
 import { HitboxDebug } from "../debug/HitboxDebug";
 import { InventoryHud } from "../ui/InventoryHud";
 import { ShopItemEntity } from "../entities/ShopItemEntity";
-import { weaponStatLines } from "../ui/weaponStats";
+import { OfferPedestalEntity } from "../entities/OfferPedestalEntity";
+import { weaponStatLines, viewFromTemplate } from "../ui/weaponStats";
 import { LaunchConfig, Loadout, defaultLoadout, pickLoadout } from "../launch";
 import { loadOptions } from "../options/gameOptions";
 
@@ -45,6 +46,7 @@ export class GameScene extends Phaser.Scene {
   private pausedText!: Phaser.GameObjects.Text;
   private storeCard!: Phaser.GameObjects.Text;
   private shopItems = new Map<string, ShopItemEntity>();
+  private offerPedestals = new Map<string, OfferPedestalEntity>();
   private hitboxDebug!: HitboxDebug;
   private ready = false;
 
@@ -80,6 +82,7 @@ export class GameScene extends Phaser.Scene {
     this.enemies.clear();
     this.projectiles.clear();
     this.shopItems.clear();
+    this.offerPedestals.clear();
     this.localSessionIds.clear();
     this.barrierParentOverlays.clear();
     this.barrierChildOverlays.clear();
@@ -372,10 +375,12 @@ export class GameScene extends Phaser.Scene {
 
     player.room.state.players.onAdd((pState: any, sid: string) => {
       if (sid !== sessionId) return;
-      player.syncFromServer(pState.x, pState.y, pState.health, pState.isAttacking, pState.attackSeq, pState.weaponId, Array.from(pState.inventory));
-      pState.onChange(() =>
-        player.syncFromServer(pState.x, pState.y, pState.health, pState.isAttacking, pState.attackSeq, pState.weaponId, Array.from(pState.inventory)),
+      const push = () => player.syncFromServer(
+        pState.x, pState.y, pState.health, pState.isAttacking, pState.attackSeq,
+        pState.weaponId, Array.from(pState.weapons),
       );
+      push();
+      pState.onChange(push);
     });
 
     if (this.remotePlayers.has(sessionId)) {
@@ -470,6 +475,21 @@ export class GameScene extends Phaser.Scene {
         }
       }
     });
+
+    // Reward pedestals: one per shrine room, plus one dropped where a boss died.
+    // Keyed by room id — a boss drop appears mid-floor, so this map grows during
+    // play rather than only at floor start.
+    state.offers.onAdd((offer: any, roomId: string) => {
+      const view = new OfferPedestalEntity(this, offer.x, offer.y);
+      view.setClaimed(offer.claimed);
+      this.offerPedestals.set(roomId, view);
+      offer.onChange(() => view.setClaimed(offer.claimed));
+    });
+
+    state.offers.onRemove((_: any, roomId: string) => {
+      this.offerPedestals.get(roomId)?.destroy();
+      this.offerPedestals.delete(roomId);
+    });
   }
 
   update() {
@@ -506,20 +526,31 @@ export class GameScene extends Phaser.Scene {
     const first = this.localManager.getAll()[0];
     const firstState = first?.room.state.players.get(first.room.sessionId);
     if (firstState) {
-      this.inventoryHud.update(Array.from(firstState.inventory), firstState.activeWeaponIndex);
+      this.inventoryHud.update(Array.from(firstState.weapons), firstState.activeWeaponIndex);
     }
     this.pausedText.setVisible(this.observerRoom?.state.paused ?? false);
     this.updateStoreCard(first);
   }
 
-  // Show the P1 store card whenever P1 is standing on an unpurchased pedestal.
+  // Show the P1 store card whenever P1 is standing on an unpurchased pedestal, or
+  // a short prompt when standing on an unclaimed reward pedestal. The reward's
+  // contents deliberately stay hidden until the picker opens — the card would
+  // spoil the choice, and the pedestal's "?" is the whole tease.
   private updateStoreCard(first?: LocalPlayer) {
+    if (first?.nearbyOffer) {
+      this.storeCard.setText("A reward waits here\n[F] choose");
+      this.storeCard.setVisible(true);
+      return;
+    }
     const near = first?.nearbyShopItem;
-    const weapon = near ? WEAPON_REGISTRY[near.weaponId as WeaponId] : undefined;
-    if (!near || !weapon) {
+    // A shop pedestal holds an unmodified template, so its card reads from the
+    // template. When pedestals start rolling modifiers this becomes a slot view.
+    const template = near ? WEAPON_REGISTRY[near.weaponId as WeaponId] : undefined;
+    if (!near || !template) {
       this.storeCard.setVisible(false);
       return;
     }
+    const weapon = viewFromTemplate(template);
     const stats = weaponStatLines(weapon).map((s) => `  ${s.label}: ${s.value}`).join("\n");
     this.storeCard.setText(
       `${weapon.name}   (${near.cost} HP)\n${stats}\n[F] buy`,

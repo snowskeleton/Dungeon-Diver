@@ -224,9 +224,11 @@ export abstract class Boss extends Enemy implements DashCaster, SummonCaster {
   override get damageable(): boolean {
     return super.damageable && !this.invulnerable;
   }
-  override takeDamage(amount: number): void {
-    if (this.invulnerable) return;
-    super.takeDamage(amount);
+  // An invulnerable phase absorbs nothing, so it reports 0 dealt — a player can't
+  // lifesteal off a boss that's currently untouchable stone.
+  override takeDamage(amount: number): number {
+    if (this.invulnerable) return 0;
+    return super.takeDamage(amount);
   }
 
   // SummonCaster: a summon spell (Mirror Split) buffers a minion into the effect

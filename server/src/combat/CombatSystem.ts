@@ -11,7 +11,8 @@ export interface CombatTarget {
   readonly hurtRadius: number;
   /** False while dead/dying so a corpse takes no further hits. */
   readonly damageable: boolean;
-  takeHit(attack: Attack): void;
+  /** Applies the hit; returns the damage actually dealt (see Entity.takeHit). */
+  takeHit(attack: Attack): number;
 }
 
 // One group of candidate targets sharing a Layer (all players, all enemies). The
@@ -44,7 +45,8 @@ export class CombatSystem {
           if (src.ownerId === id) return;
           if (!shapeHitsPoint(src.shape, target.state.x, target.state.y, target.hurtRadius)) return;
           if (!src.claim(id)) return;
-          target.takeHit(src.attack);
+          const dealt = target.takeHit(src.attack);
+          src.onDealt?.(id, dealt);
         });
       }
     }

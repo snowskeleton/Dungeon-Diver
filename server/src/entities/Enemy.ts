@@ -4,6 +4,7 @@ import { PlayerState } from "../schema/PlayerState";
 import { Entity } from "./Entity";
 import { HitSource } from "../combat/HitSource";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
+import type { AttackStats } from "../spells/Spell";
 
 const PATROL_RANGE = 64;
 
@@ -15,6 +16,11 @@ const PATROL_RANGE = 64;
 export interface SpawnOpts {
   lifetimeMs?: number;
   inert?: boolean;
+  /** Pre-resolved attack payload overriding the ammo's own damage/knockback. A
+   *  projectile has no link back to the weapon that fired it or the player who
+   *  drew it, so any per-wielder scaling has to be computed at the muzzle and ride
+   *  along on the shot. Omitted (enemy shots) = the ammo's own numbers. */
+  attack?: AttackStats;
 }
 
 /** Lets an enemy emit a projectile during its tick (bosses' ranged attacks).
@@ -141,15 +147,18 @@ export abstract class Enemy extends Entity {
     };
   }
 
-  takeDamage(amount: number): void {
-    if (this.state.isDying) return;
-    super.takeDamage(amount);
+  // Returns damage actually dealt; a corpse absorbs nothing, so hitting one
+  // reports 0 and can't feed lifesteal.
+  takeDamage(amount: number): number {
+    if (this.state.isDying) return 0;
+    const dealt = super.takeDamage(amount);
     if (this.state.health <= 0) {
       this.state.isDying = true;
       // Corpse must not block (or be shoved by) other entities while it
       // plays its 5s death animation; it still respects walls.
       this.physics.setEntityDead(this.body);
     }
+    return dealt;
   }
 
   // Standard enemy AI: patrol until a player is in aggro range, chase, and melee

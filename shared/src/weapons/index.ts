@@ -122,3 +122,11 @@ export { Thrown }   from "./thrown/base";
 export { Staff }    from "./staves/base";
 export { makeMeleeHurtbox } from "./base";
 export type { AttackFXType, WeaponCategory, RangedStyle, HitRegion, RectHitRegion, CircleHitRegion, GetHurtbox, WeaponOpts } from "./base";
+export {
+  WeaponInstance,
+  WeaponMod,
+  foldStat,
+  resolveCooldown,
+  MIN_ATTACK_COOLDOWN_MS,
+} from "./instance";
+export type { WeaponView, AmmoView, WeaponSlotView } from "./instance";

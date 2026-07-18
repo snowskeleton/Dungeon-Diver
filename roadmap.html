@@ -477,7 +477,7 @@
     <div class="doc-title">game-2 Roadmap</div>
     <div class="doc-subtitle">
       Roguelike · Co-op 1–4 · Top-down dungeon crawl · Public release target<br>
-      Updated July 2026 — Floors 0–2 done; bosses, enemy roster &amp; shop/shrine rooms landed early; Upgrade System up next
+      Updated July 2026 — Floors 0–3 done (upgrades, per-instance weapons, reward pedestals); Room Variety is next up
     </div>
   </header>
 
@@ -587,7 +587,7 @@
         <div class="class-meta">
           <div class="meta-row">
             <span class="meta-key">Weapon</span>
-            <span class="meta-val">Staff &mdash; AOE pulse, hits all in radius every N frames</span>
+            <span class="meta-val">Staff &mdash; elemental bolt, one per staff (flame/frost/arcane/verdant/magic)</span>
           </div>
           <div class="meta-row">
             <span class="meta-key">HP</span>
@@ -772,31 +772,34 @@
             <li><span class="tm done">&#10003;</span> <code>ProjectileState</code> schema + <code>GameState.projectiles</code> MapSchema; server ticks all active projectiles (kinematic, no matter-js body)</li>
             <li><span class="tm done">&#10003;</span> Rogue: fast thrown dagger/star, 1 hit, despawns on wall hit</li>
             <li><span class="tm done">&#10003;</span> Ranger: traveling arrow, 1 hit, despawns on wall hit</li>
-            <li><span class="tm done">&#10003;</span> Mage: AOE staff blast — pulses damage to all in radius (implemented via the unified combat/spell system)</li>
+            <li><span class="tm done">&#10003;</span> Mage: staves fire a per-staff elemental bolt (<code>rangedStyle: "cast"</code>); the AOE nova is built and reserved as a Mage ability</li>
             <li><span class="tm done">&#10003;</span> Client renders projectile entities from <code>AMMO_REGISTRY</code></li>
           </ul>
           <div class="phase-art-note">
-            <strong>Landed early beyond scope:</strong> the full Super Overhead Adventure 2 pack (12 humanoid skins, 29 enemies, 8 bosses); a unified combat resolver + single <code>Spell</code> type (windUp→strike→active→recover) shared by players, enemies, and bosses. <em>Follow-up:</em> Mage nova client visual still a placeholder.
+            <strong>Landed early beyond scope:</strong> the full Super Overhead Adventure 2 pack (12 humanoid skins, 29 enemies, 8 bosses); a unified combat resolver + single <code>Spell</code> type (windUp→strike→active→recover) shared by players, enemies, and bosses; five elemental bolts with cast + nova client FX.
           </div>
         </div>
       </details>
 
-      <details class="phase-card next" open>
+      <details class="phase-card done" open>
         <summary>
           <span class="floor-num">FLOOR 3</span>
           <span class="phase-name">Upgrade System</span>
-          <span class="phase-badge badge-next">Up Next</span>
+          <span class="phase-badge badge-done">Done</span>
           <span class="phase-chevron">&#9654;</span>
         </summary>
         <div class="phase-body">
           <div class="phase-milestone"><strong>Milestone:</strong> Picking up an item changes how the rest of the run plays. <strong>Decision:</strong> first pass is <strong>stat boosts only</strong> — active abilities come later (cheap to add on the new <code>Spell</code> system).</div>
           <ul class="task-list">
-            <li><span class="tm">—</span> On room clear: some rooms trigger an upgrade offer</li>
-            <li><span class="tm">—</span> Upgrade picker: game pauses, each player chooses 1-of-3</li>
-            <li><span class="tm">—</span> First upgrade set: stat boosts (+max HP, +speed, +damage, +lifesteal)</li>
-            <li><span class="tm">—</span> Upgrades scale in power with floor depth</li>
-            <li><span class="tm">—</span> Upgrades are per-player, cleared on run end</li>
+            <li><span class="tm done">&#10003;</span> Shrine rooms hold a reward pedestal; bosses drop one where they die</li>
+            <li><span class="tm done">&#10003;</span> Reward picker: room pauses, 1-of-3, <strong>first player to claim it takes it</strong> (shops stay unpaused — a shop decision is reversible, this one isn't)</li>
+            <li><span class="tm done">&#10003;</span> First upgrade set: 8 stat boosts (+max HP, +speed, +damage, +armor, +lifesteal), flat and percent variants</li>
+            <li><span class="tm done">&#10003;</span> Floor-gated upgrade pool (<code>minFloor</code>) + weapon-modifier magnitudes that scale with depth</li>
+            <li><span class="tm done">&#10003;</span> Upgrades are per-player, held on the Player, cleared on run end</li>
+            <li><span class="tm done">&#10003;</span> Per-instance weapons: each wielded weapon is its own object with its own modifiers; reward pedestals roll them</li>
+            <li><span class="tm done">&#10003;</span> Attack pipeline: each stage (player &rarr; weapon instance &rarr; ammo &rarr; target) contributes to the <code>Attack</code>; <code>Caster.scaleAttack</code> is the single fold point</li>
             <li><span class="tm">—</span> Later: active abilities (dash, shield, projectile modifiers) as <code>Spell</code>s</li>
+            <li><span class="tm">—</span> Later: damage types + per-enemy vulnerabilities (slashing/fire/blunt) — the attack pipeline is built to accept this, but the taxonomy, per-enemy resistances, and weapon balance are their own pass</li>
           </ul>
           <div class="phase-art-note">
             <strong>Art needed:</strong> First pass can use colored shapes + text labels. Proper upgrade icons are nice-to-have.
@@ -804,11 +807,11 @@
         </div>
       </details>
 
-      <details class="phase-card later">
+      <details class="phase-card next">
         <summary>
           <span class="floor-num">FLOOR 4</span>
           <span class="phase-name">Room Variety</span>
-          <span class="phase-badge badge-later">Later</span>
+          <span class="phase-badge badge-next">Up Next</span>
           <span class="phase-chevron">&#9654;</span>
         </summary>
         <div class="phase-body">
@@ -894,7 +897,7 @@
         <ul class="asset-items">
           <li><span class="adot soon"></span> Chest / treasure sprite</li>
           <li><span class="adot soon"></span> Upgrade icons <span class="note">(shapes ok for first pass)</span></li>
-          <li><span class="adot soon"></span> Mage nova / AOE blast FX <span class="note">(server works; client placeholder)</span></li>
+          <li><span class="adot done"></span> Mage nova / AOE blast FX <span class="note">(procedural — NovaFX + CastFX)</span></li>
           <li><span class="adot soon"></span> Lever / switch sprite <span class="note">(puzzle rooms, tabled)</span></li>
         </ul>
       </div>
@@ -922,6 +925,18 @@
         <div class="q-tag" style="color:#3db87a;">Resolved — July 2026</div>
         <div class="q-text">Stat boosts only for the first upgrade set, or active abilities too?</div>
         <div class="q-why"><strong>Decided: stat boosts first.</strong> +max HP / +speed / +damage / +lifesteal, per-player, floor-scaled — fast to build and balance, gets the run-defining loop working end-to-end. Active abilities (dash, shield, projectile modifiers) come as a later pass, and are cheap to add now that everything casts through the unified <code>Spell</code> system.</div>
+      </div>
+
+      <div class="q-item" style="border-left-color:#3db87a;">
+        <div class="q-tag" style="color:#3db87a;">Resolved &mdash; July 2026</div>
+        <div class="q-text">In co-op, who picks a reward &mdash; each player, or the first to reach it?</div>
+        <div class="q-why"><strong>Decided: first player to claim it.</strong> One pedestal, one winner. Much simpler than per-player choice lists, and it creates a real conversation between teammates about who needs the pick. Revisit if it turns out to feel mean rather than tense.</div>
+      </div>
+
+      <div class="q-item">
+        <div class="q-tag">Open &mdash; direction noted</div>
+        <div class="q-text">How far does weapon modification go?</div>
+        <div class="q-why"><strong>Scope north-star: Souls-like breadth.</strong> Many weapon types sharing artwork, each dealing different damage types, each individually modifiable — rolled stats on spawn, upgrades applied to a specific weapon, not just to the player. This is the target the per-instance weapon work and the attack pipeline are built toward; it is deliberately <em>not</em> all being built at once. Damage types are the first deferred slice.</div>
       </div>
 
     </div>

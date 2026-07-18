@@ -103,10 +103,14 @@ and would have needed more for boss→player). They are now **one generic resolv
 (`server/src/combat/CombatSystem.resolve`):
 
 1. Every entity queues its **hit sources** during its own tick — melee swings, projectiles, AOE
-   bursts, boss channels — each a `HitSource` `{ shape, affects, attack, claim(targetId), ownerId? }`
+   bursts, boss channels — each a `HitSource`
+   `{ shape, affects, attack, claim(targetId), ownerId?, onDealt? }`
    (`server/src/combat/HitSource.ts`). `GameRoom` drains them (`Entity.drainEffects`).
 2. **Targets** are any `CombatTarget` (`{ state.x/y, hurtRadius, damageable, takeHit(attack) }`) —
-   players and enemies, grouped by `layer`.
+   players and enemies, grouped by `layer`. **`takeHit` returns the damage ACTUALLY dealt**
+   (post-mitigation, post-overkill); the resolver hands that back to the source via
+   `onDealt`, which is how lifesteal stays honest against a corpse or an invulnerable
+   boss phase.
 3. For each source × candidate target, deliver the `Attack` **only when `source.affects & target.layer`**,
    the shapes overlap, it isn't the source's own owner, and the source's `claim` allows it (per-source
    dedupe — once-per-swing, pierce, or a `RehitGate` for lingering hitboxes).
@@ -128,7 +132,12 @@ via `setEntityDead`).
 4. `server/src/entities/Projectile.ts` — carries `affects`; its swept-ellipse `hitSource()` flows
    through the resolver like any other source.
 5. `server/src/combat/CombatSystem.ts` — the single resolver; `Entity.takeHit(attack)` is the
-   receiver (damage + knockback, shared by players and enemies).
+   receiver (damage + knockback, shared by players and enemies). Overriding `takeHit` is the
+   **mitigation seam**: `Player` subtracts armor there, and per-enemy damage-type
+   vulnerabilities will land there too.
+5b. The `Attack` itself is assembled by the pipeline in [upgrades.md](upgrades.md) —
+   template base → weapon-instance modifiers → `Caster.scaleAttack` → this receiver.
+   `Entity.scaleAttack` is the identity, so enemies and bosses are unaffected by it.
 6. Attacks are produced by the unified Spell system (`server/src/spells/`): a boss move, an enemy
    attack, or a player's weapon swing/shot all emit hit sources or projectiles through the same
    `Caster` interface. See [bosses.md](bosses.md), [weapons-and-ammo.md](weapons-and-ammo.md).

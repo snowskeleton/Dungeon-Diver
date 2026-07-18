@@ -24,4 +24,8 @@ export interface HitSource {
    *  Returns true to actually land the hit (and records/consumes whatever dedupe
    *  state the source keeps); false to skip — already hit, on cooldown, or spent. */
   claim(targetId: string): boolean;
+  /** Called after a hit actually lands, with the damage the target really took
+   *  (post-mitigation, post-overkill). The return channel for anything that keys
+   *  off damage dealt rather than damage attempted — lifesteal today. */
+  onDealt?(targetId: string, damage: number): void;
 }

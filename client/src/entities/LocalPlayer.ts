@@ -1,6 +1,9 @@
 import Phaser from "phaser";
 import { Room } from "colyseus.js";
-import { InputMessage, CharacterClass, CharacterType, CharacterConfig, getCharacterConfig, WeaponId, Weapon, WEAPON_REGISTRY, Facing } from "shared";
+import {
+  InputMessage, CharacterClass, CharacterType, CharacterConfig, getCharacterConfig,
+  WeaponId, Weapon, WeaponSlotView, UpgradeSlotView, WEAPON_REGISTRY, Facing,
+} from "shared";
 import { Entity } from "./Entity";
 import { InputSource, InputActions } from "../input/InputSource";
 import { CLIENT_CHARACTER_VISUAL_REGISTRY } from "../characters";
@@ -8,6 +11,7 @@ import { DebugDrawable, DebugShape, DEBUG_COLORS } from "../debug/DebugDraw";
 import { meleeHurtboxShapes } from "../debug/hurtboxShapes";
 import { AcquireFX, ACQUIRE_MS } from "./AcquireFX";
 import { InventoryMenu } from "../ui/InventoryMenu";
+import { OfferPicker, OfferChoiceView } from "../ui/OfferPicker";
 
 // Must match GameRoom BUY_RADIUS so the client prompt appears exactly when the
 // server will accept the purchase.
@@ -23,9 +27,14 @@ export class LocalPlayer extends Entity implements DebugDrawable {
   private prevActions: InputActions = { prevSlot: false, nextSlot: false, toggleMenu: false, interact: false };
   private menuOpen = false;
   private invMenu = new InventoryMenu();
-  // Owned weapon ids as last seen — a newly-appearing id triggers the acquire
-  // flourish. Seeded with the starting weapon so joining doesn't fire it.
-  private knownInventory: string[];
+  private offerPicker = new OfferPicker();
+  // The reward pedestal this player is standing on, if it's still unclaimed.
+  nearbyOffer: { roomId: string; choices: OfferChoiceView[] } | null = null;
+  // Per-instance uids of the weapons last seen — a newly-appearing uid triggers
+  // the acquire flourish. Populated on the first sync (which carries the starting
+  // weapon), with `sawFirstSync` suppressing the flourish for that batch.
+  private knownWeaponUids = new Set<string>();
+  private sawFirstSync = false;
   // While now < this, the player's input is frozen (Zelda item-get beat).
   private inputLockedUntil = 0;
   // The shop pedestal this player is currently standing on (if any) — drives the
@@ -59,7 +68,6 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     this.charConfig = cfg;
     this.weapon = weapon;
     this.activeWeaponId = weapon.id;
-    this.knownInventory = [weapon.id];
     this.hp = cfg.maxHp;
     this.room = room;
     this.inputSource = inputSource;
@@ -73,6 +81,7 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     const input = locked ? { dx: 0, dy: 0, attack: false } : this.inputSource.read();
     if (!locked) {
       this.updateShopProximity();
+      this.updateOfferProximity();
       this.handleActions();
     }
 
@@ -112,11 +121,17 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     if (a.nextSlot && !this.prevActions.nextSlot) this.room.send("switchWeapon", { delta: 1 });
     if (a.prevSlot && !this.prevActions.prevSlot) this.room.send("switchWeapon", { delta: -1 });
     if (a.toggleMenu && !this.prevActions.toggleMenu) this.toggleInventoryMenu();
-    if (a.interact && !this.prevActions.interact && this.nearbyShopItem) {
-      this.room.send("buy", {
-        roomId: this.nearbyShopItem.roomId,
-        itemIndex: this.nearbyShopItem.itemIndex,
-      });
+    if (a.interact && !this.prevActions.interact) {
+      // A room is never both a shop and a shrine, so the order here is just a
+      // tiebreak; the reward is the more consequential interaction either way.
+      if (this.nearbyOffer) {
+        this.openOfferPicker();
+      } else if (this.nearbyShopItem) {
+        this.room.send("buy", {
+          roomId: this.nearbyShopItem.roomId,
+          itemIndex: this.nearbyShopItem.itemIndex,
+        });
+      }
     }
     this.prevActions = a;
   }
@@ -130,7 +145,12 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     }
     const ps = (this.room.state as any).players.get(this.room.sessionId);
     if (!ps) return;
-    this.invMenu.show(Array.from(ps.inventory) as string[], ps.activeWeaponIndex, () => this.setMenuPaused(false));
+    this.invMenu.show(
+      Array.from(ps.weapons) as WeaponSlotView[],
+      ps.activeWeaponIndex,
+      Array.from(ps.upgrades) as UpgradeSlotView[],
+      () => this.setMenuPaused(false),
+    );
     this.setMenuPaused(true);
   }
 
@@ -160,10 +180,46 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     this.nearbyShopItem = best;
   }
 
-  syncFromServer(x: number, y: number, hp: number, isAttacking: boolean, attackSeq: number, weaponId: string, inventory: string[]) {
+  // Nearest unclaimed reward pedestal within range. Same radius as the shop so the
+  // interact prompt behaves identically for both.
+  private updateOfferProximity() {
+    const offers = (this.room.state as any).offers;
+    if (!offers) { this.nearbyOffer = null; return; }
+    let best: LocalPlayer["nearbyOffer"] = null;
+    let bestDist = SHOP_BUY_RADIUS * SHOP_BUY_RADIUS;
+    offers.forEach((offer: any, roomId: string) => {
+      if (offer.claimed) return;
+      const dx = this.sprite.x - offer.x;
+      const dy = this.sprite.y - offer.y;
+      const d = dx * dx + dy * dy;
+      if (d <= bestDist) {
+        bestDist = d;
+        best = { roomId, choices: Array.from(offer.choices) as OfferChoiceView[] };
+      }
+    });
+    this.nearbyOffer = best;
+  }
+
+  // Open the reward picker: pause the room (same handshake the inventory menu
+  // uses), then send the pick and unpause. The server re-validates proximity and
+  // refuses a second claim, so a stale click can't double-grant.
+  private openOfferPicker() {
+    if (this.offerPicker.isOpen || !this.nearbyOffer) return;
+    const { roomId, choices } = this.nearbyOffer;
+    this.setMenuPaused(true);
+    this.offerPicker.show(choices, (index) => {
+      this.room.send("offerPick", { roomId, choiceIndex: index });
+      this.setMenuPaused(false);
+    });
+  }
+
+  syncFromServer(
+    x: number, y: number, hp: number, isAttacking: boolean, attackSeq: number,
+    weaponId: string, weapons: WeaponSlotView[],
+  ) {
     this.hp = hp;
     this.serverAttacking = isAttacking;
-    this.checkAcquired(inventory);
+    this.checkAcquired(weapons);
     // A new attackSeq means the server accepted a fresh attack — restart the
     // swing/bow clip even if isAttacking never dropped (held-fire).
     if (attackSeq !== this.lastAttackSeq) {
@@ -184,15 +240,24 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     this.updateHpBar(hp);
   }
 
-  // Fire the Zelda-style acquire flourish for any weapon that's newly in the
-  // inventory since the last sync, and briefly freeze the player.
-  private checkAcquired(inventory: string[]) {
-    for (const id of inventory) {
-      if (this.knownInventory.includes(id)) continue;
-      new AcquireFX(this.scene, this.sprite, id);
+  // Fire the Zelda-style acquire flourish for any weapon that's newly held since
+  // the last sync, and briefly freeze the player.
+  //
+  // Keyed on the per-instance uid, NOT the weapon id: two broadswords with
+  // different rolls are two different weapons, and an id-based diff would silently
+  // swallow the second pickup. Pruning to the current set also means a future
+  // drop-weapon would re-flourish if you picked the same one back up.
+  private checkAcquired(weapons: WeaponSlotView[]) {
+    for (const slot of weapons) {
+      if (this.knownWeaponUids.has(slot.uid)) continue;
+      this.knownWeaponUids.add(slot.uid);
+      // The starting weapon is already in the first sync — don't flourish it.
+      if (!this.sawFirstSync) continue;
+      new AcquireFX(this.scene, this.sprite, slot);
       this.inputLockedUntil = performance.now() + ACQUIRE_MS;
     }
-    this.knownInventory = [...inventory];
+    this.knownWeaponUids = new Set(weapons.map(w => w.uid));
+    this.sawFirstSync = true;
   }
 
   collectDebugShapes(): DebugShape[] {

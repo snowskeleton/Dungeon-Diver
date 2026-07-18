@@ -1,6 +1,6 @@
 import Phaser from "phaser";
-import { WEAPON_REGISTRY, WeaponId } from "shared";
-import { weaponStatLines } from "../ui/weaponStats";
+import { WeaponSlotView } from "shared";
+import { weaponStatLines, viewFromSlot } from "../ui/weaponStats";
 
 // A one-shot "item get!" flourish (Zelda style) played when a weapon is first
 // acquired: the weapon icon pops up above the player's head with a burst ring,
@@ -22,10 +22,13 @@ export class AcquireFX {
   private ring: Phaser.GameObjects.Arc;
   private onUpdate: () => void;
 
-  constructor(scene: Phaser.Scene, target: { x: number; y: number }, weaponId: string) {
+  // Takes the synced SLOT, not a weapon id, so the panel shows the stats of the
+  // weapon you actually picked up — a rolled +2 broadsword reads 14, not 12.
+  constructor(scene: Phaser.Scene, target: { x: number; y: number }, slot: WeaponSlotView) {
     this.scene = scene;
     this.target = target as any;
-    const weapon = WEAPON_REGISTRY[weaponId as WeaponId];
+    const weaponId = slot.weaponId;
+    const weapon = viewFromSlot(slot);
     const x = this.target.x;
     const y = this.target.y - HEAD_OFFSET;
 
@@ -49,8 +52,10 @@ export class AcquireFX {
 
     // Centered panel: "Got <Name>!" + expanded stats (scroll-locked, screen-space).
     const stats = weapon ? weaponStatLines(weapon).map((s) => `${s.label}: ${s.value}`).join("    ") : "";
+    // Rolled modifiers get their own line so the pickup reads as special.
+    const mods = slot.modLabels?.length ? `\n${Array.from(slot.modLabels).join("  ")}` : "";
     const panel = scene.add
-      .text(400, 120, `Got ${weapon?.name ?? weaponId}!\n${stats}`, {
+      .text(400, 120, `Got ${weapon?.name ?? weaponId}!${mods}\n${stats}`, {
         fontSize: "14px", color: "#fff7cc", backgroundColor: "#1a1a2eee",
         align: "center", lineSpacing: 4, fontStyle: "bold",
       })

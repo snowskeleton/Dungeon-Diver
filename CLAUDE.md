@@ -22,6 +22,7 @@ Concretely, and non-negotiably:
 | [docs/animation.md](docs/animation.md) | Touching character sprites, attack/hurt visuals, or the `attackSeq` path |
 | [docs/weapons-and-ammo.md](docs/weapons-and-ammo.md) | Touching weapons, attack FX, ammo, or projectiles |
 | [docs/loadout.md](docs/loadout.md) | Touching inventory, weapon switching, shops, or pause |
+| [docs/upgrades.md](docs/upgrades.md) | Touching player stats, weapon modifiers, damage numbers, or reward pedestals |
 | [docs/enemies.md](docs/enemies.md) | Adding or balancing an enemy |
 | [docs/bosses.md](docs/bosses.md) | Designing or building a boss moveset (per-boss abilities spec + bestiary text) |
 | [docs/boss-implementation-plan.md](docs/boss-implementation-plan.md) | Sequencing the boss/layers build — what to implement in what order |
@@ -46,6 +47,30 @@ Both are defined in `.claude/launch.json` for the preview panel. The Colyseus se
 
 **Edit `shared/src/`, never `shared/dist/`.** The `shared` package's `package.json` sets `"main": "src/index.ts"`, so both the server (`ts-node-dev`) and the client (Vite alias) import the raw TypeScript source — nothing loads compiled output. `shared/dist/` is `.gitignore`d and only appears if you run `npm run build`; if it's present it's stale and editing it does nothing (a real gotcha — changing a `shared/dist/*.js` constant has zero effect). Note: `ts-node-dev` sometimes doesn't watch the symlinked `shared` workspace, so if a `shared/src` edit doesn't take, restart `npm run dev`. (A production `node dist/index.js` server run currently can't resolve `shared` at all since `main` is a `.ts` file — a deferred prod-build concern.)
 
+## Headless verification
+
+Two self-contained harnesses boot the real physics/entities/combat with no server or
+browser, and print a pass/fail line per assertion:
+
+```bash
+npx ts-node server/src/verify-combat.ts   # combat substrate, weapon instances, upgrades, the attack pipeline
+npx ts-node server/src/verify-boss.ts     # every boss's moveset
+```
+
+**`verify-boss.ts` output is a golden regression baseline.** Anything touching the
+combat/spell/attack path must leave it *byte-identical* — that's the proof enemies and
+bosses were unaffected. Capture it before you start:
+
+```bash
+npx ts-node server/src/verify-boss.ts > /tmp/boss-before.txt
+# ...make the change...
+npx ts-node server/src/verify-boss.ts | diff /tmp/boss-before.txt -
+```
+
+Room-level behaviour (shops, reward pedestals, schema sync) needs a **running server**
+and is currently checked with ad-hoc headless `colyseus.js` clients rather than a
+checked-in harness.
+
 **After replacing any PNG in `assets/`, run `npm run assets:build`** or the client keeps loading the old copy. See [docs/assets.md](docs/assets.md).
 
 ## Project structure
@@ -56,7 +81,8 @@ shared/src/
   characters/          ← one CharacterConfig per class (Knight/Rogue/Ranger/Mage): id, name, maxHp, speed, defaultWeaponId; index.ts exports CHARACTER_REGISTRY. Weapon stats live in weapons/, not here. base.ts also holds the CharacterType union (12 humanoid skins)
   enemies/             ← just the EnemyType id union + EnemyFacingMode (base.ts). Enemies are OO classes on the SERVER (server/src/entities/enemies + /bosses) — there is NO EnemyConfig and NO ENEMY_REGISTRY (that data-driven design was abandoned; see the engineering note)
   combat/              ← Attack (damage/knockback/source payload) + HitShape geometry (rect/circle/segment/sweptEllipse + shapeHitsPoint). Shared so the client H-overlay can reuse shapes; the resolver itself is server-side
-  weapons/             ← one Weapon per <category>/<id>/index.ts (+ <id>.png icon); category base.ts holds defaults; index.ts exports WEAPON_REGISTRY + WeaponId union. Each weapon carries its own fxType; ranged ones carry ammoId + rangedStyle (staves are ranged: `rangedStyle: "cast"` + a per-staff elemental bolt). An `aoe` spec is still supported by `weaponSpell` (wind-up + nova) but no weapon uses it today — it's reserved for the Mage's nova ability
+  upgrades.ts          ← the UpgradeId union + UPGRADE_IDS + UpgradeSlotView (the descriptive wire shape). The Upgrade CLASSES are server-side — this mirrors how EnemyType is a shared union with server-side classes
+  weapons/             ← one Weapon per <category>/<id>/index.ts (+ <id>.png icon); category base.ts holds defaults; index.ts exports WEAPON_REGISTRY + WeaponId union. instance.ts = WeaponInstance/WeaponMod (a WIELDED weapon: template + uid + modifiers) + WeaponSlotView (the wire shape); views.ts = viewFromSlot/viewFromTemplate adapters. Each weapon carries its own fxType; ranged ones carry ammoId + rangedStyle (staves are ranged: `rangedStyle: "cast"` + a per-staff elemental bolt). An `aoe` spec is still supported by `weaponSpell` (wind-up + nova) but no weapon uses it today — it's reserved for the Mage's nova ability
   ammo/                ← projectiles ranged weapons spawn; mirrors weapons/ layout. Behaviour-sharing groups nest under a category base (arrows/, boomerangs/); one-offs (throwing-knife, throwing-star) sit flat. index.ts exports AMMO_REGISTRY + AmmoId union
   debug.ts             ← DebugConfig (the Debug menu's flat settings object) + DEFAULT_DEBUG_CONFIG + toDungeonOptions()
   dungeonGenerator.ts  ← seeded dungeon generation: generateDungeon(seed, opts?) builds a 5×4 grid of 21×16-tile rooms (105×64 tiles total), room graph, type assignment, tile carving, connections/barriers. `opts: DungeonOptions` overrides grid size, forced room type, boss, stairs
@@ -69,15 +95,18 @@ server/src/
   floor/FloorManager.ts     ← barrier/door system: locks rooms on entry, unlocks on clear, pre-clears empty rooms
   physics/PhysicsWorld.ts   ← the ONLY file that touches matter-js: engine, wall bodies, per-body layer/solidMask collision filters (from each entity's InteractionProfile — see shared/src/layers.ts), px/sec↔matter velocity conversion, sprite-center↔foot-body coordinate mapping
   combat/                   ← the ONE combat resolver. CombatSystem.resolve() applies every HitSource ({shape, affects, attack, claim}) to every CombatTarget when affects&layer + shapes overlap + not-owner + claim passes → target.takeHit(Attack). RehitGate = per-target re-hit dedupe for lingering hitboxes. HitShape geometry + the Attack payload live in shared/src/combat
-  spells/                   ← the unified ability system. Spell (windUp→strike→active→recover + cooldown it OWNS via isReady/markCast); SpellCaster runs the lifecycle (shared by bosses, enemies, players); Caster = the tiny interface a spell needs ({x,y,facing,attackAffects,emitHitSource,spawnProjectile}); builders.ts = volley/radial/tremorLine/dashAttack/whirl; weaponSpell.ts turns a Weapon into a swing / shot / AOE spell
+  spells/                   ← the unified ability system. Spell (windUp→strike→active→recover + cooldown it OWNS via isReady/markCast; activeMs/cooldownMs are GETTERS so a WeaponSpell can read its instance live); SpellCaster runs the lifecycle (shared by bosses, enemies, players); Caster = the tiny interface a spell needs ({x,y,facing,attackAffects,emitHitSource,spawnProjectile,scaleAttack,buildAttack}); builders.ts = volley/radial/tremorLine/dashAttack/whirl; weaponSpell.ts turns a WeaponInstance into a swing / shot / AOE spell
   entities/Entity.ts        ← base class: move()/knockback/hitstun (overage threshold), takeHit(Attack), applyTileEffects(), teleport(), and the emitHitSource/spawnProjectile effect buffer GameRoom drains — shared by Player + Enemy
-  entities/Player.ts        ← extends Entity, is a Caster; looks up its CharacterConfig; applyInput() drives a SpellCaster running the active weapon's Spell (swing/shot/AOE). Owns the weapon inventory
+  entities/Player.ts        ← extends Entity, is a Caster; looks up its CharacterConfig; applyInput() drives a SpellCaster running the active weapon's Spell (swing/shot/AOE). Owns `weapons: WeaponInstance[]` + `upgrades: Upgrade[]`, folds them into its own stats (maxHp/speed/damage/armor/lifesteal), and is the ONLY scaleAttack override in the game. See docs/upgrades.md
   entities/Enemy.ts         ← abstract base; default tick() = patrol/chase AI + contactHitSource() (touch damage as a hitbox); death. Stats are per-class getters, no config. Flying is one such getter: `cruiseHeight` (0 = grounded) — a flyer (bat, floater, wyvern) overrides it and the base tick keeps `state.airHeight` there each tick (a dive spell overrides it mid-cast); `setAirHeight()` lets a spell drive it. Collision stays at the ground point — height is purely visual
   entities/enemies/         ← the OO enemy classes (goos/bats/floaters/critters/directional), one Enemy subclass each; REGULAR_ENEMIES = the spawn-pool array (index.ts). No config, no ENEMY_REGISTRY
+  upgrades/                 ← the OO upgrade system: Upgrade base (zero-returning stat getters + a deferred spell() hook) + one class per upgrade in stats.ts + UPGRADES array; weaponMods.ts = concrete WeaponMods a reward pedestal rolls. No UPGRADE_REGISTRY, no id→effect table
   entities/Boss.ts          ← abstract Boss (extends Enemy, is a DashCaster); picks the next Spell and delegates to a SpellCaster; deals no passive contact damage. entities/bosses/ = one Boss subclass each + movement.ts + BOSSES array
   entities/Projectile.ts    ← kinematic arrow/thrown-weapon (no matter-js body); integrates position, swept-ellipse hitSource(), pierce, boomerang return, wall/lifetime despawn. Pulls its AmmoConfig from AMMO_REGISTRY
   schema/EntityState.ts     ← Colyseus schema base (x, y, health, speedMultiplier)
-  schema/PlayerState.ts     ← extends EntityState (facing, isAttacking, attackSeq, characterClass, characterType, weaponId=active, inventory[], activeWeaponIndex)
+  schema/PlayerState.ts     ← extends EntityState (facing, isAttacking, attackSeq, characterClass, characterType, weaponId=active, weapons[]=WeaponSlotState, activeWeaponIndex, maxHp, upgrades[])
+  schema/WeaponSlotState.ts ← one wielded weapon on the wire: RESOLVED stats + modLabels, never the modifier objects (see docs/upgrades.md for why)
+  schema/OfferState.ts      ← a reward pedestal's 1-of-3 (shrine boon / boss drop). OfferChoiceState.mods is an UNDECORATED field — server-only, never synced
   schema/EnemyState.ts      ← extends EntityState (aiState, targetId, facing, isDying, stunned, enemyType, telegraph/channeling/abilityId for bosses, airHeight for flyers)
   schema/ProjectileState.ts ← extends EntityState (angle, ammoId, ownerSessionId)
   schema/ShopState.ts       ← ShopItemState (weaponId, cost, purchased, x/y pedestal pos) + ShopState (roomId, items[])
@@ -105,7 +134,8 @@ client/src/
   entities/RemotePlayer.ts  ← extends Entity; lerps toward server position, drives anim from server's facing/isAttacking/attackSeq + inferred movement; swaps weapon visuals on weaponId change
   entities/EnemyEntity.ts   ← extends Entity; lerps toward server position; asks CLIENT_ENEMY_REGISTRY[enemyType].resolve(state) for the clip/static frame + whether to mirror. For `airborne` defs it lifts the sprite by the synced airHeight and scales a ground shadow beneath it
   entities/ShopItemEntity.ts ← in-world shop pedestal view (icon + HP-cost label); ghosts out when purchased. Not an Entity (no HP bar)
-  entities/AcquireFX.ts     ← one-shot "item get!" flourish: weapon icon pops above the head + centered stats panel; fires on inventory growth
+  entities/AcquireFX.ts     ← one-shot "item get!" flourish: weapon icon pops above the head + centered stats panel. Takes the synced SLOT so it shows the ROLLED stats; fires on a new weapon uid appearing
+  entities/OfferPedestalEntity.ts ← in-world reward pedestal (pulsing "?"); ghosts out once claimed. Not an Entity (no HP bar)
   input/InputSource.ts      ← interface + KeyboardInputSource (wasd/arrows) + GamepadInputSource. read()=movement/attack; readActions()=discrete intents (prev/next slot, toggle menu, interact/buy) edge-detected by LocalPlayer
   input/LocalPlayerManager.ts ← manages 1–4 local Colyseus connections; getCentroid() for camera
   ui/FieldPanel.ts          ← generic DOM settings panel rendered from a FieldSpec list (toggle/number/select/multiselect) + optional preset chips; backs both Options and Debug
@@ -114,8 +144,9 @@ client/src/
   debug/debugFields.ts      ← DEBUG_FIELDS + DEBUG_PRESETS: the Debug menu as data. Add a knob here (and to shared DebugConfig); the panel renders itself
   options/gameOptions.ts    ← OPTION_FIELDS + localStorage-backed GameOptions (camera zoom, hitbox overlay, controls hint)
   ui/InventoryHud.ts        ← fixed HUD row of owned weapons, active slot highlighted (rebuilds only on change)
-  ui/InventoryMenu.ts       ← pause menu (DOM overlay): owned weapons + expanded stats; opening it pauses the room
-  ui/weaponStats.ts         ← weaponStatLines(weapon) → stat rows (ranged pulls ammo stats); shared by store card, acquire panel, inventory menu
+  ui/InventoryMenu.ts       ← pause menu (DOM overlay): owned weapons + expanded stats + rolled mod labels + held upgrades; opening it pauses the room
+  ui/weaponStats.ts         ← weaponStatLines(WeaponView) → stat rows; re-exports the shared viewFromSlot/viewFromTemplate adapters. Shared by store card, acquire panel, inventory menu, offer picker
+  ui/OfferPicker.ts         ← the 1-of-3 reward picker (DOM overlay, modelled on InventoryMenu); pauses the room while open
   debug/HitboxDebug.ts      ← press H in-game: draws ALL hit/hurtboxes live. Each entity implements collectDebugShapes() from debug/DebugDraw.ts, so the overlay is generic
   debug/hurtboxShapes.ts    ← melee-swing hurtbox shapes, shared by LocalPlayer and RemotePlayer
   dev/PlaceholderReport.ts  ← dev-only: lists placeholder art in the console AND the npm-run-dev terminal (via terminalLogPlugin)
@@ -138,6 +169,10 @@ client/src/
 **Two content styles, on purpose.** *Inert* content — characters, weapons, ammo — is plain config in `shared/` registries: `CHARACTER_REGISTRY` (per-class maxHp/speed/defaultWeaponId), `WEAPON_REGISTRY` (damage/cooldown/force/`getHurtbox`/`fxType`/`aoe`), `AMMO_REGISTRY` (projectile stats). Add one by adding a config + registry entry. *Behavioural* content — **enemies and bosses** — is **object-oriented**: one `Enemy`/`Boss` subclass each (`server/src/entities/enemies` + `/bosses`), stats as compiler-checked getters, listed in `REGULAR_ENEMIES` / `BOSSES` arrays. There is **no** `ENEMY_REGISTRY` and no generic `Goo` — behaviour lives on the class, never in a data blob steered by a lookup table (see the engineering note). Client visuals live in parallel registries (`client/src/characters`, `client/src/enemies`, `client/src/weapons`). Clients pass `characterClass`/`characterType` as join options, synced on `PlayerState`.
 
 **Unified combat + spells.** All damage flows through one resolver (`server/src/combat/CombatSystem`): entities emit `HitSource`s during their tick, and it delivers an `Attack` to any `CombatTarget` whose `layer` the source's `affects` mask reaches (directional — see `docs/layers.md`). All abilities are one `Spell` type (`server/src/spells`) run by a shared `SpellCaster` — a boss move, an enemy attack, and a player's weapon swing/shot/AOE are the same shape (windUp→strike→active→recover, cooldown owned by the spell). Anything that casts implements the tiny `Caster` interface. **Add an attack/ability as a `Spell`, not a bespoke code path.**
+
+**Weapon instances + the attack pipeline.** `WEAPON_REGISTRY` entries are immutable **templates**; what a player carries is a `WeaponInstance` (template + uid + its own `WeaponMod[]`), so two players' broadswords can genuinely differ. Damage is assembled in stages — template base → weapon-instance mods → **`Caster.scaleAttack`** → `Entity.takeHit` mitigation — rather than being a literal anywhere. `Entity` implements `scaleAttack` as the identity, so enemies/bosses are untouched and **`Player` is the only override**; that is what lets one upgrade reach every weapon, ability, and shot without any spell builder knowing modifiers exist. Stats fold as `(base + Σflat) × (1 + Σpct)` so pickup order never changes the result. **Add a stat modifier as an `Upgrade` or a `WeaponMod`, never by editing a damage number in a spell.** See [docs/upgrades.md](docs/upgrades.md).
+
+**Upgrades are OO, like enemies.** One `Upgrade` subclass each (`server/src/upgrades`), contributions as compiler-checked zero-default getters, listed in `UPGRADES`. The `UpgradeId` union lives in `shared` (mirroring `EnemyType`) so the debug menu can offer them; `assertUpgradesCoverAllIds()` fails at boot if the union and the classes drift. Players hold them in `Player.upgrades` and fold them into their own stats — **consumers ask the Player, they don't sum upgrades themselves**.
 
 **Loadout system** (inventory, switching, shops, pause) is server-authoritative and synced. Switching is an instant hotkey; the inventory menu pauses the whole room; the store is an in-world room and does *not* pause. See [docs/loadout.md](docs/loadout.md).
 
@@ -184,13 +219,16 @@ Colyseus fires `onAdd` for items already in the map when the callback is registe
 | Ammo/projectile (damage, speed, pierce, hit ellipse, spin/return) | `shared/src/ammo/<id>/index.ts` |
 | Enemy (hp, speed, aggro, attack, knockback resistance, flying height) | stat getters on the `Enemy` subclass — `server/src/entities/enemies/<group>.ts` (a flyer overrides `cruiseHeight`) |
 | Boss (moveset, movement, phases, stats) | the `Boss` subclass — `server/src/entities/bosses/<Name>.ts` (spells from `server/src/spells`) |
+| Upgrade effects (+HP/+speed/+damage/+armor/+lifesteal, floor gating) | the `Upgrade` subclass — `server/src/upgrades/stats.ts` |
+| Weapon-modifier rolls (what can land on a rewarded weapon, how it scales) | `server/src/upgrades/weaponMods.ts` (`rollWeaponMod`) |
+| Reward pedestals (shrine vs boss mix, choice count) | `rollOffer` / `OFFER_CHOICES` in `server/src/rooms/GameRoom.ts` |
 | Store (pedestal count, HP cost formula, buy radius) | `server/src/rooms/GameRoom.ts` |
 | Loadout keybinds / acquire freeze | `client/src/input/InputSource.ts`, `ACQUIRE_MS` in `entities/AcquireFX.ts` |
 | Knockback / hitstun feel, tick rate, enemy count, body geometry | `shared/src/types.ts` |
 | Debug-menu knobs and presets | `client/src/debug/debugFields.ts` (+ `shared/src/debug.ts`) |
 | Client options (camera zoom, overlays) | `client/src/options/gameOptions.ts` |
 
-Ranged weapons control only fire rate + which `ammoId`; the projectile's damage/speed live on the ammo.
+For ranged weapons the ammo carries the base damage and the weapon's own `damage` is a **flat bonus added on top** (so a weapon modifier works the same on a bow as on a sword). Speed/pierce still live entirely on the ammo. Most ranged weapons declare `damage: 0` and contribute only fire rate + which `ammoId`.
 
 ## How to change things
 
@@ -225,6 +263,9 @@ Enemies and bosses are OO — see [docs/enemies.md](docs/enemies.md) (rank-and-f
 ### Add an attack / ability
 Attacks are `Spell`s (`server/src/spells`), not bespoke code. A weapon's attack comes from `weaponSpell()` (swing / shot / AOE, keyed off the weapon config); a boss/enemy ability is a `Spell` from `builders.ts` (or a new builder). All are run by the shared `SpellCaster` and emit `HitSource`s / projectiles through the `Caster` interface. Only add an input field (`InputMessage` in `shared/src/types.ts`, handled in `Player.applyInput()`) for a genuinely new *control*, not a new attack.
 
+### Add an upgrade or a weapon modifier
+Both are OO, like enemies — see [docs/upgrades.md](docs/upgrades.md). An **upgrade** is an `Upgrade` subclass in `server/src/upgrades/stats.ts` overriding only the stat getters it affects, plus its id in the `UpgradeId` union (`shared/src/upgrades.ts`) and one line in `UPGRADES`. A **weapon modifier** is a `WeaponMod` subclass in `server/src/upgrades/weaponMods.ts` plus a case in `rollWeaponMod`. Neither needs a schema change, and neither should ever become a keyed config table.
+
 ### Add a new room type (e.g. lobby, dungeon level)
 Define a new `Room` subclass in `server/src/rooms/`, register it in `server/src/index.ts` with `gameServer.define()`, and connect to it by name from the client via `client.joinOrCreate("room-name")`.
 
@@ -234,4 +275,7 @@ Define a new `Room` subclass in `server/src/rooms/`, register it in `server/src/
 - **Server physics is matter-js** (`server/src/physics/PhysicsWorld.ts` — the only file that imports it). Each entity is a radius-5 circle at the sprite's *feet* (`body.y = state.y + FOOT_OFFSET(8)`); schema `state.x/y` stays the sprite center. (`ENTITY_RADIUS`/`FOOT_OFFSET` are defined in `shared/src/types.ts` and re-exported from PhysicsWorld, so the client **H** debug overlay can draw the true collision circle.) Movement: `Entity.move()` records px/sec intent → GameRoom calls `commitVelocity()` (converts px/sec ÷ 60 to Matter's per-16.667ms velocity units — get this wrong and everything moves ~3× off) → `Engine.update(50)` → `syncFromBody()`. Who-collides-with-whom is each body's `layer`/`solidMask` (from its `InteractionProfile` in `shared/src/layers.ts` — currently every body blocks WALL|PLAYER|ENEMY). `ENTITY_RADIUS` must stay ≤ ~14 or one-tile 32px gaps close. Melee `attackRadius` getters on enemy classes are center-to-center and must exceed `2 × ENTITY_RADIUS` (10px) or attacks silently never land against rigid separation — that's why the goos use `attackRadius: 14`. Dying enemies get a WALL-only collision mask via `setEntityDead()` (corpses don't block). All teleports go through `Entity.teleport()` (never assign `state.x/y` for position changes — the body won't follow).
 - **Enemies stay dead — there is no respawn.** Cleared rooms stay cleared; everything is wiped and respawned fresh only when `advanceFloor()` regenerates the floor. Details in [docs/enemies.md](docs/enemies.md).
 - **Camera is room-locked (Zelda-style)**: every frame, `GameScene.update()` snaps `camera.setBounds()` to the 21×16-tile room containing the local players' centroid, at 2× zoom, then `centerOn(centroid)`. Crossing a doorway hard-cuts the camera to the next room. Split-screen for spread-out local players is still an open idea.
+- **Colyseus schema fields can hold data, not behaviour** — and an UNDECORATED property on a `Schema` is a legitimate place for server-only state. `OfferChoiceState.mods` holds the rolled `WeaponMod` objects with no `@type`, so it never serializes: a modifier's value is getters, `@type` takes only primitives/Schemas, and rebuilding one client-side would need the forbidden id→class map. Colyseus preserves the property through `ArraySchema.push` (verified). Use this rather than a parallel `Map` when the state's lifetime is the synced object's lifetime — but comment it, because a mixed synced/unsynced object misleads readers.
+- **The client types room state as `any`** (`pState: any` in `GameScene.setupWorldSync`), so **renaming a schema field will NOT fail the typecheck** — it silently reads `undefined` at runtime. When you rename or reshape a `@type` field, grep the client for every reader by hand. (`PlayerState.inventory` → `weapons` hit exactly this.)
+- **Anything diffing a player's weapons must key on the instance `uid`, not the weapon id** — duplicates of the same weapon are legal now that weapons are instances, so an id-based `includes()` check silently swallows the second pickup. Same trap in `InventoryHud`'s change-detection signature, which builds from uids because `join(",")` over objects yields `[object Object]` for every slot and would compare equal forever.
 - **No persistence**: all state is in-memory. Server restart = everyone disconnects and rejoins fresh.

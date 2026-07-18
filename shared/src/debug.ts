@@ -29,6 +29,12 @@ export interface DebugConfig {
    * boss/shop/shrine rooms (so you can test a bat in a shop).
    */
   enemiesPerRoom: number;
+  /**
+   * Upgrade ids granted to every player on join, for testing stat folding before
+   * the offer/pickup flow exists (and afterwards, for balance passes). Unknown ids
+   * are ignored. See server/src/upgrades.
+   */
+  startingUpgrades: string[];
 }
 
 export const DEFAULT_DEBUG_CONFIG: DebugConfig = {
@@ -41,6 +47,7 @@ export const DEFAULT_DEBUG_CONFIG: DebugConfig = {
   includeStairs: true,
   enemyTypes: [],
   enemiesPerRoom: -1,
+  startingUpgrades: [],
 };
 
 export function toDungeonOptions(cfg: DebugConfig): DungeonOptions {

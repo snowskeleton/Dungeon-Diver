@@ -4,15 +4,27 @@ Read this before touching the inventory, shops, pause, or the acquire flourish.
 
 Players own **multiple** weapons and swap between them; new ones are bought in shops. All of it is **server-authoritative** (the active weapon drives server hitboxes/damage/cooldown, and HP-cost purchases can't be client-trusted) and synced to clients.
 
-## Inventory lives on `Player`
+## The weapon list lives on `Player`
 
-(`server/src/entities/Player.ts`) `inventory: string[]` + `activeIndex`, and `get weapon()` returns the active slot — so every existing `player.weapon` read transparently follows the active weapon.
+(`server/src/entities/Player.ts`) `weapons: WeaponInstance[]` + `activeIndex`, and
+`get weapon()` returns the active slot — so every existing `player.weapon` read
+transparently follows the active weapon.
 
-- `switchWeapon(delta)` wraps the index, and does **not** reset `attackCooldown` (no switch-to-refresh-cooldown cheese)
-- `addWeapon(id)` dedupes and returns whether it was newly acquired
+It holds **instances, not registry templates**: each carries its own modifiers, so two
+players — or two slots — holding "a broadsword" can differ. Duplicates are legal.
+See [upgrades.md](upgrades.md). It's named `weapons` rather than `inventory` because
+other item lists (consumables, key items, equipment) are expected to sit beside it as
+their own typed lists.
+
+- `switchWeapon(delta)` wraps the index, and does **not** reset the attack (no
+  switch-to-refresh-cooldown cheese)
+- `addWeapon(template, mods?)` mints an instance with a fresh uid and returns it
+- `ownsUnmodified(templateId)` — "already have a plain one of these?", used by the shop
 - `spendHp(amount)` floors at 1
 
-Synced via `PlayerState.inventory` / `activeWeaponIndex` / `weaponId` (=active, so remote weapon-visual swaps key off the existing field).
+Synced via `PlayerState.weapons` (an `ArraySchema<WeaponSlotState>` of **resolved**
+stats + mod labels) / `activeWeaponIndex` / `weaponId` (=active, so remote
+weapon-visual swaps key off the existing field).
 
 ## Switching is an instant hotkey — no menu, no pause
 
@@ -30,13 +42,24 @@ Buying spends **HP from a shared team pool** (per the roadmap — *no gold syste
 1. proximity (`BUY_RADIUS`)
 2. unsold
 3. `HP > cost` (never lethal)
-4. **that the buyer doesn't already own it** (else it'd waste HP and consume a pedestal a teammate might want) — via `addWeapon`'s return
+4. **that the buyer doesn't already own an unmodified copy** (else it'd waste HP and consume a pedestal a teammate might want) — via `ownsUnmodified`. Shop weapons carry no modifiers, so a second copy is strictly worthless today; once pedestals roll modifiers this guard stops matching and buying two becomes a real choice
 
 then `spendHp` + marks `purchased` (shared → gone for all). Client renders pedestals as `ShopItemEntity` and shows a stats card when P1 stands on one.
 
+**Reward pedestals (shrine boons / boss drops) are a different thing** — free, 1-of-3,
+first-come, and they DO pause the room. See [upgrades.md](upgrades.md).
+
 ## Acquire flourish
 
-(`entities/AcquireFX.ts`) `LocalPlayer.syncFromServer` diffs the synced inventory; any newly-present id fires the Zelda "item get!" flourish (icon pops above the head + centered `weaponStatLines` panel) and briefly **freezes that player's input** — safe because acquisition happens in the enemy-free shop; revisit if weapons are ever granted mid-combat. Seeded from the starting weapon so joining doesn't fire it.
+(`entities/AcquireFX.ts`) `LocalPlayer.syncFromServer` diffs the synced weapon list by
+per-instance **uid** — not weapon id, since duplicates are legal and an id-based diff
+would silently swallow the second pickup. Any newly-present uid fires the Zelda "item
+get!" flourish (icon pops above the head + centered `weaponStatLines` panel, showing
+the weapon's **rolled** stats) and briefly **freezes that player's input**. The first
+sync is absorbed without firing, so joining doesn't flourish the starting weapon.
+
+Acquisition happens in the enemy-free shop or at a cleared reward pedestal, so the
+input freeze is safe; revisit if weapons are ever granted mid-combat.
 
 ## Preloading
 

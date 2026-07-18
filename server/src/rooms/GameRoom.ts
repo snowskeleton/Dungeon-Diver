@@ -5,23 +5,28 @@ import {
   ENEMY_BASE_COUNT, ENEMY_FLOOR_BONUS_INTERVAL, ENEMY_PLAYER_SCALE,
   generateDungeon, DungeonResult, DungeonOptions, FloorChangeMessage,
   ROOM_W, ROOM_H,
-  MAP_SEED, EnemyType, AMMO_REGISTRY, WEAPON_REGISTRY,
+  MAP_SEED, EnemyType, AMMO_REGISTRY, WEAPON_REGISTRY, WeaponInstance,
   DebugConfig, toDungeonOptions,
   Layer, PLAYER_ATTACK_AFFECTS, ENEMY_ATTACK_AFFECTS,
 } from "shared";
 import { GameState } from "../schema/GameState";
 import { ShopState, ShopItemState } from "../schema/ShopState";
-import { Player } from "../entities/Player";
+import { Player, resolveTemplate, slotStateFor } from "../entities/Player";
+import { upgradeById, upgradePool, rollWeaponMod } from "../upgrades";
+import { OfferState, OfferChoiceState } from "../schema/OfferState";
 import { Enemy, EnemyClass, SpawnOpts } from "../entities/Enemy";
 import { PendingEffect } from "../entities/Entity";
 import { REGULAR_ENEMIES } from "../entities/enemies";
 import { BOSSES } from "../entities/bosses";
+import { Boss } from "../entities/Boss";
 import { Projectile } from "../entities/Projectile";
 import { PlayerState } from "../schema/PlayerState";
 import { CombatSystem, HitSource } from "../combat";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
 import { FloorManager } from "../floor/FloorManager";
 const SHOP_ITEM_COUNT = 3;
+// How many choices a reward pedestal presents.
+const OFFER_CHOICES = 3;
 // How close (px) a player must stand to a pedestal to buy it.
 const BUY_RADIUS = 40;
 
@@ -78,11 +83,54 @@ export class GameRoom extends Room<GameState> {
       const dy = player.state.y - item.y;
       if (dx * dx + dy * dy > BUY_RADIUS * BUY_RADIUS) return;
       if (player.state.health <= item.cost) return;
-      // Already own it? Don't charge or consume the pedestal — a teammate who
-      // lacks it may still want it (shared pool).
-      if (!player.addWeapon(item.weaponId)) return;
+      const template = resolveTemplate(item.weaponId);
+      if (!template) return;
+      // Already own an unmodified copy? Don't charge or consume the pedestal — a
+      // teammate who lacks it may still want it (shared pool). Duplicates are legal
+      // in general now that weapons are instances, but a shop weapon carries no
+      // modifiers, so a second copy would be strictly worthless HP spent. Once
+      // pedestals roll modifiers this guard stops matching and buying two becomes
+      // a real choice, which is the behaviour we want then.
+      if (player.ownsUnmodified(template.id)) return;
+      player.addWeapon(template);
       player.spendHp(item.cost);
       item.purchased = true;
+    });
+
+    // Claim a reward pedestal (shrine boon / boss drop). Unlike a shop this is
+    // free, irreversible, and first-come — `claimed` is the whole concurrency
+    // story, so a duplicated or racing message is harmless rather than a
+    // double-grant. Proximity is re-validated here; the client's prompt is only a
+    // hint.
+    this.onMessage("offerPick", (client, msg: { roomId: string; choiceIndex: number }) => {
+      const player = this.players.get(client.sessionId);
+      const offer = this.state.offers.get(msg?.roomId);
+      const choice = offer?.choices[msg?.choiceIndex];
+      if (!player || !offer || !choice || offer.claimed) return;
+      const dx = player.state.x - offer.x;
+      const dy = player.state.y - offer.y;
+      if (dx * dx + dy * dy > BUY_RADIUS * BUY_RADIUS) return;
+
+      // Exhaustive on `kind` — a new choice kind is a compile error here, not a
+      // silently-ignored pedestal.
+      switch (choice.kind) {
+        case "upgrade": {
+          const upgrade = upgradeById(choice.upgradeId);
+          if (!upgrade) return;
+          player.addUpgrade(upgrade);
+          break;
+        }
+        case "weapon": {
+          const template = resolveTemplate(choice.weapon.weaponId);
+          if (!template) return;
+          // The rolled modifiers ride along on the choice (server-only field), so
+          // the weapon granted is precisely the one previewed on the card — never
+          // rebuilt from the synced labels.
+          player.addWeapon(template, choice.mods);
+          break;
+        }
+      }
+      offer.claimed = true;
     });
 
     // Inventory/stats menu pause. Handlers still run while paused, so the menu
@@ -114,6 +162,7 @@ export class GameRoom extends Room<GameState> {
     this.stairsActive = false;
 
     this.spawnShops();
+    this.spawnShrineOffers();
   }
 
   // Populate each shop room with weapon pedestals (shared team pool). Rebuilt
@@ -141,6 +190,82 @@ export class GameRoom extends Room<GameState> {
       });
       this.state.shops.set(room.id, shop);
     }
+  }
+
+  // One reward pedestal at the center of every shrine room. Shrines spawn no
+  // enemies and are pre-cleared by finalizeEmptyRooms, so the offer is reachable
+  // the moment the player walks in — the room IS the reward.
+  private spawnShrineOffers() {
+    this.state.offers.clear();
+    for (const room of this.currentDungeon.rooms) {
+      if (room.type !== "shrine") continue;
+      const col = this.freeShopCol(room.centerCol, room.centerRow);
+      this.state.offers.set(room.id, this.rollOffer(
+        room.id,
+        col * TILE_SIZE + TILE_SIZE / 2,
+        room.centerRow * TILE_SIZE + TILE_SIZE / 2,
+        "shrine",
+      ));
+    }
+  }
+
+  // Build a 1-of-3. A shrine leans on upgrades (permanent, build-defining); a boss
+  // drop leans on a rolled weapon, so beating a boss feels like loot rather than
+  // another stat bump. Both draw upgrades from the floor-legal pool.
+  private rollOffer(roomId: string, x: number, y: number, tier: "shrine" | "boss"): OfferState {
+    const offer = new OfferState();
+    offer.roomId = roomId;
+    offer.x = x;
+    offer.y = y;
+
+    // Each choice carries its own rolled modifiers, so shuffling can't desync the
+    // card from the reward — there is nothing to keep aligned.
+    const choices: OfferChoiceState[] = [];
+    const weaponCount = tier === "boss" ? 2 : 1;
+    for (let i = 0; i < weaponCount; i++) choices.push(this.rollWeaponChoice());
+
+    const pool = upgradePool(this.state.floor);
+    shuffle(pool);
+    for (const upgrade of pool.slice(0, OFFER_CHOICES - choices.length)) {
+      const choice = new OfferChoiceState();
+      choice.kind = "upgrade";
+      choice.upgradeId = upgrade.id;
+      choice.name = upgrade.name;
+      choice.description = upgrade.description;
+      choices.push(choice);
+    }
+    shuffle(choices);
+
+    for (const choice of choices) offer.choices.push(choice);
+    return offer;
+  }
+
+  // A random weapon carrying one rolled modifier. The resolved stats are computed
+  // here and synced, so the card shows exactly what the player will get — the same
+  // WeaponInstance is handed to Player.addWeapon on pick, so the preview cannot
+  // disagree with the reward.
+  private rollWeaponChoice(): OfferChoiceState {
+    const templateId = this.rollShopWeapons(1)[0];
+    const template = WEAPON_REGISTRY[templateId];
+    const mods = [rollWeaponMod(this.state.floor)];
+    // The preview instance and the granted weapon are built from the SAME mods
+    // array, held on the choice — the card cannot show stats the reward won't have.
+    const preview = new WeaponInstance(template, "preview", mods);
+    const choice = new OfferChoiceState();
+    choice.kind = "weapon";
+    choice.name = template.name;
+    choice.description = mods.map((m) => m.label).join(", ");
+    choice.weapon = slotStateFor(preview);
+    choice.mods = mods;
+    return choice;
+  }
+
+  /** Drop a reward pedestal where a boss died. Called once, on the boss's death
+   *  tick, so it can't be farmed. */
+  private dropBossOffer(x: number, y: number): void {
+    const room = this.currentDungeon.rooms.find((r) => r.type === "boss");
+    if (!room || this.state.offers.has(room.id)) return;
+    this.state.offers.set(room.id, this.rollOffer(room.id, x, y, "boss"));
   }
 
   // Nearest column to `col` on `row` whose tile isn't the stairs, so a pedestal
@@ -201,6 +326,12 @@ export class GameRoom extends Room<GameState> {
 
   private spawnFloorEnemies() {
     const count = this.enemiesPerRoom();
+    // The boss is spawned regardless of the rabble count: "0 enemies per room" is
+    // a statement about rank-and-file, and `includeBoss` is the separate control
+    // for whether a boss room exists at all. Before this, a debug floor with
+    // enemiesPerRoom 0 silently had no boss, because the early return below skipped
+    // spawnBoss entirely. Still must run before finalizeEmptyRooms (see spawnBoss).
+    this.spawnBoss();
     if (count <= 0) return;
     // An explicit debug count means "put enemies here", even in rooms that normally
     // stay empty (boss/shop/shrine).
@@ -230,7 +361,6 @@ export class GameRoom extends Room<GameState> {
         this.spawnEnemyInRoom(room.id, cls);
       }
     }
-    this.spawnBoss();
   }
 
   // One boss per floor, in the room the generator marked "boss". Rotating by
@@ -341,8 +471,16 @@ export class GameRoom extends Room<GameState> {
     this.spawnIndex++;
     const characterClass = (options?.characterClass ?? "knight") as import("shared").CharacterClass;
     const characterType = (options?.characterType ?? "guy") as import("shared").CharacterType;
-    const weaponId = (options?.weaponId ?? undefined) as import("shared").WeaponId | undefined;
+    // The weapon id comes from the client, so validate it rather than casting: it
+    // now mints a real object, and an unknown id would leave the player weaponless.
+    const weaponId = resolveTemplate(options?.weaponId)?.id as import("shared").WeaponId | undefined;
     const player = new Player(this.physics, spawn.x, spawn.y, characterClass, characterType, weaponId);
+    // Debug-only: pre-grant upgrades so stat folding can be exercised (and balanced)
+    // without walking to a shrine. Unknown ids are ignored rather than fatal.
+    for (const id of this.debug?.startingUpgrades ?? []) {
+      const upgrade = upgradeById(id);
+      if (upgrade) player.addUpgrade(upgrade);
+    }
     this.players.set(client.sessionId, player);
     this.state.players.set(client.sessionId, player.state);
 
@@ -417,7 +555,14 @@ export class GameRoom extends Room<GameState> {
     // An inert marker carries no team mask, so the hit loop's canAffect checks
     // skip it entirely — it only renders and expires (its ability owns the damage).
     const projAffects = opts?.inert ? 0 : affects;
-    const proj = new Projectile(this.physics, ammo, x, y, angle, ownerId, projAffects, opts?.lifetimeMs);
+    const proj = new Projectile(
+      this.physics, ammo, x, y, angle, ownerId, projAffects, opts?.lifetimeMs, opts?.attack,
+    );
+    // A shot fired by a player reports its damage back to that player, so lifesteal
+    // works at range. The projectile itself stays ignorant of who owns it beyond
+    // the session id it already carries for self-hit exclusion.
+    const owner = this.players.get(ownerId);
+    if (owner) proj.onDealt = (_, dmg) => owner.onDamageDealt(dmg);
     this.projectiles.set(id, proj);
     this.state.projectiles.set(id, proj.state);
   }
@@ -496,6 +641,9 @@ export class GameRoom extends Room<GameState> {
     this.enemies.forEach((enemy, id) => {
       if (enemy.isDying && !enemy.clearCheckDone) {
         enemy.clearCheckDone = true;
+        // A boss drops its reward where it fell. clearCheckDone gates this to the
+        // single death tick, so it can't be farmed by a lingering corpse.
+        if (enemy instanceof Boss) this.dropBossOffer(enemy.state.x, enemy.state.y);
         const { parentUnlocked, childUnlocked } = this.floorManager.onEnemyMaybeCleared(
           id, (eid) => this.enemies.get(eid)?.isDying ?? true,
         );
@@ -556,5 +704,13 @@ export class GameRoom extends Room<GameState> {
     if (abandoned.length > 0) {
       this.broadcast("connections_child_unlocked", { connectionIds: abandoned });
     }
+  }
+}
+
+/** In-place Fisher–Yates. Used for offer choices so a weapon isn't always slot 0. */
+function shuffle<T>(items: T[]): void {
+  for (let i = items.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [items[i], items[j]] = [items[j], items[i]];
   }
 }

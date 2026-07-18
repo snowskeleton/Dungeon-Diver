@@ -6,6 +6,7 @@ import {
 import { EntityState } from "../schema/EntityState";
 import { HitSource } from "../combat/HitSource";
 import type { SpawnProjectile, SpawnOpts, EnemyClass } from "./Enemy";
+import type { AttackStats } from "../spells/Spell";
 import { PhysicsWorld, syncStateFromBody } from "../physics/PhysicsWorld";
 
 // A damage effect an entity produced during its tick, drained by GameRoom into the
@@ -147,17 +148,48 @@ export abstract class Entity {
     }
   }
 
-  takeDamage(amount: number): void {
+  /** Applies `amount` and returns how much HP was ACTUALLY removed — less than
+   *  asked for when the hit overkills, which is what a lifesteal or damage-dealt
+   *  readout wants to hear. */
+  takeDamage(amount: number): number {
+    const before = this.state.health;
     this.state.health = Math.max(0, this.state.health - amount);
+    return before - this.state.health;
   }
 
   // ── CombatTarget: how a hit lands on this body (see combat/CombatSystem) ──────
   // Receive a resolved hit: take the damage, then get shoved + stunned away from
   // the blow's origin. Symmetric — players and enemies both flinch (the Attack's
   // knockback may be 0, e.g. plain contact, in which case there's no push).
-  takeHit(attack: Attack): void {
-    this.takeDamage(attack.damage);
+  //
+  // Returns the damage actually dealt. This is stage 4 of the attack pipeline and
+  // the seam where mitigation belongs: a Player subtracts armor here, and per-enemy
+  // damage-type vulnerabilities will land here too. Because the applied number is
+  // returned rather than assumed, anything downstream (lifesteal) stays honest when
+  // a target mitigates or is overkilled.
+  takeHit(attack: Attack): number {
+    const dealt = this.takeDamage(attack.damage);
     this.applyKnockback(attack.sourceX, attack.sourceY, attack.knockback);
+    return dealt;
+  }
+
+  // ── Attack pipeline, stage 3: the caster's own offensive scaling ─────────────
+  // The identity lives here so EVERY caster satisfies the interface for free and
+  // enemies/bosses keep emitting exactly the numbers their spells computed. Only
+  // Player overrides scaleAttack (to fold its upgrades); buildAttack is shared and
+  // never needs overriding, since positioning a blow is the same for everyone.
+  scaleAttack(base: AttackStats): AttackStats {
+    return base;
+  }
+
+  buildAttack(base: AttackStats, sourceX: number, sourceY: number): Attack {
+    const scaled = this.scaleAttack(base);
+    return {
+      damage: scaled.damage,
+      knockback: scaled.knockback,
+      sourceX,
+      sourceY,
+    };
   }
 
   /** How much knockback force this body absorbs before it's shoved. 0 = takes the
