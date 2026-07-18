@@ -477,7 +477,7 @@
     <div class="doc-title">game-2 Roadmap</div>
     <div class="doc-subtitle">
       Roguelike · Co-op 1–4 · Top-down dungeon crawl · Public release target<br>
-      Updated July 2026 — revised as decisions are made
+      Updated July 2026 — Floors 0–2 done; bosses, enemy roster &amp; shop/shrine rooms landed early; Upgrade System up next
     </div>
   </header>
 
@@ -526,10 +526,10 @@
         </div>
       </div>
 
-      <div class="roster-card needed">
+      <div class="roster-card ready">
         <div class="class-eyebrow">
-          <span style="color:#e94560;">Assassin</span>
-          <span class="sprite-tag needed">Sprite needed</span>
+          <span style="color:#3db87a;">Assassin</span>
+          <span class="sprite-tag done">Sprite done</span>
         </div>
         <div class="class-name">Rogue</div>
         <div class="class-meta">
@@ -552,10 +552,10 @@
         </div>
       </div>
 
-      <div class="roster-card needed">
+      <div class="roster-card ready">
         <div class="class-eyebrow">
-          <span style="color:#e94560;">Skirmisher</span>
-          <span class="sprite-tag needed">Sprite needed</span>
+          <span style="color:#3db87a;">Skirmisher</span>
+          <span class="sprite-tag done">Sprite done</span>
         </div>
         <div class="class-name">Ranger</div>
         <div class="class-meta">
@@ -578,10 +578,10 @@
         </div>
       </div>
 
-      <div class="roster-card needed">
+      <div class="roster-card ready">
         <div class="class-eyebrow">
-          <span style="color:#e94560;">Glass Cannon</span>
-          <span class="sprite-tag needed">Sprite needed</span>
+          <span style="color:#3db87a;">Glass Cannon</span>
+          <span class="sprite-tag done">Sprite done</span>
         </div>
         <div class="class-name">Mage</div>
         <div class="class-meta">
@@ -758,45 +758,45 @@
         </div>
       </details>
 
-      <details class="phase-card next">
+      <details class="phase-card done">
         <summary>
           <span class="floor-num">FLOOR 2</span>
           <span class="phase-name">Characters &amp; Projectiles</span>
-          <span class="phase-badge badge-next">Up Next</span>
+          <span class="phase-badge badge-done">Done</span>
           <span class="phase-chevron">&#9654;</span>
         </summary>
         <div class="phase-body">
           <div class="phase-milestone"><strong>Milestone:</strong> All four classes are playable with distinct-feeling weapons.</div>
           <ul class="task-list">
-            <li><span class="tm">—</span> Character select screen before floor 1 loads; per-class stats wired in</li>
-            <li><span class="tm">—</span> <code>ProjectileState</code> schema: x, y, vx, vy, radius, damage, ownerId, lifetime, hitsRemaining, tickRate</li>
-            <li><span class="tm">—</span> <code>GameState.projectiles</code> MapSchema; server ticks all active projectiles each frame</li>
-            <li><span class="tm">—</span> Rogue: fast short-lived projectile (thrown dagger), hitsRemaining:1, despawns on wall hit</li>
-            <li><span class="tm">—</span> Ranger: medium-speed traveling projectile (arrow), hitsRemaining:1, despawns on wall hit</li>
-            <li><span class="tm">—</span> Mage: stationary AOE, large radius, tickRate:N (pulses damage to all enemies in radius every N frames — like a fire tile, not per-enemy tracking), hitsRemaining:&infin;</li>
-            <li><span class="tm">—</span> Client renders projectile entities; placeholder sprites ok</li>
+            <li><span class="tm done">&#10003;</span> Character + weapon pickers before floor 1 loads; per-class stats wired in (class &times; skin as separate axes)</li>
+            <li><span class="tm done">&#10003;</span> <code>ProjectileState</code> schema + <code>GameState.projectiles</code> MapSchema; server ticks all active projectiles (kinematic, no matter-js body)</li>
+            <li><span class="tm done">&#10003;</span> Rogue: fast thrown dagger/star, 1 hit, despawns on wall hit</li>
+            <li><span class="tm done">&#10003;</span> Ranger: traveling arrow, 1 hit, despawns on wall hit</li>
+            <li><span class="tm done">&#10003;</span> Mage: AOE staff blast — pulses damage to all in radius (implemented via the unified combat/spell system)</li>
+            <li><span class="tm done">&#10003;</span> Client renders projectile entities from <code>AMMO_REGISTRY</code></li>
           </ul>
           <div class="phase-art-note">
-            <strong>Art needed:</strong> Rogue, Ranger, Mage sprites + weapons (dagger, bow, staff). Character select UI. Placeholder rectangles unblock implementation.
+            <strong>Landed early beyond scope:</strong> the full Super Overhead Adventure 2 pack (12 humanoid skins, 29 enemies, 8 bosses); a unified combat resolver + single <code>Spell</code> type (windUp→strike→active→recover) shared by players, enemies, and bosses. <em>Follow-up:</em> Mage nova client visual still a placeholder.
           </div>
         </div>
       </details>
 
-      <details class="phase-card later">
+      <details class="phase-card next" open>
         <summary>
           <span class="floor-num">FLOOR 3</span>
           <span class="phase-name">Upgrade System</span>
-          <span class="phase-badge badge-later">Later</span>
+          <span class="phase-badge badge-next">Up Next</span>
           <span class="phase-chevron">&#9654;</span>
         </summary>
         <div class="phase-body">
-          <div class="phase-milestone"><strong>Milestone:</strong> Picking up an item changes how the rest of the run plays.</div>
+          <div class="phase-milestone"><strong>Milestone:</strong> Picking up an item changes how the rest of the run plays. <strong>Decision:</strong> first pass is <strong>stat boosts only</strong> — active abilities come later (cheap to add on the new <code>Spell</code> system).</div>
           <ul class="task-list">
             <li><span class="tm">—</span> On room clear: some rooms trigger an upgrade offer</li>
             <li><span class="tm">—</span> Upgrade picker: game pauses, each player chooses 1-of-3</li>
             <li><span class="tm">—</span> First upgrade set: stat boosts (+max HP, +speed, +damage, +lifesteal)</li>
             <li><span class="tm">—</span> Upgrades scale in power with floor depth</li>
             <li><span class="tm">—</span> Upgrades are per-player, cleared on run end</li>
+            <li><span class="tm">—</span> Later: active abilities (dash, shield, projectile modifiers) as <code>Spell</code>s</li>
           </ul>
           <div class="phase-art-note">
             <strong>Art needed:</strong> First pass can use colored shapes + text labels. Proper upgrade icons are nice-to-have.
@@ -819,7 +819,7 @@
             <li><span class="tm">—</span> Puzzle rooms: tabled — lever/switch objects trigger environmental changes (fire, wall tiles, doors); design needs dedicated scope</li>
           </ul>
           <div class="phase-art-note">
-            <strong>Art needed:</strong> Boss sprite #1, chest sprite.
+            <strong>Already landed:</strong> the OO boss framework (aim-lock, movement behaviors) + three full movesets — Turtle Dragon (rock projectiles, Tremor Slam, Shell Spin), Wyvern (flying, diving swoop), Tengu Mask (three abilities). Shop &amp; Healing Shrine rooms also exist. <strong>Art still needed:</strong> chest sprite.
           </div>
         </div>
       </details>
@@ -834,14 +834,15 @@
         <div class="phase-body">
           <div class="phase-milestone"><strong>Milestone:</strong> Two consecutive runs feel different enough to want a third.</div>
           <ul class="task-list">
-            <li><span class="tm">—</span> More enemy types (2–4 beyond the slimes)</li>
-            <li><span class="tm">—</span> More bosses — one unique boss per 2–3 floor range</li>
-            <li><span class="tm">—</span> Wave, Bounty, Healing Shrine, Shop, Darkness room variants</li>
+            <li><span class="tm done">&#10003;</span> More enemy types — 29 imported (goos, bats, floaters, critters, directional, flyers), spawn-pooled in <code>REGULAR_ENEMIES</code></li>
+            <li><span class="tm done">&#10003;</span> More bosses — 3 movesets built; 8 boss sprites available in <code>BOSSES</code></li>
+            <li><span class="tm done">&#10003;</span> Healing Shrine + Shop room variants</li>
+            <li><span class="tm">—</span> Wave, Bounty, Darkness room variants (still unbuilt)</li>
             <li><span class="tm">—</span> More upgrades: weapon enhancements, passive abilities</li>
             <li><span class="tm">—</span> Enemy pool shifts by floor range within the dungeon theme</li>
           </ul>
           <div class="phase-art-note">
-            <strong>Art needed:</strong> The big art phase. Multiple new enemies, additional bosses, weapon sprites.
+            <strong>Mostly landed early:</strong> the enemy roster and multiple bosses came in with the SOA2 pack. Remaining work here is the last room variants, floor-scaled enemy pools, and deeper upgrades — not art.
           </div>
         </div>
       </details>
@@ -879,47 +880,33 @@
       <div class="asset-group">
         <div class="ag-label done">Done</div>
         <ul class="asset-items">
-          <li><span class="adot done"></span> knight.png — armored knight, full animation</li>
-          <li><span class="adot done"></span> sword-001.png — Knight's weapon overlay</li>
-          <li><span class="adot done"></span> green-slime.png — basic enemy</li>
-          <li><span class="adot done"></span> red-slime.png — stronger slime variant</li>
-          <li><span class="adot done"></span> Floor tiles <span class="note">(generated programmatically)</span></li>
+          <li><span class="adot done"></span> 12 humanoid skins (Knight/Rogue/Ranger/Mage + 8 more) — SOA2 pack</li>
+          <li><span class="adot done"></span> Weapon overlays — sword, daggers/stars, bow, staff (+ ammo icons)</li>
+          <li><span class="adot done"></span> 29 enemy sheets — goos, bats, floaters, critters, directional, flyers</li>
+          <li><span class="adot done"></span> 8 boss sprites (3 with full movesets so far)</li>
+          <li><span class="adot done"></span> Character + weapon picker UI</li>
+          <li><span class="adot done"></span> Floor / dungeon tiles <span class="note">(dungeon-tiles.png tileset)</span></li>
         </ul>
       </div>
 
       <div class="asset-group">
-        <div class="ag-label soon">Needed — Phase 2 (Characters)</div>
-        <ul class="asset-items">
-          <li><span class="adot soon"></span> rogue.png — full animation sheet</li>
-          <li><span class="adot soon"></span> Dagger sprite — Rogue's weapon</li>
-          <li><span class="adot soon"></span> ranger.png — full animation sheet</li>
-          <li><span class="adot soon"></span> Bow sprite — Ranger's weapon</li>
-          <li><span class="adot soon"></span> mage.png — full animation sheet</li>
-          <li><span class="adot soon"></span> Staff sprite — Mage's weapon</li>
-          <li><span class="adot soon"></span> Character select UI</li>
-        </ul>
-      </div>
-
-      <div class="asset-group">
-        <div class="ag-label soon">Needed — Phases 3–4 (Environment)</div>
+        <div class="ag-label soon">Needed — Phase 3–4 (Environment)</div>
         <ul class="asset-items">
           <li><span class="adot soon"></span> Chest / treasure sprite</li>
-          <li><span class="adot soon"></span> Door sprite <span class="note">(colored tile ok for now)</span></li>
-          <li><span class="adot soon"></span> Stairs / exit portal</li>
           <li><span class="adot soon"></span> Upgrade icons <span class="note">(shapes ok for first pass)</span></li>
-          <li><span class="adot soon"></span> Boss sprite #1 (full animation)</li>
-          <li><span class="adot soon"></span> Lever / switch sprite</li>
+          <li><span class="adot soon"></span> Mage nova / AOE blast FX <span class="note">(server works; client placeholder)</span></li>
+          <li><span class="adot soon"></span> Lever / switch sprite <span class="note">(puzzle rooms, tabled)</span></li>
         </ul>
       </div>
 
       <div class="asset-group">
         <div class="ag-label later">Needed — Phase 5+</div>
         <ul class="asset-items">
-          <li><span class="adot later"></span> Enemy types #3, #4</li>
-          <li><span class="adot later"></span> Boss sprites #2, #3</li>
-          <li><span class="adot later"></span> Final boss sprite (floor 10)</li>
+          <li><span class="adot later"></span> Movesets for the remaining 5 boss sprites</li>
+          <li><span class="adot later"></span> Final boss encounter (floor 10)</li>
           <li><span class="adot later"></span> Weapon upgrade visual variants</li>
           <li><span class="adot later"></span> Menu / title art</li>
+          <li><span class="adot later"></span> Sound effects + music</li>
         </ul>
       </div>
 
@@ -931,10 +918,10 @@
     <div class="section-label">Open Questions</div>
     <div class="questions-list">
 
-      <div class="q-item">
-        <div class="q-tag">Important — needed before Phase 3</div>
+      <div class="q-item" style="border-left-color:#3db87a;">
+        <div class="q-tag" style="color:#3db87a;">Resolved — July 2026</div>
         <div class="q-text">Stat boosts only for the first upgrade set, or active abilities too?</div>
-        <div class="q-why">Stat boosts (+HP, +speed, +damage, +lifesteal) are fast to implement and balance. Active abilities (a dash, a shield, a projectile modifier) are more interesting but require new server logic and possibly art. Starting with stats is fine — this question is about how ambitious Phase 3 should be.</div>
+        <div class="q-why"><strong>Decided: stat boosts first.</strong> +max HP / +speed / +damage / +lifesteal, per-player, floor-scaled — fast to build and balance, gets the run-defining loop working end-to-end. Active abilities (dash, shield, projectile modifiers) come as a later pass, and are cheap to add now that everything casts through the unified <code>Spell</code> system.</div>
       </div>
 
     </div>
