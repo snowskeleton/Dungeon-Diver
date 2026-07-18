@@ -4,6 +4,7 @@ import {
   TILE_PROPS, TileId, TILE,
   ENEMY_BASE_COUNT, ENEMY_FLOOR_BONUS_INTERVAL, ENEMY_PLAYER_SCALE,
   generateDungeon, DungeonResult, DungeonOptions, FloorChangeMessage,
+  ROOM_W, ROOM_H,
   MAP_SEED, EnemyType, AMMO_REGISTRY, WEAPON_REGISTRY,
   DebugConfig, toDungeonOptions,
   Layer, PLAYER_ATTACK_AFFECTS, ENEMY_ATTACK_AFFECTS,
@@ -267,13 +268,13 @@ export class GameRoom extends Room<GameState> {
     if (tile !== undefined && TILE_PROPS[tile].walkable && tile !== TILE.STAIRS) {
       return { x: col * TILE_SIZE + TILE_SIZE / 2, y: row * TILE_SIZE + TILE_SIZE / 2 };
     }
-    return this.randomPosInRoom(room.tileCol + 1, room.tileRow + 1, room.tileCol + 20, room.tileRow + 15);
+    return this.randomPosInRoom(...this.roomInterior(room));
   }
 
   private spawnEnemyInRoom(roomId: string, Cls: EnemyClass) {
     const room = this.currentDungeon.rooms.find(r => r.id === roomId);
     if (!room) return;
-    const pos = this.randomPosInRoom(room.tileCol + 1, room.tileRow + 1, room.tileCol + 20, room.tileRow + 15);
+    const pos = this.randomPosInRoom(...this.roomInterior(room));
     if (!pos) return;
     const id = `enemy_${this.enemyCounter++}`;
     const enemy = new Cls(this.physics, pos.x, pos.y);
@@ -298,6 +299,21 @@ export class GameRoom extends Room<GameState> {
     this.enemies.set(id, enemy);
     this.state.enemies.set(id, enemy.state);
     this.floorManager.assignEnemy(id, x, y);
+  }
+
+  // Inclusive tile bounds of a room's walkable interior — the border ring (local
+  // col/row 0 and ROOM_W-1/ROOM_H-1) is excluded so enemies never spawn on the
+  // doorway tiles that punch through it (a spawn there drifts into the neighbour
+  // and escapes FloorManager.roomAt's room classification).
+  private roomInterior(
+    room: { tileCol: number; tileRow: number },
+  ): [number, number, number, number] {
+    return [
+      room.tileCol + 1,
+      room.tileRow + 1,
+      room.tileCol + ROOM_W - 2,
+      room.tileRow + ROOM_H - 2,
+    ];
   }
 
   private randomPosInRoom(

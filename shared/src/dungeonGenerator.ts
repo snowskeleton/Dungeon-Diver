@@ -56,7 +56,7 @@ const ROOM_TYPE_WEIGHTS: { type: RoomType; cumulative: number }[] = [
   { type: "shrine", cumulative: 100 },
 ];
 
-export { RoomType };
+export type { RoomType };
 
 // Mulberry32 seeded RNG — deterministic, same seed → same map on client and server
 function makeRng(seed: number) {
