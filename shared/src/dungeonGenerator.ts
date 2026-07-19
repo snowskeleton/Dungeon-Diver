@@ -12,6 +12,21 @@ const DEFAULT_NEIGHBOR_CHANCE = 60;
 const DEFAULT_MIN_ROOMS = 4;
 // Room types that place objects on their floor tiles — never put the stairs there.
 const STAIRS_AVOID_TYPES: RoomType[] = ["shop", "shrine", "chest"];
+// Percent chance that each eligible room hides a trap tile. Deliberately low: a
+// trap should be a rare gut-punch, not a tax on exploring.
+const TRAP_ROOM_CHANCE = 1;
+// Room types that never get a trap. The reward rooms are meant to be safe places
+// to walk into, and the boss room has enough going on already.
+const TRAP_AVOID_TYPES: RoomType[] = [
+  "boss",
+  "shop",
+  "shrine",
+  "chest",
+];
+// Keep traps this far inside a room's border (so they're never on a doorway) and
+// this far from its center (so one never lands on the stairs or a pedestal).
+const TRAP_BORDER_MARGIN = 2;
+const TRAP_CENTER_CLEARANCE = 2;
 
 export const DUNGEON_COLS = DEFAULT_GRID_COLS * ROOM_W;
 export const DUNGEON_ROWS = DEFAULT_GRID_ROWS * ROOM_H;
@@ -272,6 +287,42 @@ function carveOpenRoom(
         mapData[tr][tc] = TILE.WALL;
     }
   }
+}
+
+/**
+ * Convert one plain floor tile in `room` into a trap.
+ *
+ * Only TILE.FLOOR is eligible, so this can never eat the stairs, a boss
+ * passageway, or a wall — and the margins keep it off doorways and out of the
+ * center where props live. Returns false when the room has no legal spot (a maze
+ * room can be almost entirely wall).
+ */
+function placeTrapInRoom(
+  mapData: TileId[][],
+  room: RoomData,
+  rng: () => number,
+): boolean {
+  const candidates: { col: number; row: number }[] = [];
+  const c0 = room.tileCol + TRAP_BORDER_MARGIN;
+  const r0 = room.tileRow + TRAP_BORDER_MARGIN;
+  const c1 = room.tileCol + ROOM_W - 1 - TRAP_BORDER_MARGIN;
+  const r1 = room.tileRow + ROOM_H - 1 - TRAP_BORDER_MARGIN;
+
+  for (let row = r0; row <= r1; row++) {
+    for (let col = c0; col <= c1; col++) {
+      if (mapData[row]?.[col] !== TILE.FLOOR) continue;
+      const nearCenter =
+        Math.abs(col - room.centerCol) <= TRAP_CENTER_CLEARANCE &&
+        Math.abs(row - room.centerRow) <= TRAP_CENTER_CLEARANCE;
+      if (nearCenter) continue;
+      candidates.push({ col, row });
+    }
+  }
+
+  if (candidates.length === 0) return false;
+  const spot = candidates[Math.floor(rng() * candidates.length)];
+  mapData[spot.row][spot.col] = TILE.TRAP;
+  return true;
 }
 
 export function generateDungeon(seed: number, opts: DungeonOptions = {}): DungeonResult {
@@ -621,6 +672,17 @@ export function generateDungeon(seed: number, opts: DungeonOptions = {}): Dungeo
         if (mapData[r]?.[c] === TILE.FLOOR) mapData[r][c] = TILE.BOSS_FLOOR;
       }
     }
+  }
+
+  // ── 8. Scatter trap tiles ────────────────────────────────────────────────
+  // Last, so only tiles that survived as plain FLOOR are eligible — the stairs and
+  // the gold boss passageway are already stamped and can't be overwritten. The
+  // start room is skipped so a floor can never open with the party on top of one.
+  for (const [id, room] of roomDataMap) {
+    if (id === startId) continue;
+    if (TRAP_AVOID_TYPES.includes(roomTypes.get(id)!)) continue;
+    if (rng() * 100 >= TRAP_ROOM_CHANCE) continue;
+    placeTrapInRoom(mapData, room, rng);
   }
 
   const playerSpawns = [0, 1, 2, 3].map(() => ({

@@ -6,6 +6,7 @@ import {
   generateDungeon, DungeonResult, DungeonOptions, FloorChangeMessage,
   ROOM_W, ROOM_H,
   MAP_SEED, EnemyType, AMMO_REGISTRY, WEAPON_REGISTRY, WeaponInstance, WeaponId, RoomType,
+  TRAP_MIN_FLOORS, TRAP_MAX_FLOORS,
   DebugConfig, toDungeonOptions,
   Layer, PLAYER_ATTACK_AFFECTS, ENEMY_ATTACK_AFFECTS,
 } from "shared";
@@ -566,12 +567,21 @@ export class GameRoom extends Room<GameState> {
     clearInterval(this.tickInterval);
   }
 
-  private advanceFloor() {
+  /** How many floors a trap swallows. Inclusive of both bounds. */
+  private rollTrapDepth(): number {
+    const span = TRAP_MAX_FLOORS - TRAP_MIN_FLOORS + 1;
+    return TRAP_MIN_FLOORS + Math.floor(Math.random() * span);
+  }
+
+  /** Descend `steps` floors. The stairs pass 1; a trap passes more. Advancing N
+   *  floors means generating floor+N directly — the skipped floors are never
+   *  built, which is exactly what "you missed them" should mean. */
+  private advanceFloor(steps = 1) {
     if (this.stairsActive) return;
     this.stairsActive = true;
 
-    const newSeed = this.currentSeed + 1;
-    const newFloor = this.state.floor + 1;
+    const newSeed = this.currentSeed + steps;
+    const newFloor = this.state.floor + steps;
 
     this.enemies.forEach((enemy) => this.physics.removeBody(enemy.body));
     this.enemies.clear();
@@ -734,11 +744,16 @@ export class GameRoom extends Room<GameState> {
     this.players.forEach((p) => p.applyTileEffects(dtMs));
     this.enemies.forEach((e) => { if (!e.isDying) e.applyTileEffects(dtMs); });
 
-    // 9. Stairs detection.
+    // 9. Stairs and trap detection. Both descend; a trap just skips further and
+    //    isn't something the player chose. `stairsActive` gates both, so two
+    //    players landing on tiles in the same tick still only advance once.
     if (!this.stairsActive) {
       this.players.forEach((player) => {
-        if (this.physics.tileAt(player.state.x, player.state.y) === TILE.STAIRS) {
+        const tile = this.physics.tileAt(player.state.x, player.state.y);
+        if (tile === TILE.STAIRS) {
           this.advanceFloor();
+        } else if (tile === TILE.TRAP) {
+          this.advanceFloor(this.rollTrapDepth());
         }
       });
     }

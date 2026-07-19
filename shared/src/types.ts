@@ -25,6 +25,7 @@ export const TILE = {
   SLIME: 3,
   STAIRS: 4,
   BOSS_FLOOR: 5, // passageway tiles leading into the boss room — rendered gold
+  TRAP: 6,       // warps the whole party forward TRAP_MIN..TRAP_MAX_FLOORS — visible, so it's avoidable
 } as const;
 
 export type TileId = typeof TILE[keyof typeof TILE];
@@ -36,7 +37,16 @@ export const TILE_PROPS: Record<TileId, TileProps> = {
   [TILE.SLIME]:      { walkable: true, effect: "slow", speedMultiplier: 0.35 },
   [TILE.STAIRS]:     { walkable: true },
   [TILE.BOSS_FLOOR]: { walkable: true },
+  // No tile `effect`: the warp is a floor-level event, not a per-entity effect
+  // like fire or slime, so GameRoom watches for it rather than applyTileEffects.
+  [TILE.TRAP]:       { walkable: true },
 };
+
+// A trap warps the party this many floors forward, inclusive. Skipping a floor
+// means skipping its loot, shops and shrines while the difficulty climbs anyway —
+// the tile is rendered in plain sight so stepping on one is a mistake, not a coin flip.
+export const TRAP_MIN_FLOORS = 1;
+export const TRAP_MAX_FLOORS = 3;
 
 export type RoomType = "combat" | "maze" | "boss" | "shop" | "shrine" | "chest";
 

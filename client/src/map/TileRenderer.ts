@@ -12,6 +12,7 @@ const TILE_TO_FRAME: Partial<Record<number, number>> = {
   [TILE.SLIME]:      4,
   [TILE.STAIRS]:     5,
   [TILE.BOSS_FLOOR]: 6,
+  [TILE.TRAP]:       7,
 };
 
 export function preloadTiles(scene: Phaser.Scene) {
