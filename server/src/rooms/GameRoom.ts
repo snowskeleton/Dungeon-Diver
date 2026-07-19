@@ -278,13 +278,7 @@ export class GameRoom extends Room<GameState> {
     this.initFloor(newSeed);
     this.state.floor = newFloor;
 
-    const spawns = this.currentDungeon.playerSpawns;
-    let i = 0;
-    this.players.forEach((player) => {
-      const spawn = spawns[i++ % spawns.length];
-      player.teleport(spawn.x, spawn.y);
-      player.state.health = player.maxHp;
-    });
+    this.respawnAll([...this.players.values()]);
 
     this.spawner.spawnFloorEnemies();
     const preCleared = this.floorManager.finalizeEmptyRooms();
@@ -292,9 +286,22 @@ export class GameRoom extends Room<GameState> {
       this.broadcast("connections_parent_unlocked", { connectionIds: preCleared });
     }
 
-    const spawn = spawns[0];
+    const spawn = this.currentDungeon.playerSpawns[0];
     const msg: FloorChangeMessage = { seed: newSeed, floor: newFloor, spawnX: spawn.x, spawnY: spawn.y };
     this.broadcast("floor_change", msg);
+  }
+
+  /** Put players back on the floor's spawn points at full health — what
+   *  "respawning" means, in the one place that defines it. Used both by a floor
+   *  change (everyone) and by the death check (only the dead), which had drifted
+   *  into two copies of the same spawn-cycling loop. */
+  private respawnAll(players: Player[]): void {
+    const spawns = this.currentDungeon.playerSpawns;
+    players.forEach((player, i) => {
+      const spawn = spawns[i % spawns.length];
+      player.teleport(spawn.x, spawn.y);
+      player.state.health = player.maxHp;
+    });
   }
 
   // Spawns a projectile and registers it for sync. `affects` (a Layer mask)
@@ -477,15 +484,9 @@ export class GameRoom extends Room<GameState> {
     }
 
     // 10. Dead players respawn.
-    const spawns = this.currentDungeon.playerSpawns;
-    let si = 0;
-    this.players.forEach((player) => {
-      if (player.isDead) {
-        const spawn = spawns[si++ % spawns.length];
-        player.teleport(spawn.x, spawn.y);
-        player.state.health = player.maxHp;
-      }
-    });
+    const dead: Player[] = [];
+    this.players.forEach((player) => { if (player.isDead) dead.push(player); });
+    if (dead.length > 0) this.respawnAll(dead);
 
     // 11. Softlock guard: unlock rooms that locked behind a player who is no longer
     //     inside (death respawn above, or disconnect). Runs after step 10 so dead

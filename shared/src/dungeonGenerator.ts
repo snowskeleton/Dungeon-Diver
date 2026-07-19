@@ -1,4 +1,4 @@
-import { TILE, TileId, TILE_SIZE } from "./types";
+import { TILE, TileId, TILE_SIZE, tileCenter } from "./types";
 import type { RoomType } from "./types";
 
 // Default room grid dimensions (overridable per-call via DungeonOptions)
@@ -867,10 +867,7 @@ export function generateDungeon(seed: number, opts: DungeonOptions = {}): Dungeo
   stampBossPassage(mapData, connections, bossRoomId);
   placeTraps(mapData, roomDataMap, roomTypes, startId, rng);
 
-  const playerSpawns = [0, 1, 2, 3].map(() => ({
-    x: spawnTile.col * TILE_SIZE + TILE_SIZE / 2,
-    y: spawnTile.row * TILE_SIZE + TILE_SIZE / 2,
-  }));
+  const playerSpawns = [0, 1, 2, 3].map(() => tileCenter(spawnTile.col, spawnTile.row));
 
   return {
     mapData,

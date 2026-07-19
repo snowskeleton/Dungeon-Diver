@@ -8,6 +8,7 @@ import {
   ShopStateView, ShopItemStateView, OfferStateView, ChestStateView,
 } from "shared";
 import { DarknessOverlay } from "../map/DarknessOverlay";
+import { BarrierOverlays } from "../map/BarrierOverlays";
 import { preloadTiles, buildMap } from "../map/TileRenderer";
 import { LocalPlayerManager } from "../input/LocalPlayerManager";
 import { LocalPlayer } from "../entities/LocalPlayer";
@@ -65,8 +66,7 @@ export class GameScene extends Phaser.Scene {
   private ready = false;
 
   private currentMapGroup: Phaser.GameObjects.Group | null = null;
-  private barrierParentOverlays = new Map<string, Phaser.GameObjects.Image[]>();
-  private barrierChildOverlays = new Map<string, Phaser.GameObjects.Image[]>();
+  private barriers!: BarrierOverlays;
   private currentSeed = MAP_SEED;
   private currentFloor = 1;
   private mapCols = 0;
@@ -99,8 +99,7 @@ export class GameScene extends Phaser.Scene {
     this.offerPedestals.clear();
     this.chests.clear();
     this.localSessionIds.clear();
-    this.barrierParentOverlays.clear();
-    this.barrierChildOverlays.clear();
+
     this.currentMapGroup = null;
     this.observerRoom = null;
   }
@@ -171,6 +170,7 @@ export class GameScene extends Phaser.Scene {
     // below is picked up as world content by the UI camera's default-ignore hook.
     this.ui = new UiLayer(this, this.scale.width, this.scale.height);
 
+    this.barriers = new BarrierOverlays(this);
     this.rebuildMap(this.currentSeed);
 
     const options = loadOptions();
@@ -220,26 +220,18 @@ export class GameScene extends Phaser.Scene {
       });
 
       first.room.onMessage("connections_parent_unlocked", (msg: { connectionIds: string[] }) => {
-        for (const connId of msg.connectionIds) {
-          this.barrierParentOverlays.get(connId)?.forEach(img => img.destroy());
-          this.barrierParentOverlays.delete(connId);
-        }
+        for (const connId of msg.connectionIds) this.barriers.hideParent(connId);
       });
 
       first.room.onMessage("connections_child_locked", (msg: { connectionIds: string[] }) => {
         for (const connId of msg.connectionIds) {
           const conn = this.dungeon.connections.find(c => c.id === connId);
-          if (!conn) continue;
-          const images = this.buildBarrierImages(conn.barrierChild);
-          this.barrierChildOverlays.set(connId, images);
+          if (conn) this.barriers.showChild(connId, conn.barrierChild);
         }
       });
 
       first.room.onMessage("connections_child_unlocked", (msg: { connectionIds: string[] }) => {
-        for (const connId of msg.connectionIds) {
-          this.barrierChildOverlays.get(connId)?.forEach(img => img.destroy());
-          this.barrierChildOverlays.delete(connId);
-        }
+        for (const connId of msg.connectionIds) this.barriers.hideChild(connId);
       });
     }
 
@@ -270,10 +262,7 @@ export class GameScene extends Phaser.Scene {
       this.currentMapGroup.destroy(true);
       this.currentMapGroup = null;
     }
-    this.barrierParentOverlays.forEach(imgs => imgs.forEach(img => img.destroy()));
-    this.barrierParentOverlays.clear();
-    this.barrierChildOverlays.forEach(imgs => imgs.forEach(img => img.destroy()));
-    this.barrierChildOverlays.clear();
+    this.barriers.clear();
 
     const dungeon = generateDungeon(seed, this.dungeonOpts);
     this.dungeon = dungeon;
@@ -287,33 +276,13 @@ export class GameScene extends Phaser.Scene {
 
     this.currentMapGroup = buildMap(this, dungeon.mapData as any, dungeon.rows, dungeon.cols);
     for (const conn of dungeon.connections) {
-      this.barrierParentOverlays.set(conn.id, this.buildBarrierImages(conn.barrierParent));
+      this.barriers.showParent(conn.id, conn.barrierParent);
     }
 
     const totalW = dungeon.cols * TILE_SIZE;
     const totalH = dungeon.rows * TILE_SIZE;
     this.cameras.main.setBounds(0, 0, totalW, totalH);
     this.cameras.main.setZoom(loadOptions().cameraZoom);
-  }
-
-  private buildBarrierImages(rect: { cx: number; cy: number; w: number; h: number }): Phaser.GameObjects.Image[] {
-    const images: Phaser.GameObjects.Image[] = [];
-    const colMin = Math.floor((rect.cx - rect.w / 2) / TILE_SIZE);
-    const colMax = Math.floor((rect.cx + rect.w / 2 - 1) / TILE_SIZE);
-    const rowMin = Math.floor((rect.cy - rect.h / 2) / TILE_SIZE);
-    const rowMax = Math.floor((rect.cy + rect.h / 2 - 1) / TILE_SIZE);
-    for (let row = rowMin; row <= rowMax; row++) {
-      for (let col = colMin; col <= colMax; col++) {
-        const img = this.add.image(
-          col * TILE_SIZE + TILE_SIZE / 2,
-          row * TILE_SIZE + TILE_SIZE / 2,
-          "barrier_tile",
-        );
-        img.setDepth(1.5);
-        images.push(img);
-      }
-    }
-    return images;
   }
 
   private handleFloorChange(msg: FloorChangeMessage) {

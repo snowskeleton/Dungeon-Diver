@@ -1,5 +1,5 @@
 import {
-  TILE, TILE_SIZE, TILE_PROPS, TileId,
+  TILE, TILE_SIZE, TILE_PROPS, TileId, tileCenter,
   ROOM_W, ROOM_H,
   ENEMY_BASE_COUNT, ENEMY_FLOOR_BONUS_INTERVAL, ENEMY_PLAYER_SCALE,
   DungeonResult, DungeonOptions, RoomData, RoomType,
@@ -187,7 +187,7 @@ export class SpawnDirector {
   private bossPos(col: number, row: number, room: RoomData) {
     const tile = this.dungeon.mapData[row]?.[col] as TileId | undefined;
     if (tile !== undefined && TILE_PROPS[tile].walkable && tile !== TILE.STAIRS) {
-      return { x: col * TILE_SIZE + TILE_SIZE / 2, y: row * TILE_SIZE + TILE_SIZE / 2 };
+      return tileCenter(col, row);
     }
     return this.randomPosInRoom(...this.roomInterior(room));
   }
@@ -217,7 +217,7 @@ export class SpawnDirector {
         if (mapData[row]?.[col] !== undefined) {
           const tile = mapData[row][col] as TileId;
           if (TILE_PROPS[tile].walkable && tile !== TILE.STAIRS) {
-            candidates.push({ x: col * TILE_SIZE + TILE_SIZE / 2, y: row * TILE_SIZE + TILE_SIZE / 2 });
+            candidates.push(tileCenter(col, row));
           }
         }
       }

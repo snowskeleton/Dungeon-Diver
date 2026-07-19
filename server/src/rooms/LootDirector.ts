@@ -1,5 +1,5 @@
 import {
-  TILE, TILE_SIZE,
+  TILE, TILE_SIZE, tileCenter,
   DungeonResult, RoomData,
   WEAPON_REGISTRY, WeaponId, WeaponInstance,
 } from "shared";
@@ -61,8 +61,9 @@ export class LootDirector {
         const item = new ShopItemState();
         item.weaponId = wid;
         item.cost = Math.min(30, Math.max(8, Math.round(w.damage * 1.4)));
-        item.x = cols[i] * TILE_SIZE + TILE_SIZE / 2;
-        item.y = room.centerRow * TILE_SIZE + TILE_SIZE / 2;
+        const pos = tileCenter(cols[i], room.centerRow);
+        item.x = pos.x;
+        item.y = pos.y;
         shop.items.push(item);
       });
       this.state.shops.set(room.id, shop);
@@ -266,11 +267,7 @@ export class LootDirector {
    *  off the stairs. Shared by shrines, chests, and challenge rewards so all three
    *  land in the same spot. */
   private pedestalPos(room: RoomData): { x: number; y: number } {
-    const col = this.freeShopCol(room.centerCol, room.centerRow);
-    return {
-      x: col * TILE_SIZE + TILE_SIZE / 2,
-      y: room.centerRow * TILE_SIZE + TILE_SIZE / 2,
-    };
+    return tileCenter(this.freeShopCol(room.centerCol, room.centerRow), room.centerRow);
   }
 
   // Nearest column to `col` on `row` whose tile isn't the stairs, so a pedestal
