@@ -1,7 +1,8 @@
 import { type } from "@colyseus/schema";
 import { EntityState } from "./EntityState";
+import { ProjectileStateView } from "shared";
 
-export class ProjectileState extends EntityState {
+export class ProjectileState extends EntityState implements ProjectileStateView {
   // Travel direction in radians (right=0, down=+π/2, left=π, up=−π/2).
   // Clients rotate the sprite by this + the ammo's baked spriteAngle.
   @type("number") angle: number = 0;

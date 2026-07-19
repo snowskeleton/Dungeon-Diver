@@ -4,6 +4,8 @@ import {
   TILE_SIZE, ROOM_W, ROOM_H, generateDungeon, MAP_SEED, FloorChangeMessage,
   WEAPON_REGISTRY, WeaponId, AMMO_REGISTRY, DungeonOptions, toDungeonOptions,
   RoomType,
+  GameStateView, PlayerStateView, EnemyStateView, ProjectileStateView,
+  ShopStateView, ShopItemStateView, OfferStateView, ChestStateView,
 } from "shared";
 import { DarknessOverlay } from "../map/DarknessOverlay";
 import { preloadTiles, buildMap } from "../map/TileRenderer";
@@ -406,12 +408,10 @@ export class GameScene extends Phaser.Scene {
     const sessionId = player.room.sessionId;
     this.localSessionIds.add(sessionId);
 
-    player.room.state.players.onAdd((pState: any, sid: string) => {
+    const roomState = player.room.state as GameStateView;
+    roomState.players.onAdd((pState: PlayerStateView, sid: string) => {
       if (sid !== sessionId) return;
-      const push = () => player.syncFromServer(
-        pState.x, pState.y, pState.health, pState.isAttacking, pState.attackSeq,
-        pState.weaponId, Array.from(pState.weapons),
-      );
+      const push = () => player.syncFromServer(pState);
       push();
       pState.onChange(push);
     });
@@ -425,9 +425,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   private setupWorldSync(room: Room) {
-    const state = room.state;
+    // The one boundary cast in the client. colyseus.js types `room.state` as the
+    // untyped decoded state; from here down it is GameStateView, whose interfaces
+    // the server's schema classes `implements` — so a renamed @type field is a
+    // compile error on the server rather than a silent `undefined` here.
+    const state = room.state as GameStateView;
 
-    state.players.onAdd((playerState: any, sessionId: string) => {
+    state.players.onAdd((playerState: PlayerStateView, sessionId: string) => {
       if (this.localSessionIds.has(sessionId)) return;
       const rp = new RemotePlayer(
         this,
@@ -438,51 +442,37 @@ export class GameScene extends Phaser.Scene {
         playerState.weaponId,
       );
       this.remotePlayers.set(sessionId, rp);
-      playerState.onChange(() =>
-        rp.setTarget(
-          playerState.x, playerState.y, playerState.health,
-          playerState.facing, playerState.isAttacking, playerState.attackSeq, playerState.weaponId,
-        ),
-      );
+      playerState.onChange(() => rp.setTarget(playerState));
     });
 
-    state.players.onRemove((_: any, sessionId: string) => {
+    state.players.onRemove((_: PlayerStateView, sessionId: string) => {
       this.remotePlayers.get(sessionId)?.destroy();
       this.remotePlayers.delete(sessionId);
     });
 
-    state.enemies.onAdd((enemyState: any, id: string) => {
+    state.enemies.onAdd((enemyState: EnemyStateView, id: string) => {
       const e = new EnemyEntity(
         this, enemyState.x, enemyState.y, enemyState.enemyType,
         enemyState.maxHealth, enemyState.aggroRadius, enemyState.attackRadius,
       );
       this.enemies.set(id, e);
-      enemyState.onChange(() =>
-        e.setTarget(
-          enemyState.x, enemyState.y, enemyState.health,
-          enemyState.facing, enemyState.aiState, enemyState.isDying,
-          enemyState.telegraph, enemyState.channeling, enemyState.abilityId,
-          enemyState.airHeight,
-        ),
-      );
+      enemyState.onChange(() => e.setTarget(enemyState));
     });
 
-    state.enemies.onRemove((_: any, id: string) => {
+    state.enemies.onRemove((_: EnemyStateView, id: string) => {
       this.enemies.get(id)?.destroy();
       this.enemies.delete(id);
     });
 
-    state.projectiles.onAdd((projState: any, id: string) => {
+    state.projectiles.onAdd((projState: ProjectileStateView, id: string) => {
       const p = new ProjectileEntity(
         this, projState.x, projState.y, projState.angle, projState.ammoId,
       );
       this.projectiles.set(id, p);
-      projState.onChange(() =>
-        p.setTarget(projState.x, projState.y, projState.angle),
-      );
+      projState.onChange(() => p.setTarget(projState));
     });
 
-    state.projectiles.onRemove((_: any, id: string) => {
+    state.projectiles.onRemove((_: ProjectileStateView, id: string) => {
       this.projectiles.get(id)?.destroy();
       this.projectiles.delete(id);
     });
@@ -490,8 +480,8 @@ export class GameScene extends Phaser.Scene {
     // Shop pedestals: one ShopItemEntity per shop item, keyed "roomId:index".
     // Items only change via `purchased` (shared pool); floor change clears the
     // whole shops map, firing onRemove for the old rooms.
-    state.shops.onAdd((shop: any, roomId: string) => {
-      shop.items.forEach((item: any, idx: number) => {
+    state.shops.onAdd((shop: ShopStateView, roomId: string) => {
+      shop.items.forEach((item: ShopItemStateView, idx: number) => {
         const key = `${roomId}:${idx}`;
         const view = new ShopItemEntity(this, item.x, item.y, item.weaponId, item.cost);
         view.setPurchased(item.purchased);
@@ -500,7 +490,7 @@ export class GameScene extends Phaser.Scene {
       });
     });
 
-    state.shops.onRemove((_: any, roomId: string) => {
+    state.shops.onRemove((_: ShopStateView, roomId: string) => {
       for (const [key, view] of this.shopItems) {
         if (key.startsWith(`${roomId}:`)) {
           view.destroy();
@@ -512,27 +502,27 @@ export class GameScene extends Phaser.Scene {
     // Reward pedestals: one per shrine room, plus one dropped where a boss died.
     // Keyed by room id — a boss drop appears mid-floor, so this map grows during
     // play rather than only at floor start.
-    state.offers.onAdd((offer: any, roomId: string) => {
+    state.offers.onAdd((offer: OfferStateView, roomId: string) => {
       const view = new OfferPedestalEntity(this, offer.x, offer.y);
       view.setClaimed(offer.claimed);
       this.offerPedestals.set(roomId, view);
       offer.onChange(() => view.setClaimed(offer.claimed));
     });
 
-    state.offers.onRemove((_: any, roomId: string) => {
+    state.offers.onRemove((_: OfferStateView, roomId: string) => {
       this.offerPedestals.get(roomId)?.destroy();
       this.offerPedestals.delete(roomId);
     });
 
     // Treasure chests: one per chest room, keyed by room id. `opened` is the only
     // field that ever changes; floor change clears the whole map, firing onRemove.
-    state.chests.onAdd((chest: any, roomId: string) => {
+    state.chests.onAdd((chest: ChestStateView, roomId: string) => {
       const view = new ChestEntity(this, chest.x, chest.y, chest.gold, chest.opened);
       this.chests.set(roomId, view);
       chest.onChange(() => view.setOpened(chest.opened));
     });
 
-    state.chests.onRemove((_: any, roomId: string) => {
+    state.chests.onRemove((_: ChestStateView, roomId: string) => {
       this.chests.get(roomId)?.destroy();
       this.chests.delete(roomId);
     });

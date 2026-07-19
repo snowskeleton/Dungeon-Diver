@@ -1,5 +1,5 @@
 import { Schema, type } from "@colyseus/schema";
-import { WeaponMod, WeaponId } from "shared";
+import { WeaponMod, WeaponId, ChestStateView } from "shared";
 
 // A chest room's treasure chest, keyed in GameState.chests by room id.
 //
@@ -8,7 +8,7 @@ import { WeaponMod, WeaponId } from "shared";
 // what separates it from the shrine (a deliberate 1-of-3 build decision) and the
 // shop (a paid one) — a chest is a surprise, so what's inside is never previewed.
 
-export class ChestState extends Schema {
+export class ChestState extends Schema implements ChestStateView {
   @type("string") roomId: string = "";
   @type("number") x: number = 0;
   @type("number") y: number = 0;

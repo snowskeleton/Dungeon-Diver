@@ -1,5 +1,5 @@
 import { Schema, ArraySchema, type } from "@colyseus/schema";
-import { WeaponMod } from "shared";
+import { WeaponMod, OfferStateView, OfferChoiceStateView } from "shared";
 import { WeaponSlotState } from "./WeaponSlotState";
 
 // A 1-of-3 reward waiting on a pedestal — the shrine boon and the boss drop.
@@ -10,7 +10,7 @@ import { WeaponSlotState } from "./WeaponSlotState";
 
 /** One of the three things a player may pick. `kind` decides which of the two
  *  payload halves is meaningful — an exhaustive switch, not a lookup. */
-export class OfferChoiceState extends Schema {
+export class OfferChoiceState extends Schema implements OfferChoiceStateView {
   @type("string") kind: "weapon" | "upgrade" = "upgrade";
   @type("string") name: string = "";
   @type("string") description: string = "";
@@ -38,7 +38,7 @@ export class OfferChoiceState extends Schema {
 }
 
 /** A pedestal's worth of choices, keyed in GameState.offers by room id. */
-export class OfferState extends Schema {
+export class OfferState extends Schema implements OfferStateView {
   @type("string") roomId: string = "";
   @type("number") x: number = 0;
   @type("number") y: number = 0;

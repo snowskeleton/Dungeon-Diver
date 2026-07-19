@@ -3,6 +3,7 @@ import { Room } from "colyseus.js";
 import {
   InputMessage, CharacterClass, CharacterType, CharacterConfig, getCharacterConfig,
   WeaponId, Weapon, WeaponSlotView, UpgradeSlotView, WEAPON_REGISTRY, Facing,
+  GameStateView, PlayerStateView, ShopStateView, ShopItemStateView, OfferStateView, ChestStateView,
 } from "shared";
 import { Entity } from "./Entity";
 import { InputSource, InputActions } from "../input/InputSource";
@@ -19,6 +20,10 @@ const SHOP_BUY_RADIUS = 40;
 
 export class LocalPlayer extends Entity implements DebugDrawable {
   readonly room: Room;
+  /** The same room state, typed. The server's schema classes `implements` these
+   *  views, so a renamed @type field fails the server build instead of silently
+   *  reading undefined here. One cast, at the boundary. */
+  private readonly roomState: GameStateView;
   readonly inputSource: InputSource;
   readonly charConfig: CharacterConfig;
   // The active weapon, swapped when the server reports an activeWeaponIndex change.
@@ -74,6 +79,7 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     this.activeWeaponId = weapon.id;
     this.hp = cfg.maxHp;
     this.room = room;
+    this.roomState = room.state as GameStateView;
     this.inputSource = inputSource;
     this.setupCharacter(visualDef.spriteConfig, weapon.fxType, weapon.id, weapon.rangedStyle);
   }
@@ -168,12 +174,12 @@ export class LocalPlayer extends Entity implements DebugDrawable {
 
   // Find the nearest unpurchased shop pedestal within buy range of this player.
   private updateShopProximity() {
-    const shops = (this.room.state as any).shops;
+    const shops = this.roomState.shops;
     if (!shops) { this.nearbyShopItem = null; return; }
     let best: LocalPlayer["nearbyShopItem"] = null;
     let bestDist = SHOP_BUY_RADIUS * SHOP_BUY_RADIUS;
-    shops.forEach((shop: any, roomId: string) => {
-      shop.items.forEach((item: any, idx: number) => {
+    shops.forEach((shop: ShopStateView, roomId: string) => {
+      shop.items.forEach((item: ShopItemStateView, idx: number) => {
         if (item.purchased) return;
         const dx = this.sprite.x - item.x;
         const dy = this.sprite.y - item.y;
@@ -190,11 +196,11 @@ export class LocalPlayer extends Entity implements DebugDrawable {
   // Nearest unclaimed reward pedestal within range. Same radius as the shop so the
   // interact prompt behaves identically for both.
   private updateOfferProximity() {
-    const offers = (this.room.state as any).offers;
+    const offers = this.roomState.offers;
     if (!offers) { this.nearbyOffer = null; return; }
     let best: LocalPlayer["nearbyOffer"] = null;
     let bestDist = SHOP_BUY_RADIUS * SHOP_BUY_RADIUS;
-    offers.forEach((offer: any, roomId: string) => {
+    offers.forEach((offer: OfferStateView, roomId: string) => {
       if (offer.claimed) return;
       const dx = this.sprite.x - offer.x;
       const dy = this.sprite.y - offer.y;
@@ -210,11 +216,11 @@ export class LocalPlayer extends Entity implements DebugDrawable {
   // Nearest unopened chest within range. Same radius again, so every in-world
   // interaction in the game shares one reach.
   private updateChestProximity() {
-    const chests = (this.room.state as any).chests;
+    const chests = this.roomState.chests;
     if (!chests) { this.nearbyChest = null; return; }
     let best: LocalPlayer["nearbyChest"] = null;
     let bestDist = SHOP_BUY_RADIUS * SHOP_BUY_RADIUS;
-    chests.forEach((chest: any, roomId: string) => {
+    chests.forEach((chest: ChestStateView, roomId: string) => {
       if (chest.opened) return;
       const dx = this.sprite.x - chest.x;
       const dy = this.sprite.y - chest.y;
@@ -240,13 +246,11 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     });
   }
 
-  syncFromServer(
-    x: number, y: number, hp: number, isAttacking: boolean, attackSeq: number,
-    weaponId: string, weapons: WeaponSlotView[],
-  ) {
-    this.hp = hp;
-    this.serverAttacking = isAttacking;
-    this.checkAcquired(weapons);
+  syncFromServer(state: PlayerStateView) {
+    const { weaponId, attackSeq } = state;
+    this.hp = state.health;
+    this.serverAttacking = state.isAttacking;
+    this.checkAcquired(Array.from(state.weapons));
     // A new attackSeq means the server accepted a fresh attack — restart the
     // swing/bow clip even if isAttacking never dropped (held-fire).
     if (attackSeq !== this.lastAttackSeq) {
@@ -263,8 +267,8 @@ export class LocalPlayer extends Entity implements DebugDrawable {
         this.swapWeapon(w.fxType, w.id, w.rangedStyle);
       }
     }
-    this.setPosition(x, y);
-    this.updateHpBar(hp);
+    this.setPosition(state.x, state.y);
+    this.updateHpBar(state.health);
   }
 
   // Fire the Zelda-style acquire flourish for any weapon that's newly held since

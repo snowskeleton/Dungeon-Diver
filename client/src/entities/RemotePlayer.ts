@@ -1,5 +1,8 @@
 import Phaser from "phaser";
-import { CharacterClass, CharacterType, getCharacterConfig, WeaponId, Weapon, WEAPON_REGISTRY, Facing } from "shared";
+import {
+  CharacterClass, CharacterType, getCharacterConfig, WeaponId, Weapon, WEAPON_REGISTRY,
+  Facing, PlayerStateView,
+} from "shared";
 import { Entity } from "./Entity";
 import { CLIENT_CHARACTER_VISUAL_REGISTRY } from "../characters";
 import { DebugDrawable, DebugShape, DEBUG_COLORS } from "../debug/DebugDraw";
@@ -22,11 +25,11 @@ export class RemotePlayer extends Entity implements DebugDrawable {
     y: number,
     characterClass: CharacterClass = "knight",
     characterType: CharacterType = "guy",
-    weaponId?: WeaponId,
+    weaponId?: string,
   ) {
     const cfg = getCharacterConfig(characterClass);
     const visualDef = CLIENT_CHARACTER_VISUAL_REGISTRY[characterType];
-    const resolvedWeaponId = weaponId ?? cfg.defaultWeaponId;
+    const resolvedWeaponId = (weaponId ?? cfg.defaultWeaponId) as WeaponId;
     const weapon = WEAPON_REGISTRY[resolvedWeaponId];
     super(scene, x, y, 0x9f7aea, cfg.maxHp);
     this.targetX = x;
@@ -37,12 +40,13 @@ export class RemotePlayer extends Entity implements DebugDrawable {
     this.setupCharacter(visualDef.spriteConfig, weapon?.fxType ?? null, weapon?.id, weapon?.rangedStyle);
   }
 
-  setTarget(x: number, y: number, hp: number, facing: Facing, isAttacking: boolean, attackSeq = 0, weaponId?: string) {
-    this.targetX = x;
-    this.targetY = y;
-    this.currentHp = hp;
-    this.facing = facing;
-    this.isAttacking = isAttacking;
+  setTarget(state: PlayerStateView) {
+    const { weaponId, attackSeq } = state;
+    this.targetX = state.x;
+    this.targetY = state.y;
+    this.currentHp = state.health;
+    this.facing = state.facing;
+    this.isAttacking = state.isAttacking;
     // Active weapon changed on the server — hot-swap the visuals to match.
     if (weaponId && weaponId !== this.activeWeaponId) {
       const w = WEAPON_REGISTRY[weaponId as WeaponId];
@@ -58,7 +62,7 @@ export class RemotePlayer extends Entity implements DebugDrawable {
     }
     if (this.pendingSnap) {
       this.pendingSnap = false;
-      this.setPosition(x, y);
+      this.setPosition(state.x, state.y);
     }
   }
 

@@ -1,11 +1,11 @@
 import { type } from "@colyseus/schema";
-import { AiState } from "shared";
+import { AiState, Facing, EnemyStateView } from "shared";
 import { EntityState } from "./EntityState";
 
-export class EnemyState extends EntityState {
+export class EnemyState extends EntityState implements EnemyStateView {
   @type("string") aiState: AiState = "patrol";
   @type("string") targetId: string = "";
-  @type("string") facing: string = "right";
+  @type("string") facing: Facing = "right";
   @type("boolean") isDying: boolean = false;
   @type("string") enemyType: string = "";
   // Self-describing stats so the client needs no copy of the enemy's numbers:

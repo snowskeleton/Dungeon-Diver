@@ -1,5 +1,5 @@
 import { Schema, type, ArraySchema } from "@colyseus/schema";
-import { Facing, UpgradeSlotView } from "shared";
+import { Facing, CharacterClass, CharacterType, UpgradeSlotView, PlayerStateView } from "shared";
 import { EntityState } from "./EntityState";
 import { WeaponSlotState } from "./WeaponSlotState";
 
@@ -11,14 +11,14 @@ export class UpgradeSlotState extends Schema implements UpgradeSlotView {
   @type("string") description: string = "";
 }
 
-export class PlayerState extends EntityState {
+export class PlayerState extends EntityState implements PlayerStateView {
   @type("string") facing: Facing = "down";
   @type("boolean") isAttacking: boolean = false;
   // Increments once per swing — clients edge-detect this to restart the attack
   // animation even when isAttacking never flips false (held attack key).
   @type("uint16") attackSeq: number = 0;
-  @type("string") characterClass: string = "knight";
-  @type("string") characterType: string = "guy";
+  @type("string") characterClass: CharacterClass = "knight";
+  @type("string") characterType: CharacterType = "guy";
   // weaponId is the ACTIVE weapon (updated on switch) so remote weapon-visual
   // swaps key off it; weapons + activeWeaponIndex drive the HUD/switching.
   @type("string") weaponId: string = "broadsword";
