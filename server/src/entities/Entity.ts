@@ -19,8 +19,8 @@ export type PendingEffect =
   // drains it into a real enemy in the caster's room. Boss-only in practice.
   | { kind: "summon"; enemy: EnemyClass; x: number; y: number };
 
-// Knockback velocity is multiplied by this each tick; combined with the v0
-// math in applyKnockback it reproduces the old total push distance.
+// Knockback velocity is multiplied by this each tick; applyKnockback solves the
+// resulting geometric series backwards to hit an exact total push distance.
 export const KNOCKBACK_DECAY = 0.5;
 const KNOCKBACK_CUTOFF = 5; // px/sec — below this, snap to zero
 
@@ -242,8 +242,8 @@ export abstract class Entity {
     return false;
   }
 
-  /** Radius this body occupies for hit tests (inflates the source shape). 0 keeps
-   *  the old point-target behaviour; raise it to model a real hurt circle. */
+  /** Radius this body occupies for hit tests (inflates the source shape). 0 makes
+   *  it a point target; raise it to model a real hurt circle. */
   get hurtRadius(): number {
     return 0;
   }

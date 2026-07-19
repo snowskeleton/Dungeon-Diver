@@ -1,4 +1,6 @@
-// Headless integration check for the boss projectile path (Stages 0–2).
+// Headless integration check for every boss's moveset. Its output is a GOLDEN
+// REGRESSION BASELINE — anything touching the combat/spell/attack path must leave
+// it byte-identical (see CLAUDE.md § Headless verification).
 // For every boss type: boots the real PhysicsWorld + Boss + Projectile, drives
 // Boss.tick against a stationary player at its preferred range, and asserts the
 // boss telegraphs, fires, and its shots damage the player but NOT a bystander

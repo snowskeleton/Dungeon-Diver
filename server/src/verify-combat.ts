@@ -1,9 +1,9 @@
-// Headless check for the Phase-0 combat substrate: the single CombatSystem
-// resolver applied over hit sources (player melee swings, enemy contact hitboxes,
-// projectiles), replacing the old hardcoded GameRoom passes. Boots the real
-// PhysicsWorld + Player + Enemy + Projectile, runs the exact gather+resolve step
-// GameRoom.tick now runs, and asserts damage, knockback, and team-filtering all
-// behave. Run: npx ts-node --transpile-only src/verify-combat.ts
+// Headless check for the combat substrate: the single CombatSystem resolver
+// applied over hit sources (player melee swings, enemy contact hitboxes,
+// projectiles). Boots the real PhysicsWorld + Player + Enemy + Projectile, runs
+// the exact gather+resolve step GameRoom.tick runs, and asserts damage,
+// knockback, team-filtering, weapon instancing, and the upgrade fold all behave.
+// Run: npx ts-node --transpile-only src/verify-combat.ts
 import { TILE, Layer, SERVER_TICK_MS, WEAPON_REGISTRY, AMMO_REGISTRY, PLAYER_ATTACK_AFFECTS, ENEMY_ATTACK_AFFECTS, PLAYER_PROJECTILE_AFFECTS, ENEMY_PROJECTILE_AFFECTS, Staff, WeaponInstance, WeaponMod, viewFromSlot } from "shared";
 import { weaponSpell } from "./spells/weaponSpell";
 import { PhysicsWorld } from "./physics/PhysicsWorld";
@@ -122,7 +122,7 @@ function resolveStep(
     `playerHp ${player.state.health}`);
 }
 
-// ── Scenario 3 (Phase 1): a knockback-carrying enemy projectile now shoves AND
+// ── Scenario 3: a knockback-carrying enemy projectile shoves AND
 //    hitstuns the player, freezing their input while the stun lasts. ──
 {
   const physics = newPhysics();
@@ -155,7 +155,7 @@ function resolveStep(
     `stunned=${player.state.stunned} facing=${facingAfter}`);
 }
 
-// ── Scenario 4 (Phase 4): player MELEE cadence — one swing per press, the swing
+// ── Scenario 4: player MELEE cadence — one swing per press, the swing
 //    window == the weapon's attack cooldown, and a re-press swings again. ──
 {
   const physics = newPhysics();
@@ -178,7 +178,7 @@ function resolveStep(
   check("melee: re-press swings again", swings === 2, `swings=${swings}`);
 }
 
-// ── Scenario 5 (Phase 4): player RANGED cadence — auto-fires while held at exactly
+// ── Scenario 5: player RANGED cadence — auto-fires while held at exactly
 //    the weapon's cooldown interval, and facing locks mid-hold. ──
 {
   const physics = newPhysics();
@@ -247,8 +247,8 @@ function resolveStep(
     wrong.length ? wrong.join(",") : `all ${Object.keys(expected).length} mapped`);
 }
 
-// ── Scenario 7: the AOE spell path stays wired for the staff's planned nova
-//    ability. No weapon uses an AoeSpec today (staves now shoot bolts), so this
+// ── Scenario 7: the AOE spell path stays wired for the Mage's planned nova
+//    ability. No shipping weapon carries an AoeSpec (staves shoot bolts), so this
 //    guards weaponSpell's AOE branch against rotting before the ability lands. ──
 {
   const novaStaff = new Staff({
@@ -263,8 +263,8 @@ function resolveStep(
 }
 
 
-// ── 7. Per-instance weapons: two wielders of the "same" weapon can differ, and a
-//    modifier applied AFTER the spell was cached still takes effect. ───────────
+// ── Scenario 8: per-instance weapons — two wielders of the "same" weapon can
+//    differ, and a modifier applied AFTER the spell was cached still takes effect. ─
 {
   class PlusDamage extends WeaponMod {
     readonly label = "+2 damage";
@@ -316,7 +316,7 @@ function resolveStep(
     `uids=${swordA.uid},${swordB.uid}`);
 }
 
-// ── 8. The attack pipeline: player upgrades scale melee AND ranged damage. ────
+// ── Scenario 9: the attack pipeline — player upgrades scale melee AND ranged. ──
 {
   const physics = newPhysics();
   const players = new Map<string, Player>();
@@ -352,7 +352,7 @@ function resolveStep(
     `dealt=${dealt.toFixed(2)} want=${expected.toFixed(2)}`);
 }
 
-// ── 9. Ranged: the shot carries weapon damage + ammo damage, scaled. ──────────
+// ── Scenario 10: ranged — the shot carries weapon damage + ammo damage, scaled. ─
 {
   const physics = newPhysics();
   const players = new Map<string, Player>();
@@ -378,7 +378,7 @@ function resolveStep(
     `dealt=${dealt} ammo=${arrow.damage} weapon=${bow.damage}`);
 }
 
-// ── 10. Defensive stats: armor mitigates, floors at 1; lifesteal heals from
+// ── Scenario 11: defensive stats — armor mitigates, floors at 1; lifesteal heals from
 //     damage actually dealt and can't overheal. ─────────────────────────────────
 {
   const physics = newPhysics();
@@ -405,7 +405,7 @@ function resolveStep(
   check("lifesteal: cannot overheal", q.state.health === q.maxHp, `hp=${q.state.health}`);
 }
 
-// ── 11. maxHp upgrades grant their delta rather than preserving the ratio. ────
+// ── Scenario 12: maxHp upgrades grant their delta rather than preserving the ratio. ─
 {
   const physics = newPhysics();
   const p = new Player(physics, 300, 300);
@@ -423,7 +423,7 @@ function resolveStep(
     `hp=${q.state.health}/${q.maxHp}`);
 }
 
-// ── 12. The wire: a synced slot reconstructs the same stat lines the server has. ─
+// ── Scenario 13: the wire — a synced slot reconstructs the same stat lines the server has. ─
 {
   const physics = newPhysics();
   const p = new Player(physics, 300, 300, "ranger", "guy", "longbow");

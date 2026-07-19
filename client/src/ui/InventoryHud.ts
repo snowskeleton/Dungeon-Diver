@@ -22,9 +22,9 @@ export class InventoryHud {
   }
 
   update(weapons: WeaponSlotView[], activeIndex: number) {
-    // Signature is built from uids, not a join() of the array: these are objects
-    // now, and `[object Object]` for every slot would compare equal forever and
-    // the HUD would silently never rebuild.
+    // Signature is built from uids, not a join() of the array: slots are objects,
+    // so join() would yield `[object Object]` for every one of them, compare equal
+    // forever, and the HUD would silently never rebuild.
     const sig = `${weapons.map((w) => w.uid).join(",")}|${activeIndex}`;
     if (sig === this.sig) return;
     this.sig = sig;

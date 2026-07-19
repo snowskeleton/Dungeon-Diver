@@ -462,7 +462,7 @@ function tremorEffect(
   let elapsed = 0;
   let ringsSpawned = 0;
   // One gate for the whole ability: overlapping spokes (they cross at the caster)
-  // count as a single hit per hitCooldownMs, as the old `break` did.
+  // count as a single hit per hitCooldownMs.
   const gate = new RehitGate(o.hitCooldownMs);
   return {
     onActivate: () => {

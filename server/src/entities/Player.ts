@@ -259,7 +259,7 @@ export class Player extends Entity implements Caster {
     this.move(input.dx, input.dy, this.stats.speed);
 
     // Advance an in-flight attack; then — the same tick it finishes — a held/pressed
-    // attack may start the next one, so the cadence matches the old attack cooldown.
+    // attack may start the next one, so the cadence is exactly the weapon's cooldown.
     const aim = this.facingAim();
     if (this.spellCaster.busy) {
       this.spellCaster.update(this, dtMs, aim);

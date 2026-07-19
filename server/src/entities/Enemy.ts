@@ -125,8 +125,8 @@ export abstract class Enemy extends Entity {
   // A contact/touch attack: while alive, un-stunned, and off cooldown, the enemy's
   // body is a hazard out to attackRadius. Emitted each tick to the combat resolver
   // (see GameRoom.tick); the claim consumes the shared attack cooldown so one
-  // eruption lands on one player per cooldown, matching the old melee behaviour.
-  // Bosses deal no passive contact damage and override this to null.
+  // eruption lands on exactly one player per cooldown. Bosses deal no passive
+  // contact damage and override this to null.
   contactHitSource(id: string): HitSource | null {
     if (this.state.isDying || this.state.stunned || this.attackCooldown > 0 || this.attackDamage <= 0) {
       return null;
@@ -136,7 +136,7 @@ export abstract class Enemy extends Entity {
       shape: { kind: "circle", cx: this.state.x, cy: this.state.y, r: this.attackRadius },
       affects: ENEMY_ATTACK_AFFECTS,
       ownerId: id,
-      // Contact deals no knockback to players (matches the old dealDamageToPlayer path).
+      // Contact deals no knockback to players — only telegraphed attacks shove.
       attack: { damage: this.attackDamage, knockback: 0, sourceX: this.state.x, sourceY: this.state.y },
       claim: () => {
         if (claimed) return false;
@@ -162,9 +162,9 @@ export abstract class Enemy extends Entity {
   }
 
   // Standard enemy AI: patrol until a player is in aggro range, chase, and melee
-  // in attack range. Bosses override this entirely. Contact damage itself is no
-  // longer dealt here — it's emitted as a HitSource (contactHitSource) and applied
-  // by the combat resolver; this only drives movement and the attack animation.
+  // in attack range. Bosses override this entirely. This drives only movement and
+  // the attack animation — the damage itself is emitted as a HitSource
+  // (contactHitSource) and applied by the combat resolver.
   tick(players: Map<string, PlayerState>, dtMs: number): void {
     this.applyFlightBaseline();
     if (this.state.isDying) return;
@@ -208,8 +208,8 @@ export abstract class Enemy extends Entity {
     const dy = ty - this.state.y;
     const dist = Math.hypot(dx, dy);
     if (dist < 0.5) return;
-    // Clamp so one tick's step never overshoots the orbit target — the old
-    // position-based move clamped implicitly; raw velocity would oscillate.
+    // Clamp so one tick's step never overshoots the orbit target; unclamped
+    // velocity would oscillate around it.
     const speed = Math.min(this.speed * 0.5, dist / (SERVER_TICK_MS / 1000));
     this.move(dx, dy, speed);
     this.updateFacing(dx, dy);

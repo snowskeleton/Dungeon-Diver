@@ -55,14 +55,13 @@ export abstract class Boss extends Enemy implements DashCaster, SummonCaster {
 
   constructor(physics: PhysicsWorld, x: number, y: number) {
     super(physics, x, y);
-    // Boss bodies are STATIC: the matter solver never displaces a static body,
-    // so a player who walks into one is shoved out instead of pushing it
-    // (docs/bosses.md's "light shove"). High mass alone doesn't hold — matter's
-    // Verlet integrator drifts even a 1e12-mass body under sustained contact.
-    // The boss moves ITSELF by setEntityPosition (walk/rush), which still sweeps
-    // players aside; the cost is that knockback no longer physically shoves the
-    // boss (but a hit still STUNS it, cancelling a wind-up — the mechanic that
-    // matters). See PhysicsWorld.setBodyStatic.
+    // Boss bodies are STATIC: the matter solver never displaces a static body, so
+    // a player who walks into one is shoved out instead of pushing it. High mass
+    // alone doesn't hold — matter's Verlet integrator drifts even a 1e12-mass body
+    // under sustained contact. The boss moves ITSELF by setEntityPosition
+    // (walk/rush), which still sweeps players aside; the cost is that knockback
+    // can't physically shove a boss, though a hit still STUNS it (cancelling a
+    // wind-up — the mechanic that matters).
     this.physics.setBodyStatic(this.body, true);
   }
 
@@ -206,9 +205,7 @@ export abstract class Boss extends Enemy implements DashCaster, SummonCaster {
     return this.isWallAt(cx, cy + FOOT_OFFSET);
   }
 
-  // Bosses deal NO passive contact damage — every hit is a telegraphed spell
-  // (docs/bosses.md), so a player can body-check a boss safely. Opt out of the
-  // base enemy's contact hitbox.
+  // Opt out of the base enemy's contact hitbox — see the class header.
   override contactHitSource(): null {
     return null;
   }

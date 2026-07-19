@@ -8,8 +8,7 @@ import { Spell, SpellOpts, SpellEffect, Caster, AttackStats } from "./Spell";
 // weapon's facing-relative hurtbox each tick, hitting each enemy once per swing.
 // A ranged weapon's spell is instant: it spawns its ammo on the strike frame and
 // then holds its active phase for the same window so `isAttacking` reads true
-// throughout (matching the old attack-cooldown behaviour). The active phase is the
-// re-fire gate, so cooldownMs is 0.
+// throughout. The active phase is the re-fire gate, so cooldownMs is 0.
 //
 // Everything here takes a WeaponInstance, not a Weapon template: the numbers it
 // reads (damage, force, cooldown) are the wielder's own modified values, and it
@@ -53,9 +52,8 @@ export function weaponSpell(inst: WeaponInstance): Spell {
 }
 
 // The Mage's staff: a brief wind-up telegraph, then a damaging nova around the
-// caster for `blastMs`, hitting each enemy once. The very first player spell with
-// a real wind-up — validating that the shared SpellCaster serves players, not just
-// bosses. Auto-casts while held, paced by the weapon's cooldown.
+// caster for `blastMs`, hitting each enemy once. Auto-casts while held, paced by
+// the weapon's cooldown.
 function aoeWeaponSpell(inst: WeaponInstance): Spell {
   const aoe = inst.aoe!;
   return new AoeWeaponSpell(inst, {

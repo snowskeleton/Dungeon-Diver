@@ -86,11 +86,10 @@ export class GameRoom extends Room<GameState> {
       const template = resolveTemplate(item.weaponId);
       if (!template) return;
       // Already own an unmodified copy? Don't charge or consume the pedestal — a
-      // teammate who lacks it may still want it (shared pool). Duplicates are legal
-      // in general now that weapons are instances, but a shop weapon carries no
-      // modifiers, so a second copy would be strictly worthless HP spent. Once
-      // pedestals roll modifiers this guard stops matching and buying two becomes
-      // a real choice, which is the behaviour we want then.
+      // teammate who lacks it may still want it (shared pool). Duplicate instances
+      // are legal in general, but a shop weapon carries no modifiers, so a second
+      // copy is strictly worthless HP spent. If shop pedestals ever roll modifiers
+      // this guard stops matching on its own and buying two becomes a real choice.
       if (player.ownsUnmodified(template.id)) return;
       player.addWeapon(template);
       player.spendHp(item.cost);
@@ -240,16 +239,14 @@ export class GameRoom extends Room<GameState> {
     return offer;
   }
 
-  // A random weapon carrying one rolled modifier. The resolved stats are computed
-  // here and synced, so the card shows exactly what the player will get — the same
-  // WeaponInstance is handed to Player.addWeapon on pick, so the preview cannot
-  // disagree with the reward.
+  // A random weapon carrying one rolled modifier. The preview instance synced to
+  // the card and the weapon handed to Player.addWeapon on pick are built from the
+  // SAME mods array (held on the choice), so the card cannot show stats the reward
+  // won't have.
   private rollWeaponChoice(): OfferChoiceState {
     const templateId = this.rollShopWeapons(1)[0];
     const template = WEAPON_REGISTRY[templateId];
     const mods = [rollWeaponMod(this.state.floor)];
-    // The preview instance and the granted weapon are built from the SAME mods
-    // array, held on the choice — the card cannot show stats the reward won't have.
     const preview = new WeaponInstance(template, "preview", mods);
     const choice = new OfferChoiceState();
     choice.kind = "weapon";
@@ -326,11 +323,9 @@ export class GameRoom extends Room<GameState> {
 
   private spawnFloorEnemies() {
     const count = this.enemiesPerRoom();
-    // The boss is spawned regardless of the rabble count: "0 enemies per room" is
-    // a statement about rank-and-file, and `includeBoss` is the separate control
-    // for whether a boss room exists at all. Before this, a debug floor with
-    // enemiesPerRoom 0 silently had no boss, because the early return below skipped
-    // spawnBoss entirely. Still must run before finalizeEmptyRooms (see spawnBoss).
+    // Spawned before the `count <= 0` bail: "0 enemies per room" is a statement
+    // about rank-and-file, and `includeBoss` is the separate control for whether a
+    // boss room exists at all. Must also run before finalizeEmptyRooms (see spawnBoss).
     this.spawnBoss();
     if (count <= 0) return;
     // An explicit debug count means "put enemies here", even in rooms that normally

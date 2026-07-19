@@ -28,10 +28,9 @@ export interface TargetInfo {
 // The minimal surface a Spell needs from whoever casts it — its pose, which team
 // it hurts, and the two ways it produces effects. Deliberately tiny so a player
 // implements it with ZERO no-ops (it already has a position, a facing, and — via
-// Entity — an effect buffer). Everything that used to live here as boss-shaped
-// hooks was removed by inverting the dependency: the SpellCaster no longer pushes
-// telegraph/channel/knockback state INTO the entity — it just owns its phase, and
-// the entity READS that phase to drive its own animation/immunity (see Boss.tick).
+// Entity — an effect buffer). Note the direction of the dependency: the SpellCaster
+// never pushes telegraph/channel/knockback state INTO the entity — it owns its
+// phase, and the entity READS that phase to drive its animation/immunity (Boss.tick).
 export interface Caster {
   readonly x: number;
   readonly y: number;
@@ -100,7 +99,6 @@ export interface FlightCaster extends DashCaster {
 // volley spawns its projectiles here); for a CHANNEL it sets up the active phase
 // (compute a dash heading, reset a RehitGate). `onActiveTick` runs each tick of
 // the active phase (emit hitboxes, move the body); return true to end early.
-// This single shape replaces the old execute-XOR-channel split.
 export interface SpellEffect {
   onActivate?(caster: Caster, aim: AimPoint): void;
   onActiveTick?(caster: Caster, dtMs: number, aim: AimPoint): boolean | void;

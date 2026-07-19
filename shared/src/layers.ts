@@ -1,9 +1,8 @@
 // Interaction layers — a single vocabulary governing BOTH physical blocking
 // (matter-js bodies) and combat hits (the overlap resolver). See docs/layers.md.
 //
-// WALL/PLAYER/ENEMY deliberately keep the exact bit values the old physics `CAT`
-// used (1 / 2 / 4), so migrating the matter-js collision filters onto this enum
-// is behaviour-preserving.
+// WALL/PLAYER/ENEMY are the low three bits (1 / 2 / 4) because they double as
+// matter-js collision categories; keep new layers above them.
 
 export enum Layer {
   WALL          = 1 << 0, // 0x01
@@ -36,8 +35,8 @@ export function canAffect(sourceAffects: number, targetLayer: number): boolean {
 }
 
 // ── Default body profiles (solid entities) ────────────────────────────────────
-// Every entity pair currently collides — the old COLLIDE table was all-on — so
-// both player and enemy bodies block against WALL|PLAYER|ENEMY.
+// Every entity pair currently collides, so both player and enemy bodies block
+// against WALL|PLAYER|ENEMY.
 const ALL_SOLID = Layer.WALL | Layer.PLAYER | Layer.ENEMY;
 
 export const PLAYER_BODY_PROFILE: InteractionProfile = {
@@ -50,7 +49,7 @@ export const PLAYER_BODY_PROFILE: InteractionProfile = {
 export const ENEMY_BODY_PROFILE: InteractionProfile = {
   layer: Layer.ENEMY,
   solidMask: ALL_SOLID,
-  affects: 0, // contact-enemy touch damage still lives in Enemy.tick (unchanged)
+  affects: 0, // the body deals no damage; touch damage is Enemy.contactHitSource()
   blockedBy: 0,
 };
 
@@ -61,8 +60,8 @@ export const CORPSE_SOLID_MASK = Layer.WALL;
 // What each team's hit sources (melee swings, projectiles, AOE) are allowed to
 // damage. Player attacks reach enemies and props but spare players; flip on
 // Layer.PLAYER to enable friendly fire (see docs/layers.md — a one-bit change).
-// Projectiles share these — a shot is just another player/enemy attack — so the
-// PROJECTILE aliases stay for existing call sites.
+// Projectiles share these — a shot is just another player/enemy attack — and the
+// PROJECTILE aliases below just read better at a projectile call site.
 export const PLAYER_ATTACK_AFFECTS = Layer.ENEMY | Layer.PROP;
 export const ENEMY_ATTACK_AFFECTS = Layer.PLAYER;
 export const PLAYER_PROJECTILE_AFFECTS = PLAYER_ATTACK_AFFECTS;

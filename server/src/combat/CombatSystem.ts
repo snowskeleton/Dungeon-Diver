@@ -23,9 +23,9 @@ export interface TargetGroup {
   targets: Map<string, CombatTarget>;
 }
 
-// The single combat resolver — replaces the hand-rolled per-pair loops that used
-// to live in GameRoom.tick (player-melee→enemy, projectile→enemy/player, and the
-// enemy-contact callback). Every damage source in the game flows through here:
+// The single combat resolver. There are no per-pair loops anywhere else — every
+// damage source in the game (melee swings, projectiles, contact, boss abilities)
+// flows through here:
 //
 //   for each source × candidate target:
 //     land the hit iff  source.affects reaches the target's layer

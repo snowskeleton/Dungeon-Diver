@@ -4,7 +4,7 @@
 //
 // `pad` inflates the shape by a target's hurt radius, so a target is modeled as a
 // circle rather than a bare point — the Godot "hitbox overlaps hurtbox" model.
-// Pass pad=0 to recover exact point-in-shape behaviour.
+// Pass pad=0 for an exact point-in-shape test.
 
 export type HitShape =
   // Axis-aligned rectangle (top-left origin) — a melee swing arc.
@@ -57,7 +57,6 @@ export function shapeHitsPoint(shape: HitShape, px: number, py: number, pad = 0)
       return Math.abs(perp) <= shape.halfWidth + pad;
     }
     case "sweptEllipse": {
-      // Ported verbatim from the old Projectile.tryHit swept-ellipse test.
       const fwd = shape.forward + pad;
       const side = shape.side + pad;
       const { ux, uy } = shape;

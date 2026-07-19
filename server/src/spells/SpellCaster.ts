@@ -2,10 +2,9 @@ import { Caster, Spell, AimPoint } from "./Spell";
 
 export type CastPhase = "idle" | "windup" | "active" | "recover";
 
-// The shared cast-lifecycle runner, extracted from the old Boss.tick state
-// machine so bosses, enemies, and players can all reuse it. It drives ONE spell
-// through wind-up → strike → (optional channel) → recover and owns the caster
-// clock that spell cooldowns read.
+// The shared cast-lifecycle runner, used by bosses, enemies, and players alike.
+// It drives ONE spell through wind-up → strike → (optional channel) → recover and
+// owns the caster clock that spell cooldowns read.
 //
 // It does NOT reach into the caster to set telegraph / channel / knockback flags.
 // It simply OWNS its `phase` and active spell; the caster READS those each tick to
