@@ -1,56 +1,29 @@
 import { Room, Client } from "colyseus";
 import {
-  InputMessage, TILE_SIZE, SERVER_TICK_MS, MAX_CLIENTS,
-  TILE_PROPS, TileId, TILE,
-  ENEMY_BASE_COUNT, ENEMY_FLOOR_BONUS_INTERVAL, ENEMY_PLAYER_SCALE,
+  InputMessage, SERVER_TICK_MS, MAX_CLIENTS, TILE,
   generateDungeon, DungeonResult, DungeonOptions, FloorChangeMessage,
-  ROOM_W, ROOM_H,
-  MAP_SEED, EnemyType, AMMO_REGISTRY, WEAPON_REGISTRY, WeaponInstance, WeaponId, RoomType,
+  MAP_SEED, AMMO_REGISTRY, RoomType,
   TRAP_MIN_FLOORS, TRAP_MAX_FLOORS,
   DebugConfig, toDungeonOptions,
   Layer, PLAYER_ATTACK_AFFECTS, ENEMY_ATTACK_AFFECTS,
 } from "shared";
 import { GameState } from "../schema/GameState";
-import { ShopState, ShopItemState } from "../schema/ShopState";
-import { Player, resolveTemplate, slotStateFor } from "../entities/Player";
-import { upgradeById, upgradePool, rollWeaponMod } from "../upgrades";
-import { OfferState, OfferChoiceState } from "../schema/OfferState";
-import { ChestState } from "../schema/ChestState";
+import { Player, resolveTemplate } from "../entities/Player";
+import { upgradeById } from "../upgrades";
 import { RoomChallengeState } from "../schema/RoomChallengeState";
 import { RoomChallenge, ChallengeContext } from "./challenges/RoomChallenge";
 import { WaveChallenge } from "./challenges/WaveChallenge";
 import { TimedClearChallenge } from "./challenges/TimedClearChallenge";
-import { Enemy, EnemyClass, SpawnOpts } from "../entities/Enemy";
+import { LootDirector } from "./LootDirector";
+import { SpawnDirector } from "./SpawnDirector";
+import { Enemy, SpawnOpts } from "../entities/Enemy";
 import { PendingEffect } from "../entities/Entity";
-import { REGULAR_ENEMIES } from "../entities/enemies";
-import { BOSSES } from "../entities/bosses";
 import { Boss } from "../entities/Boss";
 import { Projectile } from "../entities/Projectile";
 import { PlayerState } from "../schema/PlayerState";
 import { CombatSystem, HitSource } from "../combat";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
 import { FloorManager } from "../floor/FloorManager";
-const SHOP_ITEM_COUNT = 3;
-// How many choices a reward pedestal presents.
-const OFFER_CHOICES = 3;
-// How close (px) a player must stand to a pedestal to buy it.
-const BUY_RADIUS = 40;
-// Chance a chest room's chest is the rarer gold one.
-const GOLD_CHEST_CHANCE = 0.15;
-// Modifiers rolled onto the weapon inside a chest. A chest is pure loot — even the
-// common one is enchanted, which is what makes it read differently from a shop's
-// plain stock; gold just rolls a second modifier on top.
-const BROWN_CHEST_MODS = 1;
-const GOLD_CHEST_MODS = 2;
-// Room types that never get rank-and-file enemies: the boss room has its boss, and
-// the rest are reward rooms whose whole point is being safe to walk into. A debug
-// `enemiesPerRoom` override still forces enemies into all of them.
-const NO_RABBLE_ROOM_TYPES: RoomType[] = [
-  "boss",
-  "shop",
-  "shrine",
-  "chest",
-];
 
 export class GameRoom extends Room<GameState> {
   maxClients = MAX_CLIENTS;
@@ -60,11 +33,12 @@ export class GameRoom extends Room<GameState> {
   private projectiles = new Map<string, Projectile>();
   private readonly combat = new CombatSystem();
   private spawnIndex = 0;
-  private enemyCounter = 0;
   private projectileCounter = 0;
   private tickInterval!: ReturnType<typeof setInterval>;
   private physics!: PhysicsWorld;
   private floorManager!: FloorManager;
+  private loot!: LootDirector;
+  private spawner!: SpawnDirector;
   // Active room objectives keyed by room id, mirrored to state.challenges.
   private challenges = new Map<string, RoomChallenge>();
   private currentDungeon!: DungeonResult;
@@ -85,6 +59,14 @@ export class GameRoom extends Room<GameState> {
     }
 
     this.setState(new GameState());
+    this.loot = new LootDirector(this.state);
+    this.spawner = new SpawnDirector(
+      this.state,
+      this.enemies,
+      this.players,
+      this.debug,
+      this.dungeonOpts,
+    );
     this.initFloor(this.currentSeed);
 
     this.onMessage("input", (client, input: InputMessage) => {
@@ -96,85 +78,21 @@ export class GameRoom extends Room<GameState> {
       this.players.get(client.sessionId)?.switchWeapon(msg?.delta ?? 0);
     });
 
-    // Buy a shop pedestal (spend HP, shared team pool). Validated server-side:
-    // buyer must stand near the pedestal, item unsold, and HP > cost (never lethal).
+    // The three loot interactions. Validation and granting live in LootDirector;
+    // GameRoom only resolves the sender to a Player.
     this.onMessage("buy", (client, msg: { roomId: string; itemIndex: number }) => {
       const player = this.players.get(client.sessionId);
-      const shop = this.state.shops.get(msg?.roomId);
-      const item = shop?.items[msg?.itemIndex];
-      if (!player || !item || item.purchased) return;
-      const dx = player.state.x - item.x;
-      const dy = player.state.y - item.y;
-      if (dx * dx + dy * dy > BUY_RADIUS * BUY_RADIUS) return;
-      if (player.state.health <= item.cost) return;
-      const template = resolveTemplate(item.weaponId);
-      if (!template) return;
-      // Already own an unmodified copy? Don't charge or consume the pedestal — a
-      // teammate who lacks it may still want it (shared pool). Duplicate instances
-      // are legal in general, but a shop weapon carries no modifiers, so a second
-      // copy is strictly worthless HP spent. If shop pedestals ever roll modifiers
-      // this guard stops matching on its own and buying two becomes a real choice.
-      if (player.ownsUnmodified(template.id)) return;
-      player.addWeapon(template);
-      player.spendHp(item.cost);
-      item.purchased = true;
+      if (player) this.loot.buy(player, msg);
     });
 
-    // Claim a reward pedestal (shrine boon / boss drop). Unlike a shop this is
-    // free, irreversible, and first-come — `claimed` is the whole concurrency
-    // story, so a duplicated or racing message is harmless rather than a
-    // double-grant. Proximity is re-validated here; the client's prompt is only a
-    // hint.
     this.onMessage("offerPick", (client, msg: { roomId: string; choiceIndex: number }) => {
       const player = this.players.get(client.sessionId);
-      const offer = this.state.offers.get(msg?.roomId);
-      const choice = offer?.choices[msg?.choiceIndex];
-      if (!player || !offer || !choice || offer.claimed) return;
-      const dx = player.state.x - offer.x;
-      const dy = player.state.y - offer.y;
-      if (dx * dx + dy * dy > BUY_RADIUS * BUY_RADIUS) return;
-
-      // Exhaustive on `kind` — a new choice kind is a compile error here, not a
-      // silently-ignored pedestal.
-      switch (choice.kind) {
-        case "upgrade": {
-          const upgrade = upgradeById(choice.upgradeId);
-          if (!upgrade) return;
-          player.addUpgrade(upgrade);
-          break;
-        }
-        case "weapon": {
-          const template = resolveTemplate(choice.weapon.weaponId);
-          if (!template) return;
-          // The rolled modifiers ride along on the choice (server-only field), so
-          // the weapon granted is precisely the one previewed on the card — never
-          // rebuilt from the synced labels.
-          player.addWeapon(template, choice.mods);
-          break;
-        }
-      }
-      offer.claimed = true;
+      if (player) this.loot.offerPick(player, msg);
     });
 
-    // Open a chest. Same shape as offerPick minus the choice — `opened` is the
-    // whole concurrency story, so a racing or duplicated message is a no-op rather
-    // than a second weapon. Proximity is re-validated here; the client's prompt is
-    // only a hint. No ownsUnmodified guard like the shop has: a chest weapon always
-    // carries rolled modifiers, so a second copy is a genuinely different weapon.
     this.onMessage("chestOpen", (client, msg: { roomId: string }) => {
       const player = this.players.get(client.sessionId);
-      const chest = this.state.chests.get(msg?.roomId);
-      if (!player || !chest || chest.opened || !chest.weaponId) return;
-      const dx = player.state.x - chest.x;
-      const dy = player.state.y - chest.y;
-      if (dx * dx + dy * dy > BUY_RADIUS * BUY_RADIUS) return;
-
-      const template = resolveTemplate(chest.weaponId);
-      if (!template) return;
-      // The mods rolled at floor generation are handed over as-is, so the weapon
-      // granted is the one the chest has been holding all along.
-      player.addWeapon(template, chest.mods);
-      chest.opened = true;
+      if (player) this.loot.chestOpen(player, msg);
     });
 
     // Inventory/stats menu pause. Handlers still run while paused, so the menu
@@ -205,9 +123,12 @@ export class GameRoom extends Room<GameState> {
     this.floorManager = new FloorManager(rooms, connections, this.physics);
     this.stairsActive = false;
 
-    this.spawnShops();
-    this.spawnShrineOffers();
-    this.spawnChests();
+    this.loot.setFloor(this.currentDungeon);
+    this.spawner.setFloor(this.currentDungeon, this.physics, this.floorManager);
+
+    this.loot.spawnShops();
+    this.loot.spawnShrineOffers();
+    this.loot.spawnChests();
     this.initChallenges();
   }
 
@@ -265,28 +186,12 @@ export class GameRoom extends Room<GameState> {
     return {
       roomId,
       livingEnemyCount: (rid) => this.livingEnemyCount(rid),
-      spawnEnemyInRoom: (rid, cls) => this.spawnEnemyInRoom(rid, cls),
-      enemyPool: () => this.enemyPool(),
-      enemiesPerRoom: () => this.enemiesPerRoom(),
-      dropReward: (rid) => this.dropChallengeReward(rid),
+      spawnEnemyInRoom: (rid, cls) => this.spawner.spawnEnemyInRoom(rid, cls),
+      enemyPool: () => this.spawner.enemyPool(),
+      enemiesPerRoom: () => this.spawner.enemiesPerRoom(),
+      dropReward: (rid) => this.loot.dropChallengeReward(rid),
       playersInRoom: (rid) => this.playersInRoom(rid),
     };
-  }
-
-  /** A reward pedestal at the room's centre, for a challenge the party beat.
-   *  Rolled at the "shrine" tier — a boon for a room well fought, not boss loot.
-   *  The `has` guard means a challenge cannot grant twice. */
-  private dropChallengeReward(roomId: string): void {
-    if (this.state.offers.has(roomId)) return;
-    const room = this.currentDungeon.rooms.find((r) => r.id === roomId);
-    if (!room) return;
-    const col = this.freeShopCol(room.centerCol, room.centerRow);
-    this.state.offers.set(roomId, this.rollOffer(
-      roomId,
-      col * TILE_SIZE + TILE_SIZE / 2,
-      room.centerRow * TILE_SIZE + TILE_SIZE / 2,
-      "shrine",
-    ));
   }
 
   private playersInRoom(roomId: string): boolean {
@@ -304,327 +209,6 @@ export class GameRoom extends Room<GameState> {
       if (!enemy.isDying && this.floorManager.getEnemyRoom(id) === roomId) n++;
     });
     return n;
-  }
-
-  // One chest at the center of every chest room. Like a shrine the room spawns no
-  // enemies and is pre-cleared by finalizeEmptyRooms, so the chest is reachable the
-  // moment the player walks in — the room IS the reward.
-  private spawnChests() {
-    this.state.chests.clear();
-    for (const room of this.currentDungeon.rooms) {
-      if (room.type !== "chest") continue;
-      const col = this.freeShopCol(room.centerCol, room.centerRow);
-      const chest = new ChestState();
-      chest.roomId = room.id;
-      chest.x = col * TILE_SIZE + TILE_SIZE / 2;
-      chest.y = room.centerRow * TILE_SIZE + TILE_SIZE / 2;
-      chest.gold = Math.random() < GOLD_CHEST_CHANCE;
-
-      // Roll the contents now, at floor generation, rather than on open. The
-      // weapon a chest holds is fixed the moment the floor exists, so opening it
-      // can't be re-rolled by walking away and coming back.
-      chest.weaponId = this.rollShopWeapons(1)[0] as WeaponId;
-      const modCount = chest.gold ? GOLD_CHEST_MODS : BROWN_CHEST_MODS;
-      for (let i = 0; i < modCount; i++) chest.mods.push(rollWeaponMod(this.state.floor));
-
-      this.state.chests.set(room.id, chest);
-    }
-  }
-
-  // Populate each shop room with weapon pedestals (shared team pool). Rebuilt
-  // per floor; the previous floor's shops are cleared here.
-  private spawnShops() {
-    this.state.shops.clear();
-    for (const room of this.currentDungeon.rooms) {
-      if (room.type !== "shop") continue;
-      const shop = new ShopState();
-      shop.roomId = room.id;
-      const ids = this.rollShopWeapons(SHOP_ITEM_COUNT);
-      // Lay pedestals in a row along the room's (always-carved) center row. The
-      // generator keeps the stairs out of shop rooms, but a debug floor can force
-      // every room to "shop" — nudge any pedestal that would cover the stairs.
-      const cols = [room.centerCol - 3, room.centerCol, room.centerCol + 3]
-        .map((col) => this.freeShopCol(col, room.centerRow));
-      ids.forEach((wid, i) => {
-        const w = WEAPON_REGISTRY[wid];
-        const item = new ShopItemState();
-        item.weaponId = wid;
-        item.cost = Math.min(30, Math.max(8, Math.round(w.damage * 1.4)));
-        item.x = cols[i] * TILE_SIZE + TILE_SIZE / 2;
-        item.y = room.centerRow * TILE_SIZE + TILE_SIZE / 2;
-        shop.items.push(item);
-      });
-      this.state.shops.set(room.id, shop);
-    }
-  }
-
-  // One reward pedestal at the center of every shrine room. Shrines spawn no
-  // enemies and are pre-cleared by finalizeEmptyRooms, so the offer is reachable
-  // the moment the player walks in — the room IS the reward.
-  private spawnShrineOffers() {
-    this.state.offers.clear();
-    for (const room of this.currentDungeon.rooms) {
-      if (room.type !== "shrine") continue;
-      const col = this.freeShopCol(room.centerCol, room.centerRow);
-      this.state.offers.set(room.id, this.rollOffer(
-        room.id,
-        col * TILE_SIZE + TILE_SIZE / 2,
-        room.centerRow * TILE_SIZE + TILE_SIZE / 2,
-        "shrine",
-      ));
-    }
-  }
-
-  // Build a 1-of-3. A shrine leans on upgrades (permanent, build-defining); a boss
-  // drop leans on a rolled weapon, so beating a boss feels like loot rather than
-  // another stat bump. Both draw upgrades from the floor-legal pool.
-  private rollOffer(roomId: string, x: number, y: number, tier: "shrine" | "boss"): OfferState {
-    const offer = new OfferState();
-    offer.roomId = roomId;
-    offer.x = x;
-    offer.y = y;
-
-    // Each choice carries its own rolled modifiers, so shuffling can't desync the
-    // card from the reward — there is nothing to keep aligned.
-    const choices: OfferChoiceState[] = [];
-    const weaponCount = tier === "boss" ? 2 : 1;
-    for (let i = 0; i < weaponCount; i++) choices.push(this.rollWeaponChoice());
-
-    const pool = upgradePool(this.state.floor);
-    shuffle(pool);
-    for (const upgrade of pool.slice(0, OFFER_CHOICES - choices.length)) {
-      const choice = new OfferChoiceState();
-      choice.kind = "upgrade";
-      choice.upgradeId = upgrade.id;
-      choice.name = upgrade.name;
-      choice.description = upgrade.description;
-      choices.push(choice);
-    }
-    shuffle(choices);
-
-    for (const choice of choices) offer.choices.push(choice);
-    return offer;
-  }
-
-  // A random weapon carrying one rolled modifier. The preview instance synced to
-  // the card and the weapon handed to Player.addWeapon on pick are built from the
-  // SAME mods array (held on the choice), so the card cannot show stats the reward
-  // won't have.
-  private rollWeaponChoice(): OfferChoiceState {
-    const templateId = this.rollShopWeapons(1)[0];
-    const template = WEAPON_REGISTRY[templateId];
-    const mods = [rollWeaponMod(this.state.floor)];
-    const preview = new WeaponInstance(template, "preview", mods);
-    const choice = new OfferChoiceState();
-    choice.kind = "weapon";
-    choice.name = template.name;
-    choice.description = mods.map((m) => m.label).join(", ");
-    choice.weapon = slotStateFor(preview);
-    choice.mods = mods;
-    return choice;
-  }
-
-  /** Drop a reward pedestal where a boss died. Called once, on the boss's death
-   *  tick, so it can't be farmed. */
-  private dropBossOffer(x: number, y: number): void {
-    const room = this.currentDungeon.rooms.find((r) => r.type === "boss");
-    if (!room || this.state.offers.has(room.id)) return;
-    this.state.offers.set(room.id, this.rollOffer(room.id, x, y, "boss"));
-  }
-
-  // Nearest column to `col` on `row` whose tile isn't the stairs, so a pedestal
-  // never hides the way down. Shop rooms are fully carved, so a ±2 search always
-  // finds open floor.
-  private freeShopCol(col: number, row: number): number {
-    const { mapData } = this.currentDungeon;
-    for (const offset of [0, -1, 1, -2, 2]) {
-      if (mapData[row]?.[col + offset] === TILE.FLOOR) return col + offset;
-    }
-    return col;
-  }
-
-  // Pick N distinct weapon ids uniformly (partial Fisher–Yates from the front).
-  private rollShopWeapons(n: number): string[] {
-    const all = Object.keys(WEAPON_REGISTRY);
-    const count = Math.min(n, all.length);
-    for (let i = 0; i < count; i++) {
-      const j = i + Math.floor(Math.random() * (all.length - i));
-      [all[i], all[j]] = [all[j], all[i]];
-    }
-    return all.slice(0, count);
-  }
-
-  private enemiesPerRoom(): number {
-    if (this.debug && this.debug.enemiesPerRoom >= 0) return this.debug.enemiesPerRoom;
-    const floor = this.state.floor;
-    const players = Math.max(1, this.players.size);
-    const base = ENEMY_BASE_COUNT + Math.floor(floor / ENEMY_FLOOR_BONUS_INTERVAL);
-    return Math.ceil(base * (1 + ENEMY_PLAYER_SCALE * (players - 1)));
-  }
-
-  // Which enemy classes rabble is drawn from. If the debug menu names any regular
-  // enemies, the pool is exactly those, in the order they were listed (so a
-  // round-robin fill matches the menu). Bosses aren't in REGULAR_ENEMIES, so a
-  // boss type in the selection is ignored here — bosses only spawn in the boss
-  // room, never as plain contact enemies.
-  private enemyPool(): EnemyClass[] {
-    const picked = this.debug?.enemyTypes;
-    if (picked && picked.length > 0) {
-      // Resolve against every class — regular AND boss — so a selected boss
-      // spawns as its real Boss subclass wherever the floor gets populated. The
-      // random pool (below) stays boss-free, so only an explicit pick spawns one.
-      const all: EnemyClass[] = [...REGULAR_ENEMIES, ...BOSSES];
-      const chosen = picked
-        .map((t) => all.find((C) => C.type === t))
-        .filter((C): C is EnemyClass => C !== undefined);
-      if (chosen.length > 0) return chosen;
-    }
-    return REGULAR_ENEMIES;
-  }
-
-  /** True when the debug menu named a specific enemy list — then the pool is
-   *  filled round-robin (deterministic) rather than by random draw. */
-  private hasCustomEnemyList(): boolean {
-    return (this.debug?.enemyTypes?.length ?? 0) > 0;
-  }
-
-  private spawnFloorEnemies() {
-    const count = this.enemiesPerRoom();
-    // Spawned before the `count <= 0` bail: "0 enemies per room" is a statement
-    // about rank-and-file, and `includeBoss` is the separate control for whether a
-    // boss room exists at all. Must also run before finalizeEmptyRooms (see spawnBoss).
-    this.spawnBoss();
-    if (count <= 0) return;
-    // An explicit debug count means "put enemies here", even in rooms that normally
-    // stay empty (see NO_RABBLE_ROOM_TYPES).
-    const everyRoom = this.debug != null && this.debug.enemiesPerRoom >= 0;
-    // Players spawn in the start room, so it stays clear — no getting jumped on
-    // load. The lone exception is a one-room debug floor (start === exit), where
-    // the start room is the only place enemies could go.
-    const startId = this.currentDungeon.startRoomId;
-    const exitId = this.currentDungeon.exitRoomId;
-    const singleRoom = startId === exitId;
-    // A showcase floor auto-adds plain start/exit combat rooms to frame the room
-    // being shown off. Those framing rooms stay clean so a "boss" showcase is just
-    // the boss (and a "combat" showcase is just its one populated room) — unless
-    // you force enemies into every room.
-    const isShowcase = this.dungeonOpts.showcaseRoomType != null;
-    const pool = this.enemyPool();
-    const roundRobin = this.hasCustomEnemyList();
-    let filled = 0; // round-robin cursor, continuous across rooms
-    for (const room of this.currentDungeon.rooms) {
-      if (room.id === startId && !singleRoom) continue;
-      if (isShowcase && !everyRoom && room.id === exitId) continue;
-      if (!everyRoom && NO_RABBLE_ROOM_TYPES.includes(room.type)) continue;
-      for (let i = 0; i < count; i++) {
-        // Round-robin walks the listed creatures in order, wrapping to the start
-        // when the quota outruns the list; with no list it's a random draw.
-        const cls = roundRobin ? pool[filled++ % pool.length] : pool[Math.floor(Math.random() * pool.length)];
-        this.spawnEnemyInRoom(room.id, cls);
-      }
-    }
-  }
-
-  // One boss per floor, in the room the generator marked "boss". Rotating by
-  // floor number means consecutive floors never repeat a boss. Must run before
-  // FloorManager.finalizeEmptyRooms() or the boss room gets pre-cleared and its
-  // barriers removed — the boss would never lock the player in.
-  private spawnBoss() {
-    if (BOSSES.length === 0) return;
-    const room = this.currentDungeon.rooms.find((r) => r.type === "boss");
-    if (!room) return;
-
-    const pos = this.bossPos(room.centerCol, room.centerRow, room);
-    if (!pos) return;
-
-    const BossClass = BOSSES[(this.state.floor - 1) % BOSSES.length];
-    const id = `enemy_${this.enemyCounter++}`;
-    const boss = new BossClass(this.physics, pos.x, pos.y);
-    // Confine the boss to its room's interior — it moves by setPosition and would
-    // otherwise dash straight through doorways/barriers (see Boss.setArena).
-    boss.setArena(
-      (room.tileCol + 1) * TILE_SIZE,
-      (room.tileRow + 1) * TILE_SIZE,
-      (room.tileCol + 20) * TILE_SIZE,
-      (room.tileRow + 15) * TILE_SIZE,
-    );
-    this.enemies.set(id, boss);
-    this.state.enemies.set(id, boss.state);
-    this.floorManager.assignEnemy(id, pos.x, pos.y);
-  }
-
-  // Centre of the boss room, unless that tile is the stairs (a boss room can be
-  // the exit room) or unwalkable — then anywhere open in the room.
-  private bossPos(col: number, row: number, room: { tileCol: number; tileRow: number }) {
-    const tile = this.currentDungeon.mapData[row]?.[col] as TileId | undefined;
-    if (tile !== undefined && TILE_PROPS[tile].walkable && tile !== TILE.STAIRS) {
-      return { x: col * TILE_SIZE + TILE_SIZE / 2, y: row * TILE_SIZE + TILE_SIZE / 2 };
-    }
-    return this.randomPosInRoom(...this.roomInterior(room));
-  }
-
-  private spawnEnemyInRoom(roomId: string, Cls: EnemyClass) {
-    const room = this.currentDungeon.rooms.find(r => r.id === roomId);
-    if (!room) return;
-    const pos = this.randomPosInRoom(...this.roomInterior(room));
-    if (!pos) return;
-    const id = `enemy_${this.enemyCounter++}`;
-    const enemy = new Cls(this.physics, pos.x, pos.y);
-    this.enemies.set(id, enemy);
-    this.state.enemies.set(id, enemy.state);
-    this.floorManager.assignEnemy(id, pos.x, pos.y);
-  }
-
-  // Spawn a boss-summoned minion (the Tengu's Mirror Split). It joins its
-  // summoner's room so the room-clear check counts it — the barrier stays until
-  // both boss and adds are down. If the requested spot is a wall, it drops on the
-  // summoner instead so it never lands inside geometry.
-  private summonEnemy(ownerId: string, Cls: EnemyClass, x: number, y: number): void {
-    const owner = this.enemies.get(ownerId);
-    const tile = this.physics.tileAt(x, y);
-    if (tile === null || !TILE_PROPS[tile].walkable) {
-      x = owner?.state.x ?? x;
-      y = owner?.state.y ?? y;
-    }
-    const id = `enemy_${this.enemyCounter++}`;
-    const enemy = new Cls(this.physics, x, y);
-    this.enemies.set(id, enemy);
-    this.state.enemies.set(id, enemy.state);
-    this.floorManager.assignEnemy(id, x, y);
-  }
-
-  // Inclusive tile bounds of a room's walkable interior — the border ring (local
-  // col/row 0 and ROOM_W-1/ROOM_H-1) is excluded so enemies never spawn on the
-  // doorway tiles that punch through it (a spawn there drifts into the neighbour
-  // and escapes FloorManager.roomAt's room classification).
-  private roomInterior(
-    room: { tileCol: number; tileRow: number },
-  ): [number, number, number, number] {
-    return [
-      room.tileCol + 1,
-      room.tileRow + 1,
-      room.tileCol + ROOM_W - 2,
-      room.tileRow + ROOM_H - 2,
-    ];
-  }
-
-  private randomPosInRoom(
-    colMin: number, rowMin: number, colMax: number, rowMax: number,
-  ): { x: number; y: number } | null {
-    const { mapData } = this.currentDungeon;
-    const candidates: { x: number; y: number }[] = [];
-    for (let row = rowMin; row <= rowMax; row++) {
-      for (let col = colMin; col <= colMax; col++) {
-        if (mapData[row]?.[col] !== undefined) {
-          const tile = mapData[row][col] as TileId;
-          if (TILE_PROPS[tile].walkable && tile !== TILE.STAIRS) {
-            candidates.push({ x: col * TILE_SIZE + TILE_SIZE / 2, y: row * TILE_SIZE + TILE_SIZE / 2 });
-          }
-        }
-      }
-    }
-    if (candidates.length === 0) return null;
-    return candidates[Math.floor(Math.random() * candidates.length)];
   }
 
   onJoin(client: Client, options?: { characterClass?: string; characterType?: string; weaponId?: string }) {
@@ -647,7 +231,7 @@ export class GameRoom extends Room<GameState> {
     this.state.players.set(client.sessionId, player.state);
 
     if (this.players.size === 1 && this.enemies.size === 0) {
-      this.spawnFloorEnemies();
+      this.spawner.spawnFloorEnemies();
       const parentUnlocked = this.floorManager.finalizeEmptyRooms();
       if (parentUnlocked.length > 0) {
         this.broadcast("connections_parent_unlocked", { connectionIds: parentUnlocked });
@@ -702,7 +286,7 @@ export class GameRoom extends Room<GameState> {
       player.state.health = player.maxHp;
     });
 
-    this.spawnFloorEnemies();
+    this.spawner.spawnFloorEnemies();
     const preCleared = this.floorManager.finalizeEmptyRooms();
     if (preCleared.length > 0) {
       this.broadcast("connections_parent_unlocked", { connectionIds: preCleared });
@@ -761,7 +345,7 @@ export class GameRoom extends Room<GameState> {
         }
       });
 
-      enemy.tick(visiblePlayers as unknown as Map<string, PlayerState>, dtMs);
+      enemy.tick(visiblePlayers, dtMs);
     });
 
     // 3. Combat resolution. Every entity (players' swings/shots, enemies' contact +
@@ -786,7 +370,7 @@ export class GameRoom extends Room<GameState> {
       if (contact) sources.push(contact);
       drain(id, ENEMY_ATTACK_AFFECTS, enemy.drainEffects());
     });
-    for (const s of summons) this.summonEnemy(s.ownerId, s.effect.enemy, s.effect.x, s.effect.y);
+    for (const s of summons) this.spawner.summonEnemy(s.ownerId, s.effect.enemy, s.effect.x, s.effect.y);
 
     // Advance all projectiles (including any just spawned above) and add the live
     // ones as hit sources, so a shot moves and can connect on its spawn tick.
@@ -823,7 +407,7 @@ export class GameRoom extends Room<GameState> {
       const enemy = this.enemies.get(id);
       // A boss drops its reward where it fell. clearCheckDone gates this to the
       // single death tick, so it can't be farmed by a lingering corpse.
-      if (enemy instanceof Boss) this.dropBossOffer(enemy.state.x, enemy.state.y);
+      if (enemy instanceof Boss) this.loot.dropBossOffer(enemy.state.x, enemy.state.y);
 
       // The room's challenge gets first refusal, BEFORE the clear check — that
       // ordering is the whole mechanism. A wave room answers the last kill of a
@@ -914,6 +498,7 @@ export class GameRoom extends Room<GameState> {
     }
   }
 }
+
 
 /** In-place Fisher–Yates. Used for offer choices so a weapon isn't always slot 0. */
 function shuffle<T>(items: T[]): void {
