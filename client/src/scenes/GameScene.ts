@@ -19,6 +19,7 @@ import { CLIENT_ENEMY_REGISTRY } from "../enemies";
 import { HitboxDebug } from "../debug/HitboxDebug";
 import { InventoryHud } from "../ui/InventoryHud";
 import { ChallengeBanner } from "../ui/ChallengeBanner";
+import { UiLayer } from "../ui/UiLayer";
 import { ShopItemEntity } from "../entities/ShopItemEntity";
 import { OfferPedestalEntity } from "../entities/OfferPedestalEntity";
 import { ChestEntity, preloadChest, defineChestAnimations } from "../entities/ChestEntity";
@@ -56,6 +57,7 @@ export class GameScene extends Phaser.Scene {
   private offerPedestals = new Map<string, OfferPedestalEntity>();
   private chests = new Map<string, ChestEntity>();
   private hitboxDebug!: HitboxDebug;
+  private ui!: UiLayer;
   private ready = false;
 
   private currentMapGroup: Phaser.GameObjects.Group | null = null;
@@ -161,19 +163,24 @@ export class GameScene extends Phaser.Scene {
     // Keys from the previous run of this scene would otherwise stack up handlers.
     this.input.keyboard!.removeAllKeys(true);
 
+    // Before anything is added to the scene, so the map and every entity built
+    // below is picked up as world content by the UI camera's default-ignore hook.
+    this.ui = new UiLayer(this, this.scale.width, this.scale.height);
+
     this.rebuildMap(this.currentSeed);
 
     const options = loadOptions();
     this.hitboxDebug = new HitboxDebug(this, options.showHitboxes);
 
-    const connecting = this.add
-      .text(400, 288, "Connecting to server…", {
-        fontSize: "18px",
-        color: "#ffffff",
-      })
-      .setOrigin(0.5)
-      .setDepth(20)
-      .setScrollFactor(0);
+    const connecting = this.ui.add(
+      this.add
+        .text(400, 288, "Connecting to server…", {
+          fontSize: "18px",
+          color: "#ffffff",
+        })
+        .setOrigin(0.5)
+        .setDepth(20),
+    );
 
     this.localManager = new LocalPlayerManager(this, this.launch.debug);
 
@@ -248,51 +255,60 @@ export class GameScene extends Phaser.Scene {
       this.scene.start("MenuScene");
     });
 
-    this.hpText = this.add
-      .text(8, 8, "", { fontSize: "14px", color: "#ffffff", backgroundColor: "#00000088" })
-      .setScrollFactor(0)
-      .setDepth(10)
-      .setPadding(6, 4);
+    this.hpText = this.ui.add(
+      this.add
+        .text(8, 8, "", { fontSize: "14px", color: "#ffffff", backgroundColor: "#00000088" })
+        .setDepth(10)
+        .setPadding(6, 4),
+    );
 
-    this.floorText = this.add
-      .text(8, 32, "", { fontSize: "13px", color: "#f6e05e", backgroundColor: "#00000088" })
-      .setScrollFactor(0)
-      .setDepth(10)
-      .setPadding(6, 4);
+    this.floorText = this.ui.add(
+      this.add
+        .text(8, 32, "", { fontSize: "13px", color: "#f6e05e", backgroundColor: "#00000088" })
+        .setDepth(10)
+        .setPadding(6, 4),
+    );
 
-    this.inventoryHud = new InventoryHud(this, 56);
-    this.challengeBanner = new ChallengeBanner(this, 400, 96);
+    this.inventoryHud = new InventoryHud(this, 56, this.ui);
+    this.challengeBanner = new ChallengeBanner(this, 400, 96, this.ui);
     this.darkness = new DarknessOverlay(this);
 
-    this.pausedText = this.add
-      .text(400, 288, "PAUSED", {
-        fontSize: "40px", color: "#ffffff", backgroundColor: "#000000aa",
-        fontStyle: "bold",
-      })
-      .setOrigin(0.5)
-      .setScrollFactor(0)
-      .setDepth(30)
-      .setPadding(16, 10)
-      .setVisible(false);
+    this.pausedText = this.ui.add(
+      this.add
+        .text(400, 288, "PAUSED", {
+          fontSize: "40px", color: "#ffffff", backgroundColor: "#000000aa",
+          fontStyle: "bold",
+        })
+        .setOrigin(0.5)
+        .setDepth(30)
+        .setPadding(16, 10)
+        .setVisible(false),
+    );
 
-    this.storeCard = this.add
-      .text(400, 500, "", {
-        fontSize: "12px", color: "#e0e0ff", backgroundColor: "#1a1a2ee6",
-        align: "left", lineSpacing: 2,
-      })
-      .setOrigin(0.5, 1)
-      .setScrollFactor(0)
-      .setDepth(20)
-      .setPadding(10, 8)
-      .setVisible(false);
+    this.storeCard = this.ui.add(
+      this.add
+        .text(400, 500, "", {
+          fontSize: "12px", color: "#e0e0ff", backgroundColor: "#1a1a2ee6",
+          align: "left", lineSpacing: 2,
+        })
+        .setOrigin(0.5, 1)
+        .setDepth(20)
+        .setPadding(10, 8)
+        .setVisible(false),
+    );
 
     if (options.showControlsHint) {
-      this.add
-        .text(8, this.mapRows * TILE_SIZE - 20,
-          "WASD+Space  |  P2: Arrows+Enter  |  Q/E: switch weapon  |  I: pause  |  F: buy  |  P: join  |  Esc: menu", {
-          fontSize: "11px", color: "#888888",
-        })
-        .setDepth(10);
+      // Was anchored to the bottom of the MAP, so it sat wherever the last tile
+      // row happened to be rather than on screen. It's a HUD line — pin it to the
+      // bottom of the viewport like the rest of the readouts.
+      this.ui.add(
+        this.add
+          .text(8, this.scale.height - 20,
+            "WASD+Space  |  P2: Arrows+Enter  |  Q/E: switch weapon  |  I: pause  |  F: buy  |  P: join  |  Esc: menu", {
+            fontSize: "11px", color: "#888888",
+          })
+          .setDepth(10),
+      );
     }
 
     connecting.destroy();

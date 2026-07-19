@@ -8,15 +8,18 @@ import { ROOM_W, ROOM_H, TILE_SIZE } from "shared";
 // schema field and no sync, the same way the camera room-lock does.
 //
 // Drawn as a room-sized RenderTexture filled near-black, with a soft light erased
-// out of it at the party's position. Depth sits above sprites (2–2.5) and below
-// the HUD (10+), so enemies are swallowed by the dark but the HP readout and
-// challenge banner stay legible.
+// out of it at the party's position. Depth sits above sprites (2–2.5), so enemies
+// are swallowed by the dark; the HUD is on a separate camera drawn after the world
+// one (see ui/UiLayer.ts), so the HP readout and challenge banner stay legible
+// regardless of depth.
 //
 // The texture lives in WORLD space, not screen space. A scrollFactor(0) overlay
 // looks right at zoom 1 and is wrong at any other zoom — the camera scales it
 // about the viewport centre, so at the game's 2× it renders double-size and
 // displaced. Anchoring to the room means no screen conversion exists to get
-// wrong, and the camera handles it like any other world object.
+// wrong, and the camera handles it like any other world object. (The HUD hit the
+// same trap; UiLayer is the general fix, but this overlay is genuinely world
+// content and stays where it is.)
 
 const DEPTH = 5;
 /** How black the unlit part of the room gets. 1 = no vision at all. */

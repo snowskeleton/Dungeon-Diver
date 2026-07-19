@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import type { UiLayer } from "./UiLayer";
 
 // A fixed HUD readout of the objective in the room the party is standing in
 // ("Wave 2 / 3", "Time 0:32"), hidden everywhere else. Rebuilt only when the text
@@ -12,18 +13,19 @@ export class ChallengeBanner {
   private text: Phaser.GameObjects.Text;
   private sig = "";
 
-  constructor(scene: Phaser.Scene, x: number, y: number) {
-    this.text = scene.add
-      .text(x, y, "", {
-        fontSize: "16px", color: "#ffd98a",
-        backgroundColor: "#1a1a2ee6",
-        fontStyle: "bold",
-      })
-      .setOrigin(0.5, 0)
-      .setScrollFactor(0)
-      .setDepth(25)
-      .setPadding(12, 8)
-      .setVisible(false);
+  constructor(scene: Phaser.Scene, x: number, y: number, ui: UiLayer) {
+    this.text = ui.add(
+      scene.add
+        .text(x, y, "", {
+          fontSize: "16px", color: "#ffd98a",
+          backgroundColor: "#1a1a2ee6",
+          fontStyle: "bold",
+        })
+        .setOrigin(0.5, 0)
+        .setDepth(25)
+        .setPadding(12, 8)
+        .setVisible(false),
+    );
   }
 
   /** `challenge` is the synced RoomChallengeState for the room the party is in,

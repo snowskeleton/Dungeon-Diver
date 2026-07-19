@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { WeaponSlotView } from "shared";
 import { weaponStatLines, viewFromSlot } from "../ui/weaponStats";
+import { UiLayer } from "../ui/UiLayer";
 
 // A one-shot "item get!" flourish (Zelda style) played when a weapon is first
 // acquired: the weapon icon pops up above the player's head with a burst ring,
@@ -50,7 +51,8 @@ export class AcquireFX {
       },
     });
 
-    // Centered panel: "Got <Name>!" + expanded stats (scroll-locked, screen-space).
+    // Centered panel: "Got <Name>!" + expanded stats. Screen-space, so it goes on
+    // the UI camera — the ring and icon above stay world-space to track the player.
     const stats = weapon ? weaponStatLines(weapon).map((s) => `${s.label}: ${s.value}`).join("    ") : "";
     // Rolled modifiers get their own line so the pickup reads as special.
     const mods = slot.modLabels?.length ? `\n${Array.from(slot.modLabels).join("  ")}` : "";
@@ -59,7 +61,8 @@ export class AcquireFX {
         fontSize: "14px", color: "#fff7cc", backgroundColor: "#1a1a2eee",
         align: "center", lineSpacing: 4, fontStyle: "bold",
       })
-      .setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(21).setPadding(14, 10).setAlpha(0);
+      .setOrigin(0.5, 0.5).setDepth(21).setPadding(14, 10).setAlpha(0);
+    UiLayer.of(scene)?.add(panel);
     this.objects.push(panel);
     scene.tweens.add({ targets: panel, alpha: 1, duration: POP_MS, ease: "Cubic.easeOut" });
 
