@@ -86,13 +86,16 @@ shared/src/
   weapons/             ← one Weapon per <category>/<id>/index.ts (+ <id>.png icon); category base.ts holds defaults; index.ts exports WEAPON_REGISTRY + WeaponId union. instance.ts = WeaponInstance/WeaponMod (a WIELDED weapon: template + uid + modifiers) + WeaponSlotView (the wire shape); views.ts = viewFromSlot/viewFromTemplate adapters. Each weapon carries its own fxType; ranged ones carry ammoId + rangedStyle (staves are ranged: `rangedStyle: "cast"` + a per-staff elemental bolt). An `aoe` spec is still supported by `weaponSpell` (wind-up + nova) but no weapon uses it today — it's reserved for the Mage's nova ability
   ammo/                ← projectiles ranged weapons spawn; mirrors weapons/ layout. Behaviour-sharing groups nest under a category base (arrows/, boomerangs/); one-offs (throwing-knife, throwing-star) sit flat. index.ts exports AMMO_REGISTRY + AmmoId union
   debug.ts             ← DebugConfig (the Debug menu's flat settings object) + DEFAULT_DEBUG_CONFIG + toDungeonOptions()
+  stateViews.ts        ← the synced shape of every schema, as read-only interfaces. Server schemas `implements` these, so a renamed @type field is a server-side compile error instead of a silent `undefined` on the client. SYNCED FIELDS ONLY — see the gotcha below
   dungeonGenerator.ts  ← seeded dungeon generation: generateDungeon(seed, opts?) builds a 5×4 grid of 21×16-tile rooms (105×64 tiles total), room graph, type assignment, tile carving, connections/barriers. `opts: DungeonOptions` overrides grid size, forced room type, boss, stairs
   tileData.ts          ← exports MAP_SEED + MAP_DATA = generateDungeon(MAP_SEED), plus spawn/room-center helpers
   index.ts             ← the "shared" package surface (client's Vite aliases `shared` → this file)
 
 server/src/
   index.ts                  ← Colyseus Server setup (http + ws on port 2567)
-  rooms/GameRoom.ts         ← main 20 Hz game loop; owns the PhysicsWorld + CombatSystem; join/leave/input/AI tick, then drains every entity's queued effects into the one combat resolve, per-room enemy spawning, shop rolling, floor advancement (stairs → seed+1)
+  rooms/GameRoom.ts         ← main 20 Hz game loop; owns the PhysicsWorld + CombatSystem + the two directors below; join/leave/input/AI tick, then drains every entity's queued effects into the one combat resolve, challenge plumbing, floor advancement (stairs → seed+1). Loot and spawning were split out — resist growing them back in here
+  rooms/LootDirector.ts     ← everything reward-shaped: shops, shrine/boss/challenge offers, chests, the rolls behind them, and the validate-then-grant half of the buy/offerPick/chestOpen messages (GameRoom's handlers are one line each)
+  rooms/SpawnDirector.ts    ← everything that puts a creature on the floor: the per-room rabble pass, the floor's boss, boss summons, the enemy pool + count. One private addEnemy() is the only place an enemy comes into existence
   floor/FloorManager.ts     ← barrier/door system: locks rooms on entry, unlocks on clear, pre-clears empty rooms
   physics/PhysicsWorld.ts   ← the ONLY file that touches matter-js: engine, wall bodies, per-body layer/solidMask collision filters (from each entity's InteractionProfile — see shared/src/layers.ts), px/sec↔matter velocity conversion, sprite-center↔foot-body coordinate mapping
   combat/                   ← the ONE combat resolver. CombatSystem.resolve() applies every HitSource ({shape, affects, attack, claim}) to every CombatTarget when affects&layer + shapes overlap + not-owner + claim passes → target.takeHit(Attack). RehitGate = per-target re-hit dedupe for lingering hitboxes. HitShape geometry + the Attack payload live in shared/src/combat
@@ -129,6 +132,7 @@ client/src/
   entities/Entity.ts        ← base Phaser class: rectangle anchor + HP bar; setupCharacter()/playAnim() for registry-driven characters, useRawSprite() for self-animating sprites (enemies), attack FX with per-frame weapon icon tracking
   entities/SpriteClips.ts   ← shared clip-definition helpers used by HumanoidSprites and the enemy sprite factories (client/src/enemies)
   entities/HumanoidSprites.ts ← shared 15-col × 4-row humanoid sheet layout, clip definitions, makeHumanoidSpriteConfig()
+  entities/WeaponVisuals.ts ← the WeaponVisual interface + one class per style (MeleeSwingVisual / HeldBowVisual / HeldStaffVisual / NovaVisual / NoVisual) and the factory that picks one. Entity holds ONE of these and calls sync/playAttack unconditionally — add a weapon style as a class here, never as another nullable field on Entity
   entities/AttackFXSprites.ts ← one-shot slash/stab FX strips, rotated per facing
   entities/RangedWeaponFX.ts ← "held" ranged draw: 2-frame bow/crossbow sheet played 0→1→0→0 beside the player, rotated to fire direction
   entities/ProjectileEntity.ts ← lightweight (no HP bar) projectile view; lerps to server pos, points along angle or spins per AmmoConfig
@@ -145,6 +149,7 @@ client/src/
   ui/WeaponPicker.ts        ← join-time weapon chooser (DOM overlay)
   debug/debugFields.ts      ← DEBUG_FIELDS + DEBUG_PRESETS: the Debug menu as data. Add a knob here (and to shared DebugConfig); the panel renders itself
   options/gameOptions.ts    ← OPTION_FIELDS + localStorage-backed GameOptions (camera zoom, hitbox overlay, controls hint)
+  ui/GameHud.ts             ← the always-on screen furniture: party HP, floor line, PAUSED overlay, P1 store card, controls hint. Lives on the UiLayer (zoom-1 UI camera)
   ui/InventoryHud.ts        ← fixed HUD row of owned weapons, active slot highlighted (rebuilds only on change)
   ui/InventoryMenu.ts       ← pause menu (DOM overlay): owned weapons + expanded stats + rolled mod labels + held upgrades; opening it pauses the room
   ui/weaponStats.ts         ← weaponStatLines(WeaponView) → stat rows; re-exports the shared viewFromSlot/viewFromTemplate adapters. Shared by store card, acquire panel, inventory menu, offer picker
@@ -152,6 +157,7 @@ client/src/
   debug/HitboxDebug.ts      ← press H in-game: draws ALL hit/hurtboxes live. Each entity implements collectDebugShapes() from debug/DebugDraw.ts, so the overlay is generic
   debug/hurtboxShapes.ts    ← melee-swing hurtbox shapes, shared by LocalPlayer and RemotePlayer
   dev/PlaceholderReport.ts  ← dev-only: lists placeholder art in the console AND the npm-run-dev terminal (via terminalLogPlugin)
+  map/BarrierOverlays.ts    ← the tiled images over locked doorways, keyed by connection id (showParent/showChild/hideParent/hideChild/clear)
   map/TileRenderer.ts       ← buildMap() renders MAP_DATA from the dungeon-tiles.png tileset (TILE_TO_FRAME map); tweens fire/stairs/boss tiles; still generates the barrier texture programmatically
   public/sprites/           ← PNGs Phaser loads at runtime (copied by `npm run assets:build`)
 ```
@@ -231,10 +237,11 @@ Colyseus fires `onAdd` for items already in the map when the callback is registe
 | Boss (moveset, movement, phases, stats) | the `Boss` subclass — `server/src/entities/bosses/<Name>.ts` (spells from `server/src/spells`) |
 | Upgrade effects (+HP/+speed/+damage/+armor/+lifesteal, floor gating) | the `Upgrade` subclass — `server/src/upgrades/stats.ts` |
 | Weapon-modifier rolls (what can land on a rewarded weapon, how it scales) | `server/src/upgrades/weaponMods.ts` (`rollWeaponMod`) |
-| Reward pedestals (shrine vs boss mix, choice count) | `rollOffer` / `OFFER_CHOICES` in `server/src/rooms/GameRoom.ts` |
-| Chests (gold rarity, how many modifiers each tier rolls) | `GOLD_CHEST_CHANCE` / `*_CHEST_MODS` in `server/src/rooms/GameRoom.ts` |
+| Reward pedestals (shrine vs boss mix, choice count) | `rollOffer` / `OFFER_CHOICES` in `server/src/rooms/LootDirector.ts` |
+| Chests (gold rarity, how many modifiers each tier rolls) | `GOLD_CHEST_CHANCE` / `*_CHEST_MODS` in `server/src/rooms/LootDirector.ts` |
 | Traps (spawn rate, which rooms, placement margins) | `TRAP_ROOM_CHANCE` / `TRAP_AVOID_TYPES` / `TRAP_*_MARGIN` in `shared/src/dungeonGenerator.ts`; warp depth is `TRAP_MIN/MAX_FLOORS` in `shared/src/types.ts` |
-| Store (pedestal count, HP cost formula, buy radius) | `server/src/rooms/GameRoom.ts` |
+| Store (pedestal count, HP cost formula, buy radius) | `server/src/rooms/LootDirector.ts` |
+| Enemy spawn counts / pools / boss placement | `server/src/rooms/SpawnDirector.ts` |
 | Loadout keybinds / acquire freeze | `client/src/input/InputSource.ts`, `ACQUIRE_MS` in `entities/AcquireFX.ts` |
 | Knockback / hitstun feel, tick rate, enemy count, body geometry | `shared/src/types.ts` |
 | Debug-menu knobs and presets | `client/src/debug/debugFields.ts` (+ `shared/src/debug.ts`) |
@@ -251,7 +258,9 @@ For ranged weapons the ammo carries the base damage and the weapon's own `damage
 4. Emit the new ID from the carve logic in `shared/src/dungeonGenerator.ts`
 
 ### Change the map
-The map is **generated, not hand-authored**: `generateDungeon(seed)` in `shared/src/dungeonGenerator.ts` builds a 5×4 grid of 21×16-tile rooms (105×64 tiles total) with a seeded RNG. Client and server both call it with the same seed, so they always agree — no map sync. To get a different floor-1 layout, change `MAP_SEED` in `shared/src/tileData.ts` (each stairs descent regenerates with `seed + 1`). To change the *structure* — room sizes, carve shapes, connection rules — edit `dungeonGenerator.ts` itself.
+The map is **generated, not hand-authored**: `generateDungeon(seed)` in `shared/src/dungeonGenerator.ts` builds a 5×4 grid of 21×16-tile rooms (105×64 tiles total) with a seeded RNG. Client and server both call it with the same seed, so they always agree — no map sync. To get a different floor-1 layout, change `MAP_SEED` in `shared/src/tileData.ts` (each stairs descent regenerates with `seed + 1`). To change the *structure* — room sizes, carve shapes, connection rules — edit `dungeonGenerator.ts` itself: `generateDungeon` is a short pipeline of named phases (buildRoomGraph → growToMinRooms → assignRoomTypes → carveRooms → carveDoorways → carveEntryCorridors → buildConnections → pickExitAndSpawn → stampBossPassage → placeTraps), so edit the phase rather than a 380-line function.
+
+⚠️ **Determinism is the contract.** Client and server each generate the floor from the same seed, so any change that consumes rng draws in a different ORDER changes every existing seed's map and can desync the two mid-migration. Adding a phase that draws from `rng` is a map change even if it "only adds" something. Verify by dumping `generateDungeon` output for a few hundred seeds plus the option variants (showcase / forceRoomType / single-room / oversized grid) before and after, and diffing. When touching room geometry, note that `roomCellAt` (which grid cell a point is in) and `roomInteriorContains` (is it really inside, excluding the 1-tile border ring) are deliberately separate questions — the camera wants the first, FloorManager the second, and the border inset is load-bearing because doorway tiles punch through it.
 
 ### Add an enemy, a weapon, or art
 See [docs/enemies.md](docs/enemies.md), [docs/weapons-and-ammo.md](docs/weapons-and-ammo.md), [docs/assets.md](docs/assets.md). Use those recipes, not the generic entity steps below.
@@ -288,6 +297,6 @@ Define a new `Room` subclass in `server/src/rooms/`, register it in `server/src/
 - **Enemies stay dead — there is no respawn.** Cleared rooms stay cleared; everything is wiped and respawned fresh only when `advanceFloor()` regenerates the floor. Details in [docs/enemies.md](docs/enemies.md).
 - **Camera is room-locked (Zelda-style)**: every frame, `GameScene.update()` snaps `camera.setBounds()` to the 21×16-tile room containing the local players' centroid, at 2× zoom, then `centerOn(centroid)`. Crossing a doorway hard-cuts the camera to the next room. Split-screen for spread-out local players is still an open idea.
 - **Colyseus schema fields can hold data, not behaviour** — and an UNDECORATED property on a `Schema` is a legitimate place for server-only state. `OfferChoiceState.mods` holds the rolled `WeaponMod` objects with no `@type`, so it never serializes: a modifier's value is getters, `@type` takes only primitives/Schemas, and rebuilding one client-side would need the forbidden id→class map. Colyseus preserves the property through `ArraySchema.push` (verified). Use this rather than a parallel `Map` when the state's lifetime is the synced object's lifetime — but comment it, because a mixed synced/unsynced object misleads readers.
-- **The client types room state as `any`** (`pState: any` in `GameScene.setupWorldSync`), so **renaming a schema field will NOT fail the typecheck** — it silently reads `undefined` at runtime. When you rename or reshape a `@type` field, grep the client for every reader by hand. (`PlayerState.inventory` → `weapons` hit exactly this.)
+- **The client reads room state through typed VIEWS, and renaming a synced field is now a compile error.** `shared/src/stateViews.ts` describes each schema's synced shape, and every server schema declares `implements <View>` — so dropping or renaming a `@type` field the client reads fails the **server** build (`TS2420`), not silently at runtime 20 files away. This replaced the old `pState: any` hazard (`PlayerState.inventory` → `weapons` once hit exactly that). Two rules when you touch it: the views carry **synced fields only** — a deliberately undecorated property (`OfferChoiceState.mods`, `ChestState.weaponId`/`mods`) must never appear there, since the client would be typed to read `undefined` — and `room.state` still needs its one documented cast per boundary, because colyseus.js hands over untyped decoded state.
 - **Anything diffing a player's weapons must key on the instance `uid`, not the weapon id** — duplicates of the same weapon are legal now that weapons are instances, so an id-based `includes()` check silently swallows the second pickup. Same trap in `InventoryHud`'s change-detection signature, which builds from uids because `join(",")` over objects yields `[object Object]` for every slot and would compare equal forever.
 - **No persistence**: all state is in-memory. Server restart = everyone disconnects and rejoins fresh.
