@@ -1,8 +1,8 @@
 import Phaser from "phaser";
 import { Room } from "colyseus.js";
 import {
-  TILE_SIZE, ROOM_W, ROOM_H, generateDungeon, MAP_SEED, FloorChangeMessage,
-  WEAPON_REGISTRY, WeaponId, AMMO_REGISTRY, DungeonOptions, toDungeonOptions,
+  TILE_SIZE, ROOM_W, ROOM_H, generateDungeon, roomCellAt, MAP_SEED, FloorChangeMessage,
+  WEAPON_REGISTRY, AMMO_REGISTRY, DungeonOptions, DungeonResult, toDungeonOptions,
   RoomType,
   GameStateView, PlayerStateView, EnemyStateView, ProjectileStateView,
   ShopStateView, ShopItemStateView, OfferStateView, ChestStateView,
@@ -21,11 +21,11 @@ import { CLIENT_ENEMY_REGISTRY } from "../enemies";
 import { HitboxDebug } from "../debug/HitboxDebug";
 import { InventoryHud } from "../ui/InventoryHud";
 import { ChallengeBanner } from "../ui/ChallengeBanner";
+import { GameHud } from "../ui/GameHud";
 import { UiLayer } from "../ui/UiLayer";
 import { ShopItemEntity } from "../entities/ShopItemEntity";
 import { OfferPedestalEntity } from "../entities/OfferPedestalEntity";
 import { ChestEntity, preloadChest, defineChestAnimations } from "../entities/ChestEntity";
-import { weaponStatLines, viewFromTemplate } from "../ui/weaponStats";
 import { LaunchConfig, Loadout, defaultLoadout, pickLoadout } from "../launch";
 import { loadOptions } from "../options/gameOptions";
 
@@ -47,19 +47,21 @@ export class GameScene extends Phaser.Scene {
   private projectiles = new Map<string, ProjectileEntity>();
   private localSessionIds = new Set<string>();
   private observerRoom: Room | null = null;
-  private hpText!: Phaser.GameObjects.Text;
-  private floorText!: Phaser.GameObjects.Text;
   private inventoryHud!: InventoryHud;
   private challengeBanner!: ChallengeBanner;
   private darkness!: DarknessOverlay;
   private roomTypes: Map<string, RoomType> = new Map();
-  private pausedText!: Phaser.GameObjects.Text;
-  private storeCard!: Phaser.GameObjects.Text;
   private shopItems = new Map<string, ShopItemEntity>();
   private offerPedestals = new Map<string, OfferPedestalEntity>();
   private chests = new Map<string, ChestEntity>();
   private hitboxDebug!: HitboxDebug;
+  /** The current floor's dungeon. The scene HOLDS the floor rather than treating
+   *  generateDungeon as a function to re-call: four call sites regenerated it with
+   *  the same seed+opts, which also risked a handler regenerating with a stale
+   *  seed field mid-floor-change. rebuildMap is the single writer. */
+  private dungeon!: DungeonResult;
   private ui!: UiLayer;
+  private hud!: GameHud;
   private ready = false;
 
   private currentMapGroup: Phaser.GameObjects.Group | null = null;
@@ -186,8 +188,7 @@ export class GameScene extends Phaser.Scene {
 
     this.localManager = new LocalPlayerManager(this, this.launch.debug);
 
-    const dungeon = generateDungeon(this.currentSeed, this.dungeonOpts);
-    const spawn = dungeon.playerSpawns[0];
+    const spawn = this.dungeon.playerSpawns[0];
 
     const first = await this.joinLocal(spawn.x, spawn.y, this.launch.loadout);
     if (first) {
@@ -226,9 +227,8 @@ export class GameScene extends Phaser.Scene {
       });
 
       first.room.onMessage("connections_child_locked", (msg: { connectionIds: string[] }) => {
-        const dungeon = generateDungeon(this.currentSeed, this.dungeonOpts);
         for (const connId of msg.connectionIds) {
-          const conn = dungeon.connections.find(c => c.id === connId);
+          const conn = this.dungeon.connections.find(c => c.id === connId);
           if (!conn) continue;
           const images = this.buildBarrierImages(conn.barrierChild);
           this.barrierChildOverlays.set(connId, images);
@@ -244,8 +244,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.input.keyboard!.addKey("P").on("down", async () => {
-      const dungeon2 = generateDungeon(this.currentSeed, this.dungeonOpts);
-      const sp = dungeon2.playerSpawns[0];
+      const sp = this.dungeon.playerSpawns[0];
       await this.joinLocal(sp.x, sp.y);
     });
 
@@ -257,61 +256,10 @@ export class GameScene extends Phaser.Scene {
       this.scene.start("MenuScene");
     });
 
-    this.hpText = this.ui.add(
-      this.add
-        .text(8, 8, "", { fontSize: "14px", color: "#ffffff", backgroundColor: "#00000088" })
-        .setDepth(10)
-        .setPadding(6, 4),
-    );
-
-    this.floorText = this.ui.add(
-      this.add
-        .text(8, 32, "", { fontSize: "13px", color: "#f6e05e", backgroundColor: "#00000088" })
-        .setDepth(10)
-        .setPadding(6, 4),
-    );
-
     this.inventoryHud = new InventoryHud(this, 56, this.ui);
     this.challengeBanner = new ChallengeBanner(this, 400, 96, this.ui);
     this.darkness = new DarknessOverlay(this);
-
-    this.pausedText = this.ui.add(
-      this.add
-        .text(400, 288, "PAUSED", {
-          fontSize: "40px", color: "#ffffff", backgroundColor: "#000000aa",
-          fontStyle: "bold",
-        })
-        .setOrigin(0.5)
-        .setDepth(30)
-        .setPadding(16, 10)
-        .setVisible(false),
-    );
-
-    this.storeCard = this.ui.add(
-      this.add
-        .text(400, 500, "", {
-          fontSize: "12px", color: "#e0e0ff", backgroundColor: "#1a1a2ee6",
-          align: "left", lineSpacing: 2,
-        })
-        .setOrigin(0.5, 1)
-        .setDepth(20)
-        .setPadding(10, 8)
-        .setVisible(false),
-    );
-
-    if (options.showControlsHint) {
-      // Was anchored to the bottom of the MAP, so it sat wherever the last tile
-      // row happened to be rather than on screen. It's a HUD line — pin it to the
-      // bottom of the viewport like the rest of the readouts.
-      this.ui.add(
-        this.add
-          .text(8, this.scale.height - 20,
-            "WASD+Space  |  P2: Arrows+Enter  |  Q/E: switch weapon  |  I: pause  |  F: buy  |  P: join  |  Esc: menu", {
-            fontSize: "11px", color: "#888888",
-          })
-          .setDepth(10),
-      );
-    }
+    this.hud = new GameHud(this, this.ui, options.showControlsHint);
 
     connecting.destroy();
     this.ready = true;
@@ -328,6 +276,7 @@ export class GameScene extends Phaser.Scene {
     this.barrierChildOverlays.clear();
 
     const dungeon = generateDungeon(seed, this.dungeonOpts);
+    this.dungeon = dungeon;
     this.mapCols = dungeon.cols;
     this.mapRows = dungeon.rows;
     this.currentSeed = seed;
@@ -543,19 +492,11 @@ export class GameScene extends Phaser.Scene {
 
     const { x, y } = this.localManager.getCentroid();
 
-    const roomCol = Math.floor(x / (ROOM_W * TILE_SIZE));
-    const roomRow = Math.floor(y / (ROOM_H * TILE_SIZE));
-    const bx = roomCol * ROOM_W * TILE_SIZE;
-    const by = roomRow * ROOM_H * TILE_SIZE;
+    const cell = roomCellAt(x, y);
+    const bx = cell.gx * ROOM_W * TILE_SIZE;
+    const by = cell.gy * ROOM_H * TILE_SIZE;
     this.cameras.main.setBounds(bx, by, ROOM_W * TILE_SIZE, ROOM_H * TILE_SIZE);
     this.cameras.main.centerOn(x, y);
-
-    const hpLines = this.localManager
-      .getAll()
-      .map((lp, i) => `P${i + 1} HP: ${Math.round(lp.hp)}`)
-      .join("   ");
-    this.hpText.setText(hpLines || "Connecting...");
-    this.floorText.setText(this.launch.debug ? `Floor ${this.currentFloor}  ·  DEBUG` : `Floor ${this.currentFloor}`);
 
     // Inventory HUD tracks the first local player; PAUSED overlay follows the
     // server's shared pause flag.
@@ -567,40 +508,19 @@ export class GameScene extends Phaser.Scene {
     // Room ids are "gx,gy" and the camera lock above already resolved the party's
     // room cell, so both the banner and the darkness reuse those numbers rather
     // than recomputing room membership.
-    const roomId = `${roomCol},${roomRow}`;
+    const roomId = cell.id;
     // The objective banner, read straight off the MapSchema — a challenge has no
     // world view to manage, so it needs no onAdd/onRemove bookkeeping the way
     // pedestals do.
     this.challengeBanner.update(this.observerRoom?.state.challenges?.get(roomId));
     // Darkness is decided entirely from the locally generated room type.
     this.darkness.update(this.roomTypes.get(roomId) === "dark", x, y, bx, by);
-    this.pausedText.setVisible(this.observerRoom?.state.paused ?? false);
-    this.updateStoreCard(first);
+    this.hud.update({
+      players: this.localManager.getAll(),
+      floor: this.currentFloor,
+      debug: this.launch.debug != null,
+      paused: this.observerRoom?.state.paused ?? false,
+    });
   }
 
-  // Show the P1 store card whenever P1 is standing on an unpurchased pedestal, or
-  // a short prompt when standing on an unclaimed reward pedestal. The reward's
-  // contents deliberately stay hidden until the picker opens — the card would
-  // spoil the choice, and the pedestal's "?" is the whole tease.
-  private updateStoreCard(first?: LocalPlayer) {
-    if (first?.nearbyOffer) {
-      this.storeCard.setText("A reward waits here\n[F] choose");
-      this.storeCard.setVisible(true);
-      return;
-    }
-    const near = first?.nearbyShopItem;
-    // A shop pedestal holds an unmodified template, so its card reads from the
-    // template. When pedestals start rolling modifiers this becomes a slot view.
-    const template = near ? WEAPON_REGISTRY[near.weaponId as WeaponId] : undefined;
-    if (!near || !template) {
-      this.storeCard.setVisible(false);
-      return;
-    }
-    const weapon = viewFromTemplate(template);
-    const stats = weaponStatLines(weapon).map((s) => `  ${s.label}: ${s.value}`).join("\n");
-    this.storeCard.setText(
-      `${weapon.name}   (${near.cost} HP)\n${stats}\n[F] buy`,
-    );
-    this.storeCard.setVisible(true);
-  }
 }

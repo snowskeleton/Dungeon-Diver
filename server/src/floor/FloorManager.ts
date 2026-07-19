@@ -1,4 +1,4 @@
-import { RoomData, ConnectionData, TILE_SIZE, ROOM_W, ROOM_H } from "shared";
+import { RoomData, ConnectionData, roomInteriorContains } from "shared";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
 
 export class FloorManager {
@@ -169,15 +169,11 @@ export class FloorManager {
            y >= conn.passYMin && y <= conn.passYMax;
   }
 
+  /** The room whose interior contains this point, or null (a wall or a
+   *  passageway). The geometry itself lives in shared — see
+   *  roomInteriorContains, and note the 1-tile inset it documents. */
   roomAt(x: number, y: number): RoomData | null {
-    for (const room of this.rooms) {
-      const xMin = (room.tileCol + 1) * TILE_SIZE;
-      const xMax = (room.tileCol + ROOM_W - 1) * TILE_SIZE;
-      const yMin = (room.tileRow + 1) * TILE_SIZE;
-      const yMax = (room.tileRow + ROOM_H - 1) * TILE_SIZE;
-      if (x >= xMin && x < xMax && y >= yMin && y < yMax) return room;
-    }
-    return null;
+    return this.rooms.find((room) => roomInteriorContains(room, x, y)) ?? null;
   }
 
   dispose(): void {

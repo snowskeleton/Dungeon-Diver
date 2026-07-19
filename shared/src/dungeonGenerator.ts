@@ -115,6 +115,37 @@ export interface RoomData {
   type: RoomType;
 }
 
+/**
+ * Which room CELL a world point falls in — pure grid arithmetic, no membership
+ * test. A point in a wall or a passageway still answers with the cell it is
+ * geometrically inside, which is exactly what a room-locked camera wants.
+ */
+export function roomCellAt(x: number, y: number): { gx: number; gy: number; id: string } {
+  const gx = Math.floor(x / (ROOM_W * TILE_SIZE));
+  const gy = Math.floor(y / (ROOM_H * TILE_SIZE));
+  return { gx, gy, id: `${gx},${gy}` };
+}
+
+/**
+ * Is a world point inside this room's INTERIOR — the walkable area excluding the
+ * 1-tile border ring?
+ *
+ * The inset is load-bearing, not incidental: doorway tiles punch through that
+ * ring, so a point standing in one belongs to the passageway rather than to
+ * either room. FloorManager relies on that to keep passageway occupants from
+ * counting as "in the room" for lock/clear decisions.
+ *
+ * Deliberately a different question from roomCellAt: the client wants "which
+ * cell am I looking at", FloorManager wants "am I really in there".
+ */
+export function roomInteriorContains(room: RoomData, x: number, y: number): boolean {
+  const xMin = (room.tileCol + 1) * TILE_SIZE;
+  const xMax = (room.tileCol + ROOM_W - 1) * TILE_SIZE;
+  const yMin = (room.tileRow + 1) * TILE_SIZE;
+  const yMax = (room.tileRow + ROOM_H - 1) * TILE_SIZE;
+  return x >= xMin && x < xMax && y >= yMin && y < yMax;
+}
+
 export interface BarrierRect {
   cx: number; cy: number;   // pixel center
   w: number; h: number;     // pixel dimensions
