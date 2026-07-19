@@ -68,6 +68,16 @@ export interface FloorChangeMessage {
 }
 
 export const TILE_SIZE = 32;
+
+/** World position of a tile's centre. Entities and props are positioned at tile
+ *  centres, so `col * TILE_SIZE + TILE_SIZE / 2` was written out in half a dozen
+ *  files. Adopted opportunistically — there is no value in a mechanical sweep. */
+export function tileCenter(col: number, row: number): { x: number; y: number } {
+  return {
+    x: col * TILE_SIZE + TILE_SIZE / 2,
+    y: row * TILE_SIZE + TILE_SIZE / 2,
+  };
+}
 // Damage tiles (fire) apply effectAmount HP-per-second in discrete ticks this far apart.
 export const TILE_DAMAGE_INTERVAL_MS = 500;
 // Knockback model: `overage = force − knockbackResistance`. overage ≤ 0 means the

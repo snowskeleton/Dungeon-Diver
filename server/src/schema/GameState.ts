@@ -6,8 +6,9 @@ import { ShopState } from "./ShopState";
 import { OfferState } from "./OfferState";
 import { ChestState } from "./ChestState";
 import { RoomChallengeState } from "./RoomChallengeState";
+import { GameStateView } from "shared";
 
-export class GameState extends Schema {
+export class GameState extends Schema implements GameStateView {
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
   @type({ map: EnemyState }) enemies = new MapSchema<EnemyState>();
   @type({ map: ProjectileState }) projectiles = new MapSchema<ProjectileState>();

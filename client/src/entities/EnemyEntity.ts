@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { AiState, Facing, EnemyType } from "shared";
+import { AiState, Facing, EnemyType, EnemyStateView } from "shared";
 import { Entity } from "./Entity";
 import { CLIENT_ENEMY_REGISTRY, ClientEnemyDef } from "../enemies";
 import { DebugDrawable, DebugShape, DEBUG_COLORS } from "../debug/DebugDraw";
@@ -48,25 +48,28 @@ export class EnemyEntity extends Entity implements DebugDrawable {
     this.sprite.setSize(20, 20);
   }
 
-  setTarget(x: number, y: number, hp: number, facing: Facing, aiState: AiState, isDying: boolean, telegraph = false, channeling = false, abilityId = "", airHeight = 0) {
+  /** Take the whole synced enemy and read what this view needs. Adding a synced
+   *  field is now a one-line change here, not a new positional parameter
+   *  threaded through GameScene's onChange wiring. */
+  setTarget(state: EnemyStateView) {
     if (!this.dying) {
-      this.targetX = x;
-      this.targetY = y;
+      this.targetX = state.x;
+      this.targetY = state.y;
     }
-    this.currentHp = hp;
-    this.facing = facing;
-    this.aiState = aiState;
-    this.telegraphing = telegraph;
-    this.channeling = channeling;
-    this.abilityId = abilityId;
-    this.airHeight = airHeight;
+    this.currentHp = state.health;
+    this.facing = state.facing;
+    this.aiState = state.aiState;
+    this.telegraphing = state.telegraph;
+    this.channeling = state.channeling;
+    this.abilityId = state.abilityId;
+    this.airHeight = state.airHeight;
 
-    if (isDying && !this.dying) {
+    if (state.isDying && !this.dying) {
       this.dying = true;
       this.charSprite?.setDepth(1);
       this.hpBar.setVisible(false);
       this.hpBarBg.setVisible(false);
-    } else if (!isDying && this.dying) {
+    } else if (!state.isDying && this.dying) {
       this.dying = false;
       this.currentEnemyAnim = undefined;
       this.charSprite?.setDepth(2);

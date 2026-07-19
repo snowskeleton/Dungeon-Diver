@@ -1,4 +1,5 @@
 import { Schema, type } from "@colyseus/schema";
+import { RoomChallengeStateView } from "shared";
 
 // A room's active objective, keyed in GameState.challenges by room id.
 //
@@ -10,7 +11,7 @@ import { Schema, type } from "@colyseus/schema";
 // GameRoom only assigns `text` when it actually changes, so a per-tick countdown
 // still only produces one sync per second.
 
-export class RoomChallengeState extends Schema {
+export class RoomChallengeState extends Schema implements RoomChallengeStateView {
   @type("string") roomId: string = "";
   @type("string") text: string = "";
   @type("boolean") complete: boolean = false;

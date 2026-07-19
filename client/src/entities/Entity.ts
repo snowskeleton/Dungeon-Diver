@@ -1,26 +1,8 @@
 import Phaser from "phaser";
 import { TILE_SIZE, Facing, RangedStyle, FOOT_OFFSET, ENTITY_RADIUS, WEAPON_REGISTRY } from "shared";
 import type { DebugShape } from "../debug/DebugDraw";
-import {
-  AttackFXType,
-  StripFXType,
-  createAttackFXSprite,
-  playAttackFX,
-  syncAttackFX,
-  WEAPON_ICON_DISPLAY_SIZE,
-} from "./AttackFXSprites";
-import { NovaFX } from "./NovaFX";
-import {
-  createBowSprite,
-  playBowFX,
-  syncBowFX,
-} from "./RangedWeaponFX";
-import {
-  createCastSprite,
-  playCastFX,
-  syncCastFX,
-  showHeldStaff,
-} from "./CastFX";
+import { AttackFXType } from "./AttackFXSprites";
+import { WeaponVisual, createWeaponVisual, createNoWeaponVisual } from "./WeaponVisuals";
 
 const HP_BAR_W = 24;
 const HP_BAR_H = 4;
@@ -47,18 +29,10 @@ export abstract class Entity {
   private attackAnimDone = false;
   private lastHp?: number;
   private isHurt = false;
-  private fxSprite?: Phaser.GameObjects.Sprite;
-  private fxType?: StripFXType;
-  // AOE staves (fxType "nova") render an expanding blast instead of a swing strip.
-  private novaFx?: NovaFX;
-  private weaponIconImage?: Phaser.GameObjects.Image;
-  // Ranged weapons (bows/crossbows) render a draw sheet instead of a melee FX
-  // strip + icon. When set, the attack plays this bow sprite's draw clip.
-  private bowSprite?: Phaser.GameObjects.Sprite;
-  private rangedWeaponId?: string;
-  // Staves (rangedStyle "cast"): the icon stays in hand and pulses on each cast.
-  private castSprite?: Phaser.GameObjects.Image;
-  // Last facing the anim update saw — the held staff needs it every frame, but
+  // How the active weapon looks — one object per style (melee swing, held bow,
+  // held staff, nova, or none for thrown). See WeaponVisuals.ts.
+  private weaponVisual: WeaponVisual = createNoWeaponVisual();
+  // Last facing the anim update saw — a held staff needs it every frame, but
   // syncSpritePosition() runs outside the anim path where facing is passed in.
   private lastFacing: Facing = "down";
   protected hpBar: Phaser.GameObjects.Rectangle;
@@ -122,79 +96,34 @@ export abstract class Entity {
     this.charSprite.setDepth(2);
     this.charSprite.setDisplaySize(TILE_SIZE, TILE_SIZE);
 
-    this.configureWeaponVisuals(fxType, weaponIconTextureKey, rangedStyle);
+    this.weaponVisual = this.buildWeaponVisual(fxType, weaponIconTextureKey, rangedStyle);
   }
 
-  // Builds the per-weapon FX sprites (melee strip + icon, or held-bow draw sprite;
-  // thrown weapons have none). Split out of setupCharacter so swapWeapon can rebuild
-  // it when the active weapon changes.
-  private configureWeaponVisuals(
+  private buildWeaponVisual(
     fxType: AttackFXType | null,
     weaponIconTextureKey?: string,
     rangedStyle?: RangedStyle,
-  ) {
-    if (rangedStyle === "held" && weaponIconTextureKey) {
-      // Held ranged (bow/crossbow): a 2-frame draw sprite; no melee FX or icon.
-      this.rangedWeaponId = weaponIconTextureKey;
-      this.bowSprite = createBowSprite(this.scene, weaponIconTextureKey);
-      return;
-    }
-    if (rangedStyle === "cast" && weaponIconTextureKey) {
-      // Staff: the single weapon icon is held in hand and animated on cast — no
-      // draw sheet needed (see CastFX).
-      this.rangedWeaponId = weaponIconTextureKey;
-      this.castSprite = createCastSprite(this.scene, weaponIconTextureKey);
-      showHeldStaff(this.castSprite, this.sprite.x, this.sprite.y, this.lastFacing);
-      return;
-    }
-    if (rangedStyle === "thrown") {
-      // Thrown (knife/star/boomerang): the flying projectile is the whole visual;
-      // nothing stays in hand.
-      return;
-    }
-
-    if (fxType === "nova") {
-      // AOE staff: size the blast to the weapon's AoeSpec (weaponIconTextureKey is
-      // the weapon id). No in-hand icon or swing strip — the nova is the whole FX.
-      const radius = WEAPON_REGISTRY[weaponIconTextureKey ?? ""]?.aoe?.radius ?? 76;
-      this.novaFx = new NovaFX(this.scene, radius);
-      return;
-    }
-
-    if (fxType) {
-      this.fxType = fxType;
-      this.fxSprite = createAttackFXSprite(this.scene, fxType);
-    }
-    if (weaponIconTextureKey) {
-      this.weaponIconImage = this.scene.add.image(0, 0, weaponIconTextureKey);
-      this.weaponIconImage.setOrigin(0.5, 0.5);
-      this.weaponIconImage.setDepth(2.6);
-      this.weaponIconImage.setDisplaySize(WEAPON_ICON_DISPLAY_SIZE, WEAPON_ICON_DISPLAY_SIZE);
-      this.weaponIconImage.setVisible(false);
-    }
+  ): WeaponVisual {
+    return createWeaponVisual(
+      this.scene,
+      fxType,
+      weaponIconTextureKey,
+      rangedStyle,
+      this.sprite.x,
+      this.sprite.y,
+      this.lastFacing,
+    );
   }
 
-  // Hot-swap the weapon visuals to a different weapon (inventory switch). Tears
-  // down the current FX/icon/bow sprites and rebuilds from the new weapon; the
+  // Hot-swap the weapon visuals to a different weapon (inventory switch). The
   // character body sprite is untouched.
   swapWeapon(
     fxType: AttackFXType | null,
     weaponIconTextureKey?: string,
     rangedStyle?: RangedStyle,
   ) {
-    this.fxSprite?.destroy();
-    this.weaponIconImage?.destroy();
-    this.bowSprite?.destroy();
-    this.castSprite?.destroy();
-    this.novaFx?.destroy();
-    this.fxSprite = undefined;
-    this.weaponIconImage = undefined;
-    this.bowSprite = undefined;
-    this.castSprite = undefined;
-    this.novaFx = undefined;
-    this.fxType = undefined;
-    this.rangedWeaponId = undefined;
-    this.configureWeaponVisuals(fxType, weaponIconTextureKey, rangedStyle);
+    this.weaponVisual.destroy();
+    this.weaponVisual = this.buildWeaponVisual(fxType, weaponIconTextureKey, rangedStyle);
   }
 
   // Clears the attack edge-detect state so the next "attack" action restarts the
@@ -222,16 +151,9 @@ export abstract class Entity {
   private syncSpritePosition() {
     this.charSprite!.x = this.sprite.x;
     this.charSprite!.y = this.sprite.y;
-    if (this.fxSprite) {
-      // Keep an in-flight swing anchored to the entity.
-      syncAttackFX(this.fxSprite, this.sprite.x, this.sprite.y, this.weaponIconImage);
-    }
-    if (this.bowSprite) {
-      syncBowFX(this.bowSprite, this.sprite.x, this.sprite.y);
-    }
-    if (this.castSprite) {
-      syncCastFX(this.castSprite, this.sprite.x, this.sprite.y, this.lastFacing);
-    }
+    // Uses lastFacing, not the facing being applied this frame — same as before
+    // the visuals were unified, since sync runs at the top of playAnim.
+    this.weaponVisual.sync(this.sprite.x, this.sprite.y, this.lastFacing);
   }
 
   private playHurtFlash(facing: Facing): boolean {
@@ -262,27 +184,7 @@ export abstract class Entity {
 
   private updateAttackFX(startedAttack: boolean, facing: Facing) {
     if (!startedAttack) return;
-    if (this.castSprite) {
-      playCastFX(this.castSprite, this.sprite.x, this.sprite.y, facing);
-      return;
-    }
-    if (this.bowSprite && this.rangedWeaponId) {
-      playBowFX(this.bowSprite, this.rangedWeaponId, this.sprite.x, this.sprite.y, facing);
-      return;
-    }
-    if (this.novaFx) {
-      this.novaFx.play(this.sprite.x, this.sprite.y);
-      return;
-    }
-    if (!this.fxType || !this.fxSprite) return;
-    playAttackFX(
-      this.fxSprite,
-      this.fxType,
-      this.sprite.x,
-      this.sprite.y,
-      facing,
-      this.weaponIconImage,
-    );
+    this.weaponVisual.playAttack(this.sprite.x, this.sprite.y, facing);
   }
 
   updateHpBar(hp: number) {
@@ -314,11 +216,7 @@ export abstract class Entity {
   destroy() {
     this.sprite.destroy();
     this.charSprite?.destroy();
-    this.fxSprite?.destroy();
-    this.weaponIconImage?.destroy();
-    this.bowSprite?.destroy();
-    this.castSprite?.destroy();
-    this.novaFx?.destroy();
+    this.weaponVisual.destroy();
     this.hpBar.destroy();
     this.hpBarBg.destroy();
   }

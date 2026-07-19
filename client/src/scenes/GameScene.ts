@@ -1,11 +1,14 @@
 import Phaser from "phaser";
 import { Room } from "colyseus.js";
 import {
-  TILE_SIZE, ROOM_W, ROOM_H, generateDungeon, MAP_SEED, FloorChangeMessage,
-  WEAPON_REGISTRY, WeaponId, AMMO_REGISTRY, DungeonOptions, toDungeonOptions,
+  TILE_SIZE, ROOM_W, ROOM_H, generateDungeon, roomCellAt, MAP_SEED, FloorChangeMessage,
+  WEAPON_REGISTRY, AMMO_REGISTRY, DungeonOptions, DungeonResult, toDungeonOptions,
   RoomType,
+  GameStateView, PlayerStateView, EnemyStateView, ProjectileStateView,
+  ShopStateView, ShopItemStateView, OfferStateView, ChestStateView,
 } from "shared";
 import { DarknessOverlay } from "../map/DarknessOverlay";
+import { BarrierOverlays } from "../map/BarrierOverlays";
 import { preloadTiles, buildMap } from "../map/TileRenderer";
 import { LocalPlayerManager } from "../input/LocalPlayerManager";
 import { LocalPlayer } from "../entities/LocalPlayer";
@@ -19,11 +22,11 @@ import { CLIENT_ENEMY_REGISTRY } from "../enemies";
 import { HitboxDebug } from "../debug/HitboxDebug";
 import { InventoryHud } from "../ui/InventoryHud";
 import { ChallengeBanner } from "../ui/ChallengeBanner";
+import { GameHud } from "../ui/GameHud";
 import { UiLayer } from "../ui/UiLayer";
 import { ShopItemEntity } from "../entities/ShopItemEntity";
 import { OfferPedestalEntity } from "../entities/OfferPedestalEntity";
 import { ChestEntity, preloadChest, defineChestAnimations } from "../entities/ChestEntity";
-import { weaponStatLines, viewFromTemplate } from "../ui/weaponStats";
 import { LaunchConfig, Loadout, defaultLoadout, pickLoadout } from "../launch";
 import { loadOptions } from "../options/gameOptions";
 
@@ -45,24 +48,25 @@ export class GameScene extends Phaser.Scene {
   private projectiles = new Map<string, ProjectileEntity>();
   private localSessionIds = new Set<string>();
   private observerRoom: Room | null = null;
-  private hpText!: Phaser.GameObjects.Text;
-  private floorText!: Phaser.GameObjects.Text;
   private inventoryHud!: InventoryHud;
   private challengeBanner!: ChallengeBanner;
   private darkness!: DarknessOverlay;
   private roomTypes: Map<string, RoomType> = new Map();
-  private pausedText!: Phaser.GameObjects.Text;
-  private storeCard!: Phaser.GameObjects.Text;
   private shopItems = new Map<string, ShopItemEntity>();
   private offerPedestals = new Map<string, OfferPedestalEntity>();
   private chests = new Map<string, ChestEntity>();
   private hitboxDebug!: HitboxDebug;
+  /** The current floor's dungeon. The scene HOLDS the floor rather than treating
+   *  generateDungeon as a function to re-call: four call sites regenerated it with
+   *  the same seed+opts, which also risked a handler regenerating with a stale
+   *  seed field mid-floor-change. rebuildMap is the single writer. */
+  private dungeon!: DungeonResult;
   private ui!: UiLayer;
+  private hud!: GameHud;
   private ready = false;
 
   private currentMapGroup: Phaser.GameObjects.Group | null = null;
-  private barrierParentOverlays = new Map<string, Phaser.GameObjects.Image[]>();
-  private barrierChildOverlays = new Map<string, Phaser.GameObjects.Image[]>();
+  private barriers!: BarrierOverlays;
   private currentSeed = MAP_SEED;
   private currentFloor = 1;
   private mapCols = 0;
@@ -95,8 +99,7 @@ export class GameScene extends Phaser.Scene {
     this.offerPedestals.clear();
     this.chests.clear();
     this.localSessionIds.clear();
-    this.barrierParentOverlays.clear();
-    this.barrierChildOverlays.clear();
+
     this.currentMapGroup = null;
     this.observerRoom = null;
   }
@@ -167,6 +170,7 @@ export class GameScene extends Phaser.Scene {
     // below is picked up as world content by the UI camera's default-ignore hook.
     this.ui = new UiLayer(this, this.scale.width, this.scale.height);
 
+    this.barriers = new BarrierOverlays(this);
     this.rebuildMap(this.currentSeed);
 
     const options = loadOptions();
@@ -184,8 +188,7 @@ export class GameScene extends Phaser.Scene {
 
     this.localManager = new LocalPlayerManager(this, this.launch.debug);
 
-    const dungeon = generateDungeon(this.currentSeed, this.dungeonOpts);
-    const spawn = dungeon.playerSpawns[0];
+    const spawn = this.dungeon.playerSpawns[0];
 
     const first = await this.joinLocal(spawn.x, spawn.y, this.launch.loadout);
     if (first) {
@@ -217,33 +220,23 @@ export class GameScene extends Phaser.Scene {
       });
 
       first.room.onMessage("connections_parent_unlocked", (msg: { connectionIds: string[] }) => {
-        for (const connId of msg.connectionIds) {
-          this.barrierParentOverlays.get(connId)?.forEach(img => img.destroy());
-          this.barrierParentOverlays.delete(connId);
-        }
+        for (const connId of msg.connectionIds) this.barriers.hideParent(connId);
       });
 
       first.room.onMessage("connections_child_locked", (msg: { connectionIds: string[] }) => {
-        const dungeon = generateDungeon(this.currentSeed, this.dungeonOpts);
         for (const connId of msg.connectionIds) {
-          const conn = dungeon.connections.find(c => c.id === connId);
-          if (!conn) continue;
-          const images = this.buildBarrierImages(conn.barrierChild);
-          this.barrierChildOverlays.set(connId, images);
+          const conn = this.dungeon.connections.find(c => c.id === connId);
+          if (conn) this.barriers.showChild(connId, conn.barrierChild);
         }
       });
 
       first.room.onMessage("connections_child_unlocked", (msg: { connectionIds: string[] }) => {
-        for (const connId of msg.connectionIds) {
-          this.barrierChildOverlays.get(connId)?.forEach(img => img.destroy());
-          this.barrierChildOverlays.delete(connId);
-        }
+        for (const connId of msg.connectionIds) this.barriers.hideChild(connId);
       });
     }
 
     this.input.keyboard!.addKey("P").on("down", async () => {
-      const dungeon2 = generateDungeon(this.currentSeed, this.dungeonOpts);
-      const sp = dungeon2.playerSpawns[0];
+      const sp = this.dungeon.playerSpawns[0];
       await this.joinLocal(sp.x, sp.y);
     });
 
@@ -255,61 +248,10 @@ export class GameScene extends Phaser.Scene {
       this.scene.start("MenuScene");
     });
 
-    this.hpText = this.ui.add(
-      this.add
-        .text(8, 8, "", { fontSize: "14px", color: "#ffffff", backgroundColor: "#00000088" })
-        .setDepth(10)
-        .setPadding(6, 4),
-    );
-
-    this.floorText = this.ui.add(
-      this.add
-        .text(8, 32, "", { fontSize: "13px", color: "#f6e05e", backgroundColor: "#00000088" })
-        .setDepth(10)
-        .setPadding(6, 4),
-    );
-
     this.inventoryHud = new InventoryHud(this, 56, this.ui);
     this.challengeBanner = new ChallengeBanner(this, 400, 96, this.ui);
     this.darkness = new DarknessOverlay(this);
-
-    this.pausedText = this.ui.add(
-      this.add
-        .text(400, 288, "PAUSED", {
-          fontSize: "40px", color: "#ffffff", backgroundColor: "#000000aa",
-          fontStyle: "bold",
-        })
-        .setOrigin(0.5)
-        .setDepth(30)
-        .setPadding(16, 10)
-        .setVisible(false),
-    );
-
-    this.storeCard = this.ui.add(
-      this.add
-        .text(400, 500, "", {
-          fontSize: "12px", color: "#e0e0ff", backgroundColor: "#1a1a2ee6",
-          align: "left", lineSpacing: 2,
-        })
-        .setOrigin(0.5, 1)
-        .setDepth(20)
-        .setPadding(10, 8)
-        .setVisible(false),
-    );
-
-    if (options.showControlsHint) {
-      // Was anchored to the bottom of the MAP, so it sat wherever the last tile
-      // row happened to be rather than on screen. It's a HUD line — pin it to the
-      // bottom of the viewport like the rest of the readouts.
-      this.ui.add(
-        this.add
-          .text(8, this.scale.height - 20,
-            "WASD+Space  |  P2: Arrows+Enter  |  Q/E: switch weapon  |  I: pause  |  F: buy  |  P: join  |  Esc: menu", {
-            fontSize: "11px", color: "#888888",
-          })
-          .setDepth(10),
-      );
-    }
+    this.hud = new GameHud(this, this.ui, options.showControlsHint);
 
     connecting.destroy();
     this.ready = true;
@@ -320,12 +262,10 @@ export class GameScene extends Phaser.Scene {
       this.currentMapGroup.destroy(true);
       this.currentMapGroup = null;
     }
-    this.barrierParentOverlays.forEach(imgs => imgs.forEach(img => img.destroy()));
-    this.barrierParentOverlays.clear();
-    this.barrierChildOverlays.forEach(imgs => imgs.forEach(img => img.destroy()));
-    this.barrierChildOverlays.clear();
+    this.barriers.clear();
 
     const dungeon = generateDungeon(seed, this.dungeonOpts);
+    this.dungeon = dungeon;
     this.mapCols = dungeon.cols;
     this.mapRows = dungeon.rows;
     this.currentSeed = seed;
@@ -336,33 +276,13 @@ export class GameScene extends Phaser.Scene {
 
     this.currentMapGroup = buildMap(this, dungeon.mapData as any, dungeon.rows, dungeon.cols);
     for (const conn of dungeon.connections) {
-      this.barrierParentOverlays.set(conn.id, this.buildBarrierImages(conn.barrierParent));
+      this.barriers.showParent(conn.id, conn.barrierParent);
     }
 
     const totalW = dungeon.cols * TILE_SIZE;
     const totalH = dungeon.rows * TILE_SIZE;
     this.cameras.main.setBounds(0, 0, totalW, totalH);
     this.cameras.main.setZoom(loadOptions().cameraZoom);
-  }
-
-  private buildBarrierImages(rect: { cx: number; cy: number; w: number; h: number }): Phaser.GameObjects.Image[] {
-    const images: Phaser.GameObjects.Image[] = [];
-    const colMin = Math.floor((rect.cx - rect.w / 2) / TILE_SIZE);
-    const colMax = Math.floor((rect.cx + rect.w / 2 - 1) / TILE_SIZE);
-    const rowMin = Math.floor((rect.cy - rect.h / 2) / TILE_SIZE);
-    const rowMax = Math.floor((rect.cy + rect.h / 2 - 1) / TILE_SIZE);
-    for (let row = rowMin; row <= rowMax; row++) {
-      for (let col = colMin; col <= colMax; col++) {
-        const img = this.add.image(
-          col * TILE_SIZE + TILE_SIZE / 2,
-          row * TILE_SIZE + TILE_SIZE / 2,
-          "barrier_tile",
-        );
-        img.setDepth(1.5);
-        images.push(img);
-      }
-    }
-    return images;
   }
 
   private handleFloorChange(msg: FloorChangeMessage) {
@@ -406,12 +326,10 @@ export class GameScene extends Phaser.Scene {
     const sessionId = player.room.sessionId;
     this.localSessionIds.add(sessionId);
 
-    player.room.state.players.onAdd((pState: any, sid: string) => {
+    const roomState = player.room.state as GameStateView;
+    roomState.players.onAdd((pState: PlayerStateView, sid: string) => {
       if (sid !== sessionId) return;
-      const push = () => player.syncFromServer(
-        pState.x, pState.y, pState.health, pState.isAttacking, pState.attackSeq,
-        pState.weaponId, Array.from(pState.weapons),
-      );
+      const push = () => player.syncFromServer(pState);
       push();
       pState.onChange(push);
     });
@@ -425,9 +343,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   private setupWorldSync(room: Room) {
-    const state = room.state;
+    // The one boundary cast in the client. colyseus.js types `room.state` as the
+    // untyped decoded state; from here down it is GameStateView, whose interfaces
+    // the server's schema classes `implements` — so a renamed @type field is a
+    // compile error on the server rather than a silent `undefined` here.
+    const state = room.state as GameStateView;
 
-    state.players.onAdd((playerState: any, sessionId: string) => {
+    state.players.onAdd((playerState: PlayerStateView, sessionId: string) => {
       if (this.localSessionIds.has(sessionId)) return;
       const rp = new RemotePlayer(
         this,
@@ -438,51 +360,37 @@ export class GameScene extends Phaser.Scene {
         playerState.weaponId,
       );
       this.remotePlayers.set(sessionId, rp);
-      playerState.onChange(() =>
-        rp.setTarget(
-          playerState.x, playerState.y, playerState.health,
-          playerState.facing, playerState.isAttacking, playerState.attackSeq, playerState.weaponId,
-        ),
-      );
+      playerState.onChange(() => rp.setTarget(playerState));
     });
 
-    state.players.onRemove((_: any, sessionId: string) => {
+    state.players.onRemove((_: PlayerStateView, sessionId: string) => {
       this.remotePlayers.get(sessionId)?.destroy();
       this.remotePlayers.delete(sessionId);
     });
 
-    state.enemies.onAdd((enemyState: any, id: string) => {
+    state.enemies.onAdd((enemyState: EnemyStateView, id: string) => {
       const e = new EnemyEntity(
         this, enemyState.x, enemyState.y, enemyState.enemyType,
         enemyState.maxHealth, enemyState.aggroRadius, enemyState.attackRadius,
       );
       this.enemies.set(id, e);
-      enemyState.onChange(() =>
-        e.setTarget(
-          enemyState.x, enemyState.y, enemyState.health,
-          enemyState.facing, enemyState.aiState, enemyState.isDying,
-          enemyState.telegraph, enemyState.channeling, enemyState.abilityId,
-          enemyState.airHeight,
-        ),
-      );
+      enemyState.onChange(() => e.setTarget(enemyState));
     });
 
-    state.enemies.onRemove((_: any, id: string) => {
+    state.enemies.onRemove((_: EnemyStateView, id: string) => {
       this.enemies.get(id)?.destroy();
       this.enemies.delete(id);
     });
 
-    state.projectiles.onAdd((projState: any, id: string) => {
+    state.projectiles.onAdd((projState: ProjectileStateView, id: string) => {
       const p = new ProjectileEntity(
         this, projState.x, projState.y, projState.angle, projState.ammoId,
       );
       this.projectiles.set(id, p);
-      projState.onChange(() =>
-        p.setTarget(projState.x, projState.y, projState.angle),
-      );
+      projState.onChange(() => p.setTarget(projState));
     });
 
-    state.projectiles.onRemove((_: any, id: string) => {
+    state.projectiles.onRemove((_: ProjectileStateView, id: string) => {
       this.projectiles.get(id)?.destroy();
       this.projectiles.delete(id);
     });
@@ -490,8 +398,8 @@ export class GameScene extends Phaser.Scene {
     // Shop pedestals: one ShopItemEntity per shop item, keyed "roomId:index".
     // Items only change via `purchased` (shared pool); floor change clears the
     // whole shops map, firing onRemove for the old rooms.
-    state.shops.onAdd((shop: any, roomId: string) => {
-      shop.items.forEach((item: any, idx: number) => {
+    state.shops.onAdd((shop: ShopStateView, roomId: string) => {
+      shop.items.forEach((item: ShopItemStateView, idx: number) => {
         const key = `${roomId}:${idx}`;
         const view = new ShopItemEntity(this, item.x, item.y, item.weaponId, item.cost);
         view.setPurchased(item.purchased);
@@ -500,7 +408,7 @@ export class GameScene extends Phaser.Scene {
       });
     });
 
-    state.shops.onRemove((_: any, roomId: string) => {
+    state.shops.onRemove((_: ShopStateView, roomId: string) => {
       for (const [key, view] of this.shopItems) {
         if (key.startsWith(`${roomId}:`)) {
           view.destroy();
@@ -512,27 +420,27 @@ export class GameScene extends Phaser.Scene {
     // Reward pedestals: one per shrine room, plus one dropped where a boss died.
     // Keyed by room id — a boss drop appears mid-floor, so this map grows during
     // play rather than only at floor start.
-    state.offers.onAdd((offer: any, roomId: string) => {
+    state.offers.onAdd((offer: OfferStateView, roomId: string) => {
       const view = new OfferPedestalEntity(this, offer.x, offer.y);
       view.setClaimed(offer.claimed);
       this.offerPedestals.set(roomId, view);
       offer.onChange(() => view.setClaimed(offer.claimed));
     });
 
-    state.offers.onRemove((_: any, roomId: string) => {
+    state.offers.onRemove((_: OfferStateView, roomId: string) => {
       this.offerPedestals.get(roomId)?.destroy();
       this.offerPedestals.delete(roomId);
     });
 
     // Treasure chests: one per chest room, keyed by room id. `opened` is the only
     // field that ever changes; floor change clears the whole map, firing onRemove.
-    state.chests.onAdd((chest: any, roomId: string) => {
+    state.chests.onAdd((chest: ChestStateView, roomId: string) => {
       const view = new ChestEntity(this, chest.x, chest.y, chest.gold, chest.opened);
       this.chests.set(roomId, view);
       chest.onChange(() => view.setOpened(chest.opened));
     });
 
-    state.chests.onRemove((_: any, roomId: string) => {
+    state.chests.onRemove((_: ChestStateView, roomId: string) => {
       this.chests.get(roomId)?.destroy();
       this.chests.delete(roomId);
     });
@@ -553,19 +461,11 @@ export class GameScene extends Phaser.Scene {
 
     const { x, y } = this.localManager.getCentroid();
 
-    const roomCol = Math.floor(x / (ROOM_W * TILE_SIZE));
-    const roomRow = Math.floor(y / (ROOM_H * TILE_SIZE));
-    const bx = roomCol * ROOM_W * TILE_SIZE;
-    const by = roomRow * ROOM_H * TILE_SIZE;
+    const cell = roomCellAt(x, y);
+    const bx = cell.gx * ROOM_W * TILE_SIZE;
+    const by = cell.gy * ROOM_H * TILE_SIZE;
     this.cameras.main.setBounds(bx, by, ROOM_W * TILE_SIZE, ROOM_H * TILE_SIZE);
     this.cameras.main.centerOn(x, y);
-
-    const hpLines = this.localManager
-      .getAll()
-      .map((lp, i) => `P${i + 1} HP: ${Math.round(lp.hp)}`)
-      .join("   ");
-    this.hpText.setText(hpLines || "Connecting...");
-    this.floorText.setText(this.launch.debug ? `Floor ${this.currentFloor}  ·  DEBUG` : `Floor ${this.currentFloor}`);
 
     // Inventory HUD tracks the first local player; PAUSED overlay follows the
     // server's shared pause flag.
@@ -577,40 +477,19 @@ export class GameScene extends Phaser.Scene {
     // Room ids are "gx,gy" and the camera lock above already resolved the party's
     // room cell, so both the banner and the darkness reuse those numbers rather
     // than recomputing room membership.
-    const roomId = `${roomCol},${roomRow}`;
+    const roomId = cell.id;
     // The objective banner, read straight off the MapSchema — a challenge has no
     // world view to manage, so it needs no onAdd/onRemove bookkeeping the way
     // pedestals do.
     this.challengeBanner.update(this.observerRoom?.state.challenges?.get(roomId));
     // Darkness is decided entirely from the locally generated room type.
     this.darkness.update(this.roomTypes.get(roomId) === "dark", x, y, bx, by);
-    this.pausedText.setVisible(this.observerRoom?.state.paused ?? false);
-    this.updateStoreCard(first);
+    this.hud.update({
+      players: this.localManager.getAll(),
+      floor: this.currentFloor,
+      debug: this.launch.debug != null,
+      paused: this.observerRoom?.state.paused ?? false,
+    });
   }
 
-  // Show the P1 store card whenever P1 is standing on an unpurchased pedestal, or
-  // a short prompt when standing on an unclaimed reward pedestal. The reward's
-  // contents deliberately stay hidden until the picker opens — the card would
-  // spoil the choice, and the pedestal's "?" is the whole tease.
-  private updateStoreCard(first?: LocalPlayer) {
-    if (first?.nearbyOffer) {
-      this.storeCard.setText("A reward waits here\n[F] choose");
-      this.storeCard.setVisible(true);
-      return;
-    }
-    const near = first?.nearbyShopItem;
-    // A shop pedestal holds an unmodified template, so its card reads from the
-    // template. When pedestals start rolling modifiers this becomes a slot view.
-    const template = near ? WEAPON_REGISTRY[near.weaponId as WeaponId] : undefined;
-    if (!near || !template) {
-      this.storeCard.setVisible(false);
-      return;
-    }
-    const weapon = viewFromTemplate(template);
-    const stats = weaponStatLines(weapon).map((s) => `  ${s.label}: ${s.value}`).join("\n");
-    this.storeCard.setText(
-      `${weapon.name}   (${near.cost} HP)\n${stats}\n[F] buy`,
-    );
-    this.storeCard.setVisible(true);
-  }
 }

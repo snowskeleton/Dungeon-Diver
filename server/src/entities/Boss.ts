@@ -124,7 +124,7 @@ export abstract class Boss extends Enemy implements DashCaster, SummonCaster {
     return ENEMY_ATTACK_AFFECTS;
   }
   get facing(): Facing {
-    return this.state.facing as Facing;
+    return this.state.facing;
   }
 
   /** One dash step: advance along (dirX, dirY), reflecting off any wall/arena edge

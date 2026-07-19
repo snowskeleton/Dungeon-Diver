@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { AMMO_REGISTRY, AmmoConfig } from "shared";
+import { AMMO_REGISTRY, AmmoConfig, ProjectileStateView } from "shared";
 import { DebugDrawable, DebugShape, DEBUG_COLORS } from "../debug/DebugDraw";
 
 // Renders a server-authoritative projectile (arrow). Lightweight — no HP bar,
@@ -57,7 +57,8 @@ export class ProjectileEntity implements DebugDrawable {
     this.sprite.setAngle(deg - this.spriteAngle);
   }
 
-  setTarget(x: number, y: number, angleRad: number) {
+  setTarget(state: ProjectileStateView) {
+    const { x, y, angle: angleRad } = state;
     this.targetX = x;
     this.targetY = y;
     this.travelAngle = angleRad;
