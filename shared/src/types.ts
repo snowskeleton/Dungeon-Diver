@@ -38,7 +38,7 @@ export const TILE_PROPS: Record<TileId, TileProps> = {
   [TILE.BOSS_FLOOR]: { walkable: true },
 };
 
-export type RoomType = "combat" | "maze" | "boss" | "shop" | "shrine";
+export type RoomType = "combat" | "maze" | "boss" | "shop" | "shrine" | "chest";
 
 // Server → client messages
 export interface FloorChangeMessage {

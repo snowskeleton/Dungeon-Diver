@@ -40,6 +40,10 @@ export class LocalPlayer extends Entity implements DebugDrawable {
   // The shop pedestal this player is currently standing on (if any) — drives the
   // store stats card and the interact-to-buy action. Must match server BUY_RADIUS.
   nearbyShopItem: { roomId: string; itemIndex: number; weaponId: string; cost: number } | null = null;
+
+  // The unopened chest this player is standing on (if any). Carries only the room
+  // id — a chest's contents are never synced, so there is nothing to preview.
+  nearbyChest: { roomId: string } | null = null;
   private lastInput: InputMessage = { dx: 0, dy: 0, attack: false };
   private facing: Facing = "down";
   private prevAttack = false;
@@ -82,6 +86,7 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     if (!locked) {
       this.updateShopProximity();
       this.updateOfferProximity();
+      this.updateChestProximity();
       this.handleActions();
     }
 
@@ -122,10 +127,12 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     if (a.prevSlot && !this.prevActions.prevSlot) this.room.send("switchWeapon", { delta: -1 });
     if (a.toggleMenu && !this.prevActions.toggleMenu) this.toggleInventoryMenu();
     if (a.interact && !this.prevActions.interact) {
-      // A room is never both a shop and a shrine, so the order here is just a
-      // tiebreak; the reward is the more consequential interaction either way.
+      // A room is only ever one of shop / shrine / chest, so the order here is
+      // just a tiebreak; the reward is the more consequential interaction anyway.
       if (this.nearbyOffer) {
         this.openOfferPicker();
+      } else if (this.nearbyChest) {
+        this.room.send("chestOpen", { roomId: this.nearbyChest.roomId });
       } else if (this.nearbyShopItem) {
         this.room.send("buy", {
           roomId: this.nearbyShopItem.roomId,
@@ -198,6 +205,26 @@ export class LocalPlayer extends Entity implements DebugDrawable {
       }
     });
     this.nearbyOffer = best;
+  }
+
+  // Nearest unopened chest within range. Same radius again, so every in-world
+  // interaction in the game shares one reach.
+  private updateChestProximity() {
+    const chests = (this.room.state as any).chests;
+    if (!chests) { this.nearbyChest = null; return; }
+    let best: LocalPlayer["nearbyChest"] = null;
+    let bestDist = SHOP_BUY_RADIUS * SHOP_BUY_RADIUS;
+    chests.forEach((chest: any, roomId: string) => {
+      if (chest.opened) return;
+      const dx = this.sprite.x - chest.x;
+      const dy = this.sprite.y - chest.y;
+      const d = dx * dx + dy * dy;
+      if (d <= bestDist) {
+        bestDist = d;
+        best = { roomId };
+      }
+    });
+    this.nearbyChest = best;
   }
 
   // Open the reward picker: pause the room (same handshake the inventory menu

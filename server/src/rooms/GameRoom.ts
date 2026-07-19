@@ -5,7 +5,7 @@ import {
   ENEMY_BASE_COUNT, ENEMY_FLOOR_BONUS_INTERVAL, ENEMY_PLAYER_SCALE,
   generateDungeon, DungeonResult, DungeonOptions, FloorChangeMessage,
   ROOM_W, ROOM_H,
-  MAP_SEED, EnemyType, AMMO_REGISTRY, WEAPON_REGISTRY, WeaponInstance,
+  MAP_SEED, EnemyType, AMMO_REGISTRY, WEAPON_REGISTRY, WeaponInstance, WeaponId, RoomType,
   DebugConfig, toDungeonOptions,
   Layer, PLAYER_ATTACK_AFFECTS, ENEMY_ATTACK_AFFECTS,
 } from "shared";
@@ -14,6 +14,7 @@ import { ShopState, ShopItemState } from "../schema/ShopState";
 import { Player, resolveTemplate, slotStateFor } from "../entities/Player";
 import { upgradeById, upgradePool, rollWeaponMod } from "../upgrades";
 import { OfferState, OfferChoiceState } from "../schema/OfferState";
+import { ChestState } from "../schema/ChestState";
 import { Enemy, EnemyClass, SpawnOpts } from "../entities/Enemy";
 import { PendingEffect } from "../entities/Entity";
 import { REGULAR_ENEMIES } from "../entities/enemies";
@@ -29,6 +30,22 @@ const SHOP_ITEM_COUNT = 3;
 const OFFER_CHOICES = 3;
 // How close (px) a player must stand to a pedestal to buy it.
 const BUY_RADIUS = 40;
+// Chance a chest room's chest is the rarer gold one.
+const GOLD_CHEST_CHANCE = 0.15;
+// Modifiers rolled onto the weapon inside a chest. A chest is pure loot — even the
+// common one is enchanted, which is what makes it read differently from a shop's
+// plain stock; gold just rolls a second modifier on top.
+const BROWN_CHEST_MODS = 1;
+const GOLD_CHEST_MODS = 2;
+// Room types that never get rank-and-file enemies: the boss room has its boss, and
+// the rest are reward rooms whose whole point is being safe to walk into. A debug
+// `enemiesPerRoom` override still forces enemies into all of them.
+const NO_RABBLE_ROOM_TYPES: RoomType[] = [
+  "boss",
+  "shop",
+  "shrine",
+  "chest",
+];
 
 export class GameRoom extends Room<GameState> {
   maxClients = MAX_CLIENTS;
@@ -132,6 +149,27 @@ export class GameRoom extends Room<GameState> {
       offer.claimed = true;
     });
 
+    // Open a chest. Same shape as offerPick minus the choice — `opened` is the
+    // whole concurrency story, so a racing or duplicated message is a no-op rather
+    // than a second weapon. Proximity is re-validated here; the client's prompt is
+    // only a hint. No ownsUnmodified guard like the shop has: a chest weapon always
+    // carries rolled modifiers, so a second copy is a genuinely different weapon.
+    this.onMessage("chestOpen", (client, msg: { roomId: string }) => {
+      const player = this.players.get(client.sessionId);
+      const chest = this.state.chests.get(msg?.roomId);
+      if (!player || !chest || chest.opened || !chest.weaponId) return;
+      const dx = player.state.x - chest.x;
+      const dy = player.state.y - chest.y;
+      if (dx * dx + dy * dy > BUY_RADIUS * BUY_RADIUS) return;
+
+      const template = resolveTemplate(chest.weaponId);
+      if (!template) return;
+      // The mods rolled at floor generation are handed over as-is, so the weapon
+      // granted is the one the chest has been holding all along.
+      player.addWeapon(template, chest.mods);
+      chest.opened = true;
+    });
+
     // Inventory/stats menu pause. Handlers still run while paused, so the menu
     // can be closed and weapons switched; only tick() simulation is frozen.
     this.onMessage("setPause", (client, msg: { paused: boolean }) => {
@@ -162,6 +200,32 @@ export class GameRoom extends Room<GameState> {
 
     this.spawnShops();
     this.spawnShrineOffers();
+    this.spawnChests();
+  }
+
+  // One chest at the center of every chest room. Like a shrine the room spawns no
+  // enemies and is pre-cleared by finalizeEmptyRooms, so the chest is reachable the
+  // moment the player walks in — the room IS the reward.
+  private spawnChests() {
+    this.state.chests.clear();
+    for (const room of this.currentDungeon.rooms) {
+      if (room.type !== "chest") continue;
+      const col = this.freeShopCol(room.centerCol, room.centerRow);
+      const chest = new ChestState();
+      chest.roomId = room.id;
+      chest.x = col * TILE_SIZE + TILE_SIZE / 2;
+      chest.y = room.centerRow * TILE_SIZE + TILE_SIZE / 2;
+      chest.gold = Math.random() < GOLD_CHEST_CHANCE;
+
+      // Roll the contents now, at floor generation, rather than on open. The
+      // weapon a chest holds is fixed the moment the floor exists, so opening it
+      // can't be re-rolled by walking away and coming back.
+      chest.weaponId = this.rollShopWeapons(1)[0] as WeaponId;
+      const modCount = chest.gold ? GOLD_CHEST_MODS : BROWN_CHEST_MODS;
+      for (let i = 0; i < modCount; i++) chest.mods.push(rollWeaponMod(this.state.floor));
+
+      this.state.chests.set(room.id, chest);
+    }
   }
 
   // Populate each shop room with weapon pedestals (shared team pool). Rebuilt
@@ -329,7 +393,7 @@ export class GameRoom extends Room<GameState> {
     this.spawnBoss();
     if (count <= 0) return;
     // An explicit debug count means "put enemies here", even in rooms that normally
-    // stay empty (boss/shop/shrine).
+    // stay empty (see NO_RABBLE_ROOM_TYPES).
     const everyRoom = this.debug != null && this.debug.enemiesPerRoom >= 0;
     // Players spawn in the start room, so it stays clear — no getting jumped on
     // load. The lone exception is a one-room debug floor (start === exit), where
@@ -348,7 +412,7 @@ export class GameRoom extends Room<GameState> {
     for (const room of this.currentDungeon.rooms) {
       if (room.id === startId && !singleRoom) continue;
       if (isShowcase && !everyRoom && room.id === exitId) continue;
-      if (!everyRoom && (room.type === "boss" || room.type === "shop" || room.type === "shrine")) continue;
+      if (!everyRoom && NO_RABBLE_ROOM_TYPES.includes(room.type)) continue;
       for (let i = 0; i < count; i++) {
         // Round-robin walks the listed creatures in order, wrapping to the start
         // when the quota outruns the list; with no list it's a random draw.

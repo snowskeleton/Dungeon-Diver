@@ -4,6 +4,7 @@ import { EnemyState } from "./EnemyState";
 import { ProjectileState } from "./ProjectileState";
 import { ShopState } from "./ShopState";
 import { OfferState } from "./OfferState";
+import { ChestState } from "./ChestState";
 
 export class GameState extends Schema {
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
@@ -14,6 +15,8 @@ export class GameState extends Schema {
   // Reward pedestals keyed by room id — one per shrine room, plus one dropped in
   // the boss room when the boss dies.
   @type({ map: OfferState }) offers = new MapSchema<OfferState>();
+  // Treasure chests keyed by room id — one per chest room, rebuilt per floor.
+  @type({ map: ChestState }) chests = new MapSchema<ChestState>();
   @type("uint8") floor: number = 1;
   // Current dungeon seed — synced so late joiners can build the right map
   // (the floor_change broadcast only reaches clients already connected).

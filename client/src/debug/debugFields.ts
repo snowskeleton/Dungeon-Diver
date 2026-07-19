@@ -10,7 +10,7 @@ import { FieldSpec, Preset } from "../ui/FieldPanel";
 // Nothing else needs to change — the panel renders itself from this list.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const ROOM_TYPES: RoomType[] = ["combat", "maze", "boss", "shop", "shrine"];
+const ROOM_TYPES: RoomType[] = ["combat", "maze", "boss", "shop", "shrine", "chest"];
 
 const ROOM_TYPE_CHOICES = [
   { value: "random", label: "Random (normal)" },
@@ -90,6 +90,13 @@ export const DEBUG_PRESETS: Preset<DebugConfig>[] = [
     values: {
       ...DEFAULT_DEBUG_CONFIG, enabled: true, gridCols: 1, gridRows: 1,
       roomType: "shop", enemiesPerRoom: 0,
+    },
+  },
+  {
+    label: "Chest showcase",
+    values: {
+      ...DEFAULT_DEBUG_CONFIG, enabled: true, gridCols: 1, gridRows: 1,
+      roomType: "chest", enemiesPerRoom: 0,
     },
   },
   {

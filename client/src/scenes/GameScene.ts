@@ -18,6 +18,7 @@ import { HitboxDebug } from "../debug/HitboxDebug";
 import { InventoryHud } from "../ui/InventoryHud";
 import { ShopItemEntity } from "../entities/ShopItemEntity";
 import { OfferPedestalEntity } from "../entities/OfferPedestalEntity";
+import { ChestEntity, preloadChest, defineChestAnimations } from "../entities/ChestEntity";
 import { weaponStatLines, viewFromTemplate } from "../ui/weaponStats";
 import { LaunchConfig, Loadout, defaultLoadout, pickLoadout } from "../launch";
 import { loadOptions } from "../options/gameOptions";
@@ -47,6 +48,7 @@ export class GameScene extends Phaser.Scene {
   private storeCard!: Phaser.GameObjects.Text;
   private shopItems = new Map<string, ShopItemEntity>();
   private offerPedestals = new Map<string, OfferPedestalEntity>();
+  private chests = new Map<string, ChestEntity>();
   private hitboxDebug!: HitboxDebug;
   private ready = false;
 
@@ -83,6 +85,7 @@ export class GameScene extends Phaser.Scene {
     this.projectiles.clear();
     this.shopItems.clear();
     this.offerPedestals.clear();
+    this.chests.clear();
     this.localSessionIds.clear();
     this.barrierParentOverlays.clear();
     this.barrierChildOverlays.clear();
@@ -93,6 +96,7 @@ export class GameScene extends Phaser.Scene {
   preload() {
     preloadTiles(this);
     preloadAttackFX(this);
+    preloadChest(this);
 
     // Preload each unique character spritesheet once
     const seenTextures = new Set<string>();
@@ -130,6 +134,7 @@ export class GameScene extends Phaser.Scene {
 
   async create() {
     defineAttackFXAnimations(this);
+    defineChestAnimations(this);
 
     // Define animations for each unique character spritesheet once
     const seenTextures = new Set<string>();
@@ -489,6 +494,19 @@ export class GameScene extends Phaser.Scene {
     state.offers.onRemove((_: any, roomId: string) => {
       this.offerPedestals.get(roomId)?.destroy();
       this.offerPedestals.delete(roomId);
+    });
+
+    // Treasure chests: one per chest room, keyed by room id. `opened` is the only
+    // field that ever changes; floor change clears the whole map, firing onRemove.
+    state.chests.onAdd((chest: any, roomId: string) => {
+      const view = new ChestEntity(this, chest.x, chest.y, chest.gold, chest.opened);
+      this.chests.set(roomId, view);
+      chest.onChange(() => view.setOpened(chest.opened));
+    });
+
+    state.chests.onRemove((_: any, roomId: string) => {
+      this.chests.get(roomId)?.destroy();
+      this.chests.delete(roomId);
     });
   }
 

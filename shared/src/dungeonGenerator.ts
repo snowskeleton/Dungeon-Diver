@@ -11,7 +11,7 @@ export const ROOM_H = 16;
 const DEFAULT_NEIGHBOR_CHANCE = 60;
 const DEFAULT_MIN_ROOMS = 4;
 // Room types that place objects on their floor tiles — never put the stairs there.
-const STAIRS_AVOID_TYPES: RoomType[] = ["shop", "shrine"];
+const STAIRS_AVOID_TYPES: RoomType[] = ["shop", "shrine", "chest"];
 
 export const DUNGEON_COLS = DEFAULT_GRID_COLS * ROOM_W;
 export const DUNGEON_ROWS = DEFAULT_GRID_ROWS * ROOM_H;
@@ -50,10 +50,11 @@ export interface DungeonOptions {
 
 // Room type spawn weights for non-boss rooms
 const ROOM_TYPE_WEIGHTS: { type: RoomType; cumulative: number }[] = [
-  { type: "combat", cumulative: 58 },
-  { type: "maze",   cumulative: 75 },
-  { type: "shop",   cumulative: 92 },
-  { type: "shrine", cumulative: 100 },
+  { type: "combat", cumulative: 55 },
+  { type: "maze",   cumulative: 71 },
+  { type: "shop",   cumulative: 86 },
+  { type: "shrine", cumulative: 93 },
+  { type: "chest",  cumulative: 100 },
 ];
 
 export type { RoomType };
@@ -208,7 +209,7 @@ function carveMazeInRoom(
 }
 
 // Open room: fully carved interior with optional scattered cover blocks.
-// Used for combat, boss, shop, and shrine rooms.
+// Used for combat, boss, shop, shrine, and chest rooms.
 function carveOpenRoom(
   gx: number, gy: number,
   mapData: TileId[][],
