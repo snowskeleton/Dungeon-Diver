@@ -16,6 +16,10 @@ import { Player, resolveTemplate, slotStateFor } from "../entities/Player";
 import { upgradeById, upgradePool, rollWeaponMod } from "../upgrades";
 import { OfferState, OfferChoiceState } from "../schema/OfferState";
 import { ChestState } from "../schema/ChestState";
+import { RoomChallengeState } from "../schema/RoomChallengeState";
+import { RoomChallenge, ChallengeContext } from "./challenges/RoomChallenge";
+import { WaveChallenge } from "./challenges/WaveChallenge";
+import { TimedClearChallenge } from "./challenges/TimedClearChallenge";
 import { Enemy, EnemyClass, SpawnOpts } from "../entities/Enemy";
 import { PendingEffect } from "../entities/Entity";
 import { REGULAR_ENEMIES } from "../entities/enemies";
@@ -61,6 +65,8 @@ export class GameRoom extends Room<GameState> {
   private tickInterval!: ReturnType<typeof setInterval>;
   private physics!: PhysicsWorld;
   private floorManager!: FloorManager;
+  // Active room objectives keyed by room id, mirrored to state.challenges.
+  private challenges = new Map<string, RoomChallenge>();
   private currentDungeon!: DungeonResult;
   private currentSeed = MAP_SEED;
   private stairsActive = false;
@@ -202,6 +208,102 @@ export class GameRoom extends Room<GameState> {
     this.spawnShops();
     this.spawnShrineOffers();
     this.spawnChests();
+    this.initChallenges();
+  }
+
+  // Build this floor's room objectives. Rooms whose type carries no challenge get
+  // no entry — the map's emptiness is what "an ordinary room" means, so the tick
+  // hooks below cost nothing on a normal floor.
+  private initChallenges() {
+    this.challenges.clear();
+    this.state.challenges.clear();
+    for (const room of this.currentDungeon.rooms) {
+      const challenge = this.challengeFor(room.type);
+      if (!challenge) continue;
+      this.challenges.set(room.id, challenge);
+      const st = new RoomChallengeState();
+      st.roomId = room.id;
+      this.state.challenges.set(room.id, st);
+      this.syncChallenge(room.id);
+    }
+  }
+
+  /** One exhaustive switch, not a lookup table — a new RoomType that needs a
+   *  challenge is a compile error here rather than a silently ordinary room. */
+  private challengeFor(type: RoomType): RoomChallenge | null {
+    switch (type) {
+      case "wave":
+        return new WaveChallenge();
+      case "timed":
+        return new TimedClearChallenge();
+      // A dark room is an ordinary fight the client renders differently — the
+      // whole variant is a vision overlay, so there is nothing to run here.
+      case "dark":
+      case "combat":
+      case "maze":
+      case "boss":
+      case "shop":
+      case "shrine":
+      case "chest":
+        return null;
+    }
+  }
+
+  private syncChallenge(roomId: string) {
+    const challenge = this.challenges.get(roomId);
+    const st = this.state.challenges.get(roomId);
+    if (!challenge || !st) return;
+    // Guarded assignment: a countdown recomputes its line every tick but only
+    // changes it once a second, and an unguarded write would mark the field dirty
+    // 20×/sec for every timed room on the floor.
+    const text = challenge.bannerText;
+    if (st.text !== text) st.text = text;
+    if (st.complete !== challenge.isComplete) st.complete = challenge.isComplete;
+  }
+
+  private challengeContext(roomId: string): ChallengeContext {
+    return {
+      roomId,
+      livingEnemyCount: (rid) => this.livingEnemyCount(rid),
+      spawnEnemyInRoom: (rid, cls) => this.spawnEnemyInRoom(rid, cls),
+      enemyPool: () => this.enemyPool(),
+      enemiesPerRoom: () => this.enemiesPerRoom(),
+      dropReward: (rid) => this.dropChallengeReward(rid),
+      playersInRoom: (rid) => this.playersInRoom(rid),
+    };
+  }
+
+  /** A reward pedestal at the room's centre, for a challenge the party beat.
+   *  Rolled at the "shrine" tier — a boon for a room well fought, not boss loot.
+   *  The `has` guard means a challenge cannot grant twice. */
+  private dropChallengeReward(roomId: string): void {
+    if (this.state.offers.has(roomId)) return;
+    const room = this.currentDungeon.rooms.find((r) => r.id === roomId);
+    if (!room) return;
+    const col = this.freeShopCol(room.centerCol, room.centerRow);
+    this.state.offers.set(roomId, this.rollOffer(
+      roomId,
+      col * TILE_SIZE + TILE_SIZE / 2,
+      room.centerRow * TILE_SIZE + TILE_SIZE / 2,
+      "shrine",
+    ));
+  }
+
+  private playersInRoom(roomId: string): boolean {
+    for (const player of this.players.values()) {
+      if (player.state.health <= 0) continue;
+      if (this.floorManager.roomAt(player.state.x, player.state.y)?.id === roomId) return true;
+    }
+    return false;
+  }
+
+  /** Enemies homed to `roomId` that aren't already dying. */
+  private livingEnemyCount(roomId: string): number {
+    let n = 0;
+    this.enemies.forEach((enemy, id) => {
+      if (!enemy.isDying && this.floorManager.getEnemyRoom(id) === roomId) n++;
+    });
+    return n;
   }
 
   // One chest at the center of every chest room. Like a shrine the room spawns no
@@ -707,22 +809,54 @@ export class GameRoom extends Room<GameState> {
     });
 
     // 4. Check room clears after combat. Enemies stay dead — no respawn.
+    //    Collected first rather than handled inside the forEach: a room challenge
+    //    may spawn enemies below, which would mutate the map mid-iteration (the
+    //    same reason summons are deferred in step 3).
+    const newlyDown: string[] = [];
     this.enemies.forEach((enemy, id) => {
       if (enemy.isDying && !enemy.clearCheckDone) {
         enemy.clearCheckDone = true;
-        // A boss drops its reward where it fell. clearCheckDone gates this to the
-        // single death tick, so it can't be farmed by a lingering corpse.
-        if (enemy instanceof Boss) this.dropBossOffer(enemy.state.x, enemy.state.y);
-        const { parentUnlocked, childUnlocked } = this.floorManager.onEnemyMaybeCleared(
-          id, (eid) => this.enemies.get(eid)?.isDying ?? true,
-        );
-        if (parentUnlocked.length > 0) {
-          this.broadcast("connections_parent_unlocked", { connectionIds: parentUnlocked });
-        }
-        if (childUnlocked.length > 0) {
-          this.broadcast("connections_child_unlocked", { connectionIds: childUnlocked });
+        newlyDown.push(id);
+      }
+    });
+    for (const id of newlyDown) {
+      const enemy = this.enemies.get(id);
+      // A boss drops its reward where it fell. clearCheckDone gates this to the
+      // single death tick, so it can't be farmed by a lingering corpse.
+      if (enemy instanceof Boss) this.dropBossOffer(enemy.state.x, enemy.state.y);
+
+      // The room's challenge gets first refusal, BEFORE the clear check — that
+      // ordering is the whole mechanism. A wave room answers the last kill of a
+      // wave by putting the next wave in the room, so FloorManager's "everything
+      // here is dying" test fails on its own and the door stays shut. Move this
+      // after the check and the room opens for a frame on every wave break.
+      const roomId = this.floorManager.getEnemyRoom(id);
+      if (roomId) {
+        const challenge = this.challenges.get(roomId);
+        if (challenge) {
+          challenge.onEnemyDown(this.challengeContext(roomId));
+          this.syncChallenge(roomId);
         }
       }
+
+      const { parentUnlocked, childUnlocked } = this.floorManager.onEnemyMaybeCleared(
+        id, (eid) => this.enemies.get(eid)?.isDying ?? true,
+      );
+      if (parentUnlocked.length > 0) {
+        this.broadcast("connections_parent_unlocked", { connectionIds: parentUnlocked });
+      }
+      if (childUnlocked.length > 0) {
+        this.broadcast("connections_child_unlocked", { connectionIds: childUnlocked });
+      }
+    }
+
+    // 4a. Time-based challenges. Unused by waves, which are driven entirely by
+    //     kills, but every challenge gets the tick so a timed one needs no new
+    //     plumbing here.
+    this.challenges.forEach((challenge, roomId) => {
+      if (challenge.isComplete) return;
+      challenge.tick(dtMs, this.challengeContext(roomId));
+      this.syncChallenge(roomId);
     });
 
     // 4b. Detect players entering child rooms for the first time → lock the entry barrier.

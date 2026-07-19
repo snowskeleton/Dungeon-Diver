@@ -48,7 +48,16 @@ export const TILE_PROPS: Record<TileId, TileProps> = {
 export const TRAP_MIN_FLOORS = 1;
 export const TRAP_MAX_FLOORS = 3;
 
-export type RoomType = "combat" | "maze" | "boss" | "shop" | "shrine" | "chest";
+export type RoomType =
+  | "combat"
+  | "maze"
+  | "boss"
+  | "shop"
+  | "shrine"
+  | "chest"
+  | "wave"
+  | "timed"
+  | "dark";
 
 // Server → client messages
 export interface FloorChangeMessage {

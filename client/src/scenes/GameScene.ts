@@ -3,7 +3,9 @@ import { Room } from "colyseus.js";
 import {
   TILE_SIZE, ROOM_W, ROOM_H, generateDungeon, MAP_SEED, FloorChangeMessage,
   WEAPON_REGISTRY, WeaponId, AMMO_REGISTRY, DungeonOptions, toDungeonOptions,
+  RoomType,
 } from "shared";
+import { DarknessOverlay } from "../map/DarknessOverlay";
 import { preloadTiles, buildMap } from "../map/TileRenderer";
 import { LocalPlayerManager } from "../input/LocalPlayerManager";
 import { LocalPlayer } from "../entities/LocalPlayer";
@@ -16,6 +18,7 @@ import { preloadBowSheet, defineBowAnimation } from "../entities/RangedWeaponFX"
 import { CLIENT_ENEMY_REGISTRY } from "../enemies";
 import { HitboxDebug } from "../debug/HitboxDebug";
 import { InventoryHud } from "../ui/InventoryHud";
+import { ChallengeBanner } from "../ui/ChallengeBanner";
 import { ShopItemEntity } from "../entities/ShopItemEntity";
 import { OfferPedestalEntity } from "../entities/OfferPedestalEntity";
 import { ChestEntity, preloadChest, defineChestAnimations } from "../entities/ChestEntity";
@@ -44,6 +47,9 @@ export class GameScene extends Phaser.Scene {
   private hpText!: Phaser.GameObjects.Text;
   private floorText!: Phaser.GameObjects.Text;
   private inventoryHud!: InventoryHud;
+  private challengeBanner!: ChallengeBanner;
+  private darkness!: DarknessOverlay;
+  private roomTypes: Map<string, RoomType> = new Map();
   private pausedText!: Phaser.GameObjects.Text;
   private storeCard!: Phaser.GameObjects.Text;
   private shopItems = new Map<string, ShopItemEntity>();
@@ -255,6 +261,8 @@ export class GameScene extends Phaser.Scene {
       .setPadding(6, 4);
 
     this.inventoryHud = new InventoryHud(this, 56);
+    this.challengeBanner = new ChallengeBanner(this, 400, 96);
+    this.darkness = new DarknessOverlay(this);
 
     this.pausedText = this.add
       .text(400, 288, "PAUSED", {
@@ -305,6 +313,10 @@ export class GameScene extends Phaser.Scene {
     this.mapCols = dungeon.cols;
     this.mapRows = dungeon.rows;
     this.currentSeed = seed;
+    // Room types are known locally — the client generates the same dungeon the
+    // server did. That's what lets a dark room be a pure client-side visual with
+    // no schema field behind it.
+    this.roomTypes = dungeon.roomTypes;
 
     this.currentMapGroup = buildMap(this, dungeon.mapData as any, dungeon.rows, dungeon.cols);
     for (const conn of dungeon.connections) {
@@ -546,6 +558,16 @@ export class GameScene extends Phaser.Scene {
     if (firstState) {
       this.inventoryHud.update(Array.from(firstState.weapons), firstState.activeWeaponIndex);
     }
+    // Room ids are "gx,gy" and the camera lock above already resolved the party's
+    // room cell, so both the banner and the darkness reuse those numbers rather
+    // than recomputing room membership.
+    const roomId = `${roomCol},${roomRow}`;
+    // The objective banner, read straight off the MapSchema — a challenge has no
+    // world view to manage, so it needs no onAdd/onRemove bookkeeping the way
+    // pedestals do.
+    this.challengeBanner.update(this.observerRoom?.state.challenges?.get(roomId));
+    // Darkness is decided entirely from the locally generated room type.
+    this.darkness.update(this.roomTypes.get(roomId) === "dark", x, y, bx, by);
     this.pausedText.setVisible(this.observerRoom?.state.paused ?? false);
     this.updateStoreCard(first);
   }

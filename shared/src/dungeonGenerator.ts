@@ -65,7 +65,10 @@ export interface DungeonOptions {
 
 // Room type spawn weights for non-boss rooms
 const ROOM_TYPE_WEIGHTS: { type: RoomType; cumulative: number }[] = [
-  { type: "combat", cumulative: 55 },
+  { type: "combat", cumulative: 37 },
+  { type: "timed",  cumulative: 43 },
+  { type: "dark",   cumulative: 47 },
+  { type: "wave",   cumulative: 55 },
   { type: "maze",   cumulative: 71 },
   { type: "shop",   cumulative: 86 },
   { type: "shrine", cumulative: 93 },
@@ -494,7 +497,12 @@ export function generateDungeon(seed: number, opts: DungeonOptions = {}): Dungeo
       if (type === "maze") {
         carveMazeInRoom(gx, gy, mapData, carve, rng);
       } else {
-        carveOpenRoom(gx, gy, mapData, carve, rng, type === "combat");
+        // Cover blocks are for rooms you fight in — a wave room is a combat room
+        // that arrives in installments and a timed room is one on a clock, so both
+        // get the same terrain to use. A dark room pointedly does NOT: you can't
+        // see the cover, so it would only be something to get stuck on.
+        const withCover = type === "combat" || type === "wave" || type === "timed";
+        carveOpenRoom(gx, gy, mapData, carve, rng, withCover);
       }
     }
   }

@@ -10,7 +10,17 @@ import { FieldSpec, Preset } from "../ui/FieldPanel";
 // Nothing else needs to change — the panel renders itself from this list.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const ROOM_TYPES: RoomType[] = ["combat", "maze", "boss", "shop", "shrine", "chest"];
+const ROOM_TYPES: RoomType[] = [
+  "combat",
+  "maze",
+  "boss",
+  "shop",
+  "shrine",
+  "chest",
+  "wave",
+  "timed",
+  "dark",
+];
 
 const ROOM_TYPE_CHOICES = [
   { value: "random", label: "Random (normal)" },

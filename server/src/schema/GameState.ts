@@ -5,6 +5,7 @@ import { ProjectileState } from "./ProjectileState";
 import { ShopState } from "./ShopState";
 import { OfferState } from "./OfferState";
 import { ChestState } from "./ChestState";
+import { RoomChallengeState } from "./RoomChallengeState";
 
 export class GameState extends Schema {
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
@@ -17,6 +18,9 @@ export class GameState extends Schema {
   @type({ map: OfferState }) offers = new MapSchema<OfferState>();
   // Treasure chests keyed by room id — one per chest room, rebuilt per floor.
   @type({ map: ChestState }) chests = new MapSchema<ChestState>();
+  // Active room objectives keyed by room id — one per room whose type carries a
+  // RoomChallenge, rebuilt per floor.
+  @type({ map: RoomChallengeState }) challenges = new MapSchema<RoomChallengeState>();
   @type("uint8") floor: number = 1;
   // Current dungeon seed — synced so late joiners can build the right map
   // (the floor_change broadcast only reaches clients already connected).
