@@ -477,7 +477,7 @@
     <div class="doc-title">game-2 Roadmap</div>
     <div class="doc-subtitle">
       Roguelike · Co-op 1–4 · Top-down dungeon crawl · Public release target<br>
-      Updated July 2026 — Floors 0–3 done (upgrades, per-instance weapons, reward pedestals); Room Variety is next up
+      Updated July 2026 — Floors 0–4 done (upgrades, per-instance weapons, reward pedestals, chest rooms, trap tiles); Content Pass is next up. Puzzle rooms deferred out of Floor 4
     </div>
   </header>
 
@@ -807,19 +807,19 @@
         </div>
       </details>
 
-      <details class="phase-card next">
+      <details class="phase-card done">
         <summary>
           <span class="floor-num">FLOOR 4</span>
           <span class="phase-name">Room Variety</span>
-          <span class="phase-badge badge-next">Up Next</span>
+          <span class="phase-badge badge-done">Done</span>
           <span class="phase-chevron">&#9654;</span>
         </summary>
         <div class="phase-body">
-          <div class="phase-milestone"><strong>Milestone:</strong> Two rooms in a row that feel completely different.</div>
+          <div class="phase-milestone"><strong>Milestone:</strong> Two rooms in a row that feel completely different. <em>Met</em> &mdash; a floor now mixes combat, maze, shop, shrine and chest rooms, with traps as a cross-cutting hazard. Called done on chests + traps; puzzle rooms deferred rather than rushed.</div>
           <ul class="task-list">
             <li><span class="tm done">&#10003;</span> Chest rooms: 7% spawn weight, no combat. One chest at room center; interact for a guaranteed weapon &mdash; no choice, no cost, contents never previewed. Brown rolls 1 modifier, the 15%-rare gold rolls 2</li>
             <li><span class="tm done">&#10003;</span> Trap tiles: 1% roll per eligible room (never boss/shop/shrine/chest, never the start room); warps the whole party 1&ndash;3 floors forward. Rendered as a violet tile in plain sight, kept off doorways and room centers, so it's always avoidable</li>
-            <li><span class="tm">—</span> Puzzle rooms: tabled — lever/switch objects trigger environmental changes (fire, wall tiles, doors); design needs dedicated scope</li>
+            <li><span class="tm">&mdash;</span> Puzzle rooms: <strong>deferred out of Floor 4</strong> &mdash; lever/switch objects trigger environmental changes (fire, wall tiles, doors). Needs a dedicated design pass before any code: what a switch targets, how state syncs, and whether a puzzle can ever softlock a room. Picked up in a later phase, not blocking</li>
           </ul>
           <div class="phase-art-note">
             <strong>Already landed:</strong> the OO boss framework (aim-lock, movement behaviors) + three full movesets — Turtle Dragon (rock projectiles, Tremor Slam, Shell Spin), Wyvern (flying, diving swoop), Tengu Mask (three abilities). Shop &amp; Healing Shrine rooms also exist. Chest art is imported (6-frame open animation, brown + gold). <strong>Art still needed:</strong> the trap tile is a flat violet placeholder, consistent with the other five flat-color tiles (only FLOOR has real art) &mdash; the whole tileset wants one art pass together.
@@ -827,11 +827,11 @@
         </div>
       </details>
 
-      <details class="phase-card later">
+      <details class="phase-card next">
         <summary>
           <span class="floor-num">FLOOR 5</span>
           <span class="phase-name">Content Pass</span>
-          <span class="phase-badge badge-later">Later</span>
+          <span class="phase-badge badge-next">Up Next</span>
           <span class="phase-chevron">&#9654;</span>
         </summary>
         <div class="phase-body">
