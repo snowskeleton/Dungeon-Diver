@@ -1,6 +1,16 @@
 import { RoomData, ConnectionData, roomInteriorContains } from "shared";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
 
+/** Which of a connection's two barriers: the one out of the parent room, or the
+ *  one back out of the child room. */
+type BarrierSide = "parent" | "child";
+
+/** The physics body id for one barrier. The only place the "bp_"/"bc_" prefixes
+ *  are spelled — they were previously inlined at nine call sites. */
+function barrierBodyId(connId: string, side: BarrierSide): string {
+  return `${side === "parent" ? "bp" : "bc"}_${connId}`;
+}
+
 export class FloorManager {
   private rooms: RoomData[];
   private connections: ConnectionData[];
@@ -11,8 +21,10 @@ export class FloorManager {
   private clearedRooms = new Set<string>();
   // Tracks which child rooms players have already entered (barrierChild locked)
   private enteredChildRooms = new Set<string>();
-  private barrierParentActive = new Map<string, boolean>();
-  private barrierChildActive = new Map<string, boolean>();
+  /** Which of a connection's two barriers are currently standing. One entry per
+   *  connection, replacing the two parallel active-maps; raise()/drop() below own
+   *  both this bookkeeping and the physics-id naming. */
+  private barriers = new Map<string, { parent: boolean; child: boolean }>();
 
   constructor(rooms: RoomData[], connections: ConnectionData[], physics: PhysicsWorld) {
     this.rooms = rooms;
@@ -21,13 +33,39 @@ export class FloorManager {
 
     for (const room of rooms) this.roomEnemyIds.set(room.id, new Set());
 
-    // Start with barrierParent active on all connections: player must clear each room to advance.
+    // Start with barrierParent standing on all connections: player must clear each room to advance.
     for (const conn of connections) {
-      this.barrierParentActive.set(conn.id, true);
-      this.barrierChildActive.set(conn.id, false);
-      const bp = conn.barrierParent;
-      physics.addBarrier(`bp_${conn.id}`, bp.cx, bp.cy, bp.w, bp.h);
+      this.barriers.set(conn.id, { parent: false, child: false });
+      this.raise(conn, "parent");
     }
+  }
+
+  /**
+   * Put up one of a connection's barriers. Returns false if it was already
+   * standing, so callers can use it as "did this change anything".
+   *
+   * `parent` blocks advancing OUT of the parent room (dropped when that room is
+   * cleared); `child` blocks retreating back out of the child room (raised on
+   * entry). The "bp_"/"bc_" physics-id prefixes exist only in here.
+   */
+  private raise(conn: ConnectionData, side: BarrierSide): boolean {
+    const state = this.barriers.get(conn.id);
+    if (!state || state[side]) return false;
+    const rect = side === "parent" ? conn.barrierParent : conn.barrierChild;
+    this.physics.addBarrier(barrierBodyId(conn.id, side), rect.cx, rect.cy, rect.w, rect.h);
+    state[side] = true;
+    return true;
+  }
+
+  /** Take one of a connection's barriers down. Returns false if it wasn't
+   *  standing, which is what lets every caller below read as a plain loop of
+   *  "drop it, and if that did something, report the id". */
+  private drop(conn: ConnectionData, side: BarrierSide): boolean {
+    const state = this.barriers.get(conn.id);
+    if (!state || !state[side]) return false;
+    this.physics.removeBarrier(barrierBodyId(conn.id, side));
+    state[side] = false;
+    return true;
   }
 
   assignEnemy(enemyId: string, x: number, y: number): void {
@@ -47,9 +85,7 @@ export class FloorManager {
       if (!ids || ids.size > 0) continue;
       this.clearedRooms.add(room.id);
       for (const conn of this.connections) {
-        if (conn.parentRoomId === room.id && this.barrierParentActive.get(conn.id)) {
-          this.physics.removeBarrier(`bp_${conn.id}`);
-          this.barrierParentActive.set(conn.id, false);
+        if (conn.parentRoomId === room.id && this.drop(conn, "parent")) {
           parentUnlocked.push(conn.id);
         }
       }
@@ -71,11 +107,8 @@ export class FloorManager {
 
     const activated: string[] = [];
     for (const conn of this.connections) {
-      if (conn.childRoomId === room.id && !this.barrierChildActive.get(conn.id)) {
+      if (conn.childRoomId === room.id && this.raise(conn, "child")) {
         this.enteredChildRooms.add(room.id);
-        this.barrierChildActive.set(conn.id, true);
-        const bc = conn.barrierChild;
-        this.physics.addBarrier(`bc_${conn.id}`, bc.cx, bc.cy, bc.w, bc.h);
         activated.push(conn.id);
         break; // A room has exactly one parent connection
       }
@@ -101,18 +134,14 @@ export class FloorManager {
 
     // Remove barrierParent for connections FROM this room → player can advance to child rooms.
     for (const conn of this.connections) {
-      if (conn.parentRoomId === roomId && this.barrierParentActive.get(conn.id)) {
-        this.physics.removeBarrier(`bp_${conn.id}`);
-        this.barrierParentActive.set(conn.id, false);
+      if (conn.parentRoomId === roomId && this.drop(conn, "parent")) {
         parentUnlocked.push(conn.id);
       }
     }
 
     // Remove barrierChild for connections INTO this room → player can retreat to parent room.
     for (const conn of this.connections) {
-      if (conn.childRoomId === roomId && this.barrierChildActive.get(conn.id)) {
-        this.physics.removeBarrier(`bc_${conn.id}`);
-        this.barrierChildActive.set(conn.id, false);
+      if (conn.childRoomId === roomId && this.drop(conn, "child")) {
         childUnlocked.push(conn.id);
       }
     }
@@ -131,9 +160,7 @@ export class FloorManager {
       const occupied = playerPositions.some(p => this.roomAt(p.x, p.y)?.id === roomId);
       if (occupied) continue;
       for (const conn of this.connections) {
-        if (conn.childRoomId === roomId && this.barrierChildActive.get(conn.id)) {
-          this.physics.removeBarrier(`bc_${conn.id}`);
-          this.barrierChildActive.set(conn.id, false);
+        if (conn.childRoomId === roomId && this.drop(conn, "child")) {
           childUnlocked.push(conn.id);
         }
       }
@@ -177,11 +204,9 @@ export class FloorManager {
   }
 
   dispose(): void {
-    for (const [connId, active] of this.barrierParentActive) {
-      if (active) this.physics.removeBarrier(`bp_${connId}`);
-    }
-    for (const [connId, active] of this.barrierChildActive) {
-      if (active) this.physics.removeBarrier(`bc_${connId}`);
+    for (const conn of this.connections) {
+      this.drop(conn, "parent");
+      this.drop(conn, "child");
     }
   }
 }
