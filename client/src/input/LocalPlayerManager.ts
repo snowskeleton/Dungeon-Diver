@@ -4,11 +4,23 @@ import { CharacterClass, CharacterType, DebugConfig, WeaponId } from "shared";
 import { LocalPlayer } from "../entities/LocalPlayer";
 import { KeyboardInputSource, GamepadInputSource } from "./InputSource";
 
-// The Colyseus server port defaults to 2567 (matches the server's own PORT
-// default). Override both with VITE_SERVER_PORT (client) + PORT (server) to run an
-// isolated instance alongside another dev server without a port clash.
-const SERVER_PORT = import.meta.env.VITE_SERVER_PORT ?? "2567";
-const SERVER_URL = `ws://${window.location.hostname}:${SERVER_PORT}`;
+// Where the client dials the Colyseus server.
+//   1. VITE_SERVER_URL, if set, wins outright (a full ws:// or wss:// endpoint).
+//   2. Served over HTTPS (production): the server process serves this very page AND
+//      Colyseus on one origin, so connect same-origin — `wss://<host>`. A reverse
+//      proxy in front just forwards everything; no port, path, or CORS story.
+//   3. Plain HTTP (local dev): talk straight to the Colyseus port. Override the
+//      port with VITE_SERVER_PORT to run an isolated instance without a clash.
+function resolveServerUrl(): string {
+  const explicit = import.meta.env.VITE_SERVER_URL;
+  if (explicit) return explicit;
+  if (window.location.protocol === "https:") {
+    return `wss://${window.location.host}`;
+  }
+  const port = import.meta.env.VITE_SERVER_PORT ?? "2567";
+  return `ws://${window.location.hostname}:${port}`;
+}
+const SERVER_URL = resolveServerUrl();
 const MAX_LOCAL = 4;
 
 export class LocalPlayerManager {

@@ -1,0 +1,21 @@
+# One service: the game server, which also serves the built client on the same
+# port. Clone the repo, `docker compose up -d --build`, and point your external
+# Caddy at <this-host>:2567.
+#
+# Single stateful process — all game state is in-memory and unshared, so do NOT
+# scale to replicas.
+services:
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    environment:
+      - PORT=2567
+    ports:
+      - "2567:2567"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:2567/healthz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
