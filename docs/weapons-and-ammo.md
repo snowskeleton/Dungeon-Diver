@@ -17,8 +17,8 @@ Attacks render as short FX strips layered over the character, not as a persisten
 
 - Each FX type (`slash`, `long-slash`, `stab`, `long-stab`) is a **right-facing 4-frame strip** played once at 14 fps. Frame sizes: slash=48×48, long-slash=64×48, stab=64×48, long-stab=96×48.
 - The FX sprite's origin is anchored at the character body position within each cell (24px from the cell's top-left, matching the asset pack's template sheets) — so placing the sprite at the entity center aligns every frame automatically. The wide strips (long-slash, long-stab) extend rightward from that anchor; facing rotation pivots around it.
-- `Entity.setupCharacter()` picks the FX from the weapon config and creates one hidden FX sprite and one weapon-icon image per entity. On the rising edge of an attack, `playAttackFX()` places both and plays the clip. The weapon icon follows per-frame `ICON_KEYFRAMES` (decoded from the template sheets — position and angle relative to the body, per FX type and frame index), driven by `ANIMATION_UPDATE` events. Both track the entity's position each frame via `syncAttackFX()`, called from `syncSpritePosition()`.
-- Adding a new FX = drop the strip PNG in `assets/`, run `npm run assets:build`, add an entry to `FX_CONFIG` (key, file, frame size, frame count), and add per-frame `ICON_KEYFRAMES`.
+- `Entity.setupCharacter()` picks the FX from the weapon config and creates one hidden FX sprite and one weapon-icon image per entity. The icon is **held in the player's right hand at rest** (at the weapon's `iconAngle`, like the staff) — every hand weapon stays visible between swings, not just during them. On the rising edge of an attack, `playAttackFX()` plays the strip clip and the icon sweeps through the arc, then settles back into the held pose. The weapon icon follows per-frame `ICON_KEYFRAMES` (decoded from the template sheets — position and angle relative to the body, per FX type and frame index), driven by `ANIMATION_UPDATE` events. Both track the entity's position each frame via `syncAttackFX()`, called from `syncSpritePosition()`.
+- Adding a new FX = drop the strip PNG in `assets/`, run `npm run assets:build`, add an entry to `FX_CONFIG` (key, file, frame size, frame count), and add per-frame `ICON_KEYFRAMES`. If it's a new melee strip (a new `StripFXType`), also run `npm run assets:hurtboxes` so its swing hurtbox is measured — otherwise weapons using it deal no melee damage.
 
 **This melee path is only one of three attack render modes.** `setupCharacter()` branches on the weapon's `rangedStyle`:
 - melee (no `rangedStyle`) → FX strip + icon, above
@@ -40,7 +40,7 @@ A ranged weapon just carries an `ammoId`; firing looks the projectile up in `AMM
 ## Field reference
 
 **Weapon fields that make a weapon ranged** (`shared/src/weapons/base.ts`):
-- `ammoId?: string` — set = ranged. `weapon.isRanged` is just `ammoId !== undefined`. Ranged weapons pass `getHurtbox: () => null` (no melee) via their category `base.ts` defaults.
+- `ammoId?: string` — set = ranged. `weapon.isRanged` is just `ammoId !== undefined`. Ranged weapons get no melee region automatically — `Weapon` derives `getHurtbox` from `fxType` and returns `() => null` for anything with an `ammoId` or an `aoe`. Melee reach is **measured from the FX art** (`assets/generate-fx-hurtboxes.js` → `shared/src/weapons/fxHurtboxes.generated.ts`), never declared per weapon; re-run that script after editing a strip.
 - `rangedStyle?: "held" | "thrown"` — client render mode (above).
 - `fxType` — the melee FX strip key.
 
@@ -63,7 +63,7 @@ Attacks are `Spell`s now (`server/src/spells`). A weapon becomes a `Spell` via `
 
 `GameScene.setupWorldSync()` wires `state.projectiles.onAdd/onChange/onRemove` to `ProjectileEntity` (`client/src/entities/ProjectileEntity.ts`) — a lightweight non-`Entity` sprite (no HP bar) that lerps to the server position and either points along `angle` (using the ammo's `spriteAngle`) or spins (`spinDegPerSec`). Ammo sprites preload in `GameScene.preload()` keyed by ammo id.
 
-The **held-bow draw** is a separate concern (`RangedWeaponFX.ts`): a 2-frame draw sheet (frame 0 relaxed / 1 drawn) played `0→1→0→0` beside the player, rotated toward the fire direction, anchored to the player each frame like the melee FX. Thrown weapons render nothing in-hand.
+The **held-bow draw** is a separate concern (`RangedWeaponFX.ts`): a 2-frame draw sheet (frame 0 relaxed / 1 drawn) played `0→1→0→0` beside the player, rotated toward the fire direction, anchored to the player each frame like the melee FX. The bow rests at frame 0 in hand between shots (it used to hide on the draw clip's completion, so slower bows blinked out between shots). Thrown weapons render nothing in-hand — the flying projectile is the whole visual.
 
 ## Adding a weapon
 

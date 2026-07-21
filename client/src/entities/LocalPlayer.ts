@@ -4,11 +4,12 @@ import {
   InputMessage, CharacterClass, CharacterType, CharacterConfig, getCharacterConfig,
   WeaponId, Weapon, WeaponSlotView, UpgradeSlotView, WEAPON_REGISTRY, Facing,
   GameStateView, PlayerStateView, ShopStateView, ShopItemStateView, OfferStateView, ChestStateView,
+  PLAYER_HURT_BOUNDS,
 } from "shared";
 import { Entity } from "./Entity";
 import { InputSource, InputActions } from "../input/InputSource";
 import { CLIENT_CHARACTER_VISUAL_REGISTRY } from "../characters";
-import { DebugDrawable, DebugShape, DEBUG_COLORS } from "../debug/DebugDraw";
+import { DebugDrawable, DebugShape, DEBUG_COLORS, hurtBoxShape } from "../debug/DebugDraw";
 import { meleeHurtboxShapes } from "../debug/hurtboxShapes";
 import { AcquireFX, ACQUIRE_MS } from "./AcquireFX";
 import { InventoryMenu } from "../ui/InventoryMenu";
@@ -55,6 +56,10 @@ export class LocalPlayer extends Entity implements DebugDrawable {
   // Attack visuals are driven by the server (authoritative about which presses
   // actually become attacks) so cooldown-rejected presses don't restart the
   // swing clip and held-fire replays the bow each shot — matching RemotePlayer.
+  /** When the current swing's animation began (performance.now()), so the debug
+   *  overlay can ask the weapon for the hurtbox of the frame on screen right now.
+   *  -Infinity until the first swing, which reads as "animation long over". */
+  private swingStartedAt = -Infinity;
   private serverAttacking = false;
   private lastAttackSeq = -1;
   hp: number;
@@ -256,6 +261,7 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     if (attackSeq !== this.lastAttackSeq) {
       if (this.lastAttackSeq !== -1) this.retriggerAttack();
       this.lastAttackSeq = attackSeq;
+      this.swingStartedAt = performance.now();
     }
     // Active weapon changed (switch or acquire) — hot-swap the visuals + local
     // weapon so attack FX / facing-lock follow the new weapon.
@@ -294,7 +300,8 @@ export class LocalPlayer extends Entity implements DebugDrawable {
   collectDebugShapes(): DebugShape[] {
     return [
       this.bodyDebugCircle(DEBUG_COLORS.playerBody),
-      ...meleeHurtboxShapes(this.weapon, this.sprite.x, this.sprite.y, this.facing, this.lastInput.attack),
+      hurtBoxShape(PLAYER_HURT_BOUNDS, this.sprite.x, this.sprite.y),
+      ...meleeHurtboxShapes(this.weapon, this.sprite.x, this.sprite.y, this.facing, performance.now() - this.swingStartedAt),
     ];
   }
 }

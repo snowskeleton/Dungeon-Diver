@@ -1,6 +1,16 @@
 import { Facing } from "../types";
+import { fxHurtboxAt } from "./hurtbox";
 
 export type AttackFXType = "slash" | "long-slash" | "stab" | "long-stab" | "nova";
+
+/** The directional swing/stab strips — the FX types that are an actual 4-frame
+ *  sheet, and so the ones a melee hurtbox can be measured from. "nova" is the
+ *  odd one out: a procedural expanding blast with no strip art. */
+export type StripFXType = Exclude<AttackFXType, "nova">;
+
+export function isStripFx(fx: AttackFXType): fx is StripFXType {
+  return fx !== "nova";
+}
 export type WeaponCategory = "sword" | "axe" | "spear" | "rapier" | "mace" | "dagger" | "hammer" | "bow" | "crossbow" | "staff" | "thrown";
 
 /** How a ranged weapon renders its attack client-side (see Entity.setupCharacter).
@@ -13,7 +23,10 @@ export type RangedStyle = "held" | "thrown" | "cast";
 export interface RectHitRegion  { shape: "rect";   x: number; y: number; w: number; h: number }
 export interface CircleHitRegion { shape: "circle"; cx: number; cy: number; r: number }
 export type HitRegion = RectHitRegion | CircleHitRegion;
-export type GetHurtbox = (px: number, py: number, facing: Facing) => HitRegion | null;
+/** A weapon's melee region at a given point in its swing. `swingMs` is elapsed
+ *  time into the ATTACK ANIMATION (not the weapon's cooldown) — the hurtbox
+ *  follows the art frame by frame. Returns null while no blade is drawn. */
+export type GetHurtbox = (px: number, py: number, facing: Facing, swingMs: number) => HitRegion | null;
 
 /** An area-of-effect blast a weapon casts (the Mage's staff): after a brief
  *  wind-up the caster erupts a damaging circle around itself for `blastMs`. Marks
@@ -42,7 +55,6 @@ export interface WeaponOpts {
   damage: number;
   attackCooldownMs: number;
   attackForce: number;
-  getHurtbox: GetHurtbox;
   /**
    * Rotation offset (degrees) applied to the weapon icon on top of the base
    * facing rotation. The base rotation points the icon toward the attack target
@@ -54,7 +66,7 @@ export interface WeaponOpts {
   /**
    * If set, this is a ranged weapon: attacking spawns a projectile using this
    * ammo id (see AMMO_REGISTRY) instead of a melee hitbox. Ranged weapons pass
-   * getHurtbox: () => null so they deal no melee damage.
+   * they deal no melee damage.
    */
   ammoId?: string;
   /**
@@ -91,10 +103,17 @@ export class Weapon {
     this.name = opts.name;
     this.category = opts.category;
     this.fxType = opts.fxType;
+    // The hurtbox is DERIVED from the attack art, never declared per weapon:
+    // fxHurtboxAt reads the bounds generated from the FX strip's own pixels
+    // (assets/generate-fx-hurtboxes.js). New attack art therefore gets a correct
+    // hitbox for free, and no hand-tuned reach number can drift from what's
+    // drawn. Anything that doesn't swing a strip — ranged, AOE — has no region.
+    this.getHurtbox = (opts.ammoId !== undefined || opts.aoe !== undefined || !isStripFx(opts.fxType))
+      ? () => null
+      : (px, py, facing, swingMs) => fxHurtboxAt(opts.fxType as StripFXType, swingMs, px, py, facing);
     this.damage = opts.damage;
     this.attackCooldownMs = opts.attackCooldownMs;
     this.attackForce = opts.attackForce;
-    this.getHurtbox = opts.getHurtbox;
     this.iconAngle = opts.iconAngle;
     this.ammoId = opts.ammoId;
     this.rangedStyle = opts.rangedStyle;
@@ -115,16 +134,3 @@ export class Weapon {
 
 /** Partial override for category subclass constructors — id and name are required; everything else falls back to category defaults. */
 export type Override = Partial<WeaponOpts> & Pick<WeaponOpts, "id" | "name">;
-
-/** Standard melee hurtbox: forward-facing rect, inner edge at body surface.
- *  range = forward reach, width = arc width, offset = inner-edge pullback from center. */
-export function makeMeleeHurtbox(range: number, width: number, offset = -6): GetHurtbox {
-  return (px, py, facing) => {
-    switch (facing) {
-      case "right": return { shape: "rect", x: px + offset,          y: py - width / 2,      w: range, h: width };
-      case "left":  return { shape: "rect", x: px - range - offset,  y: py - width / 2,      w: range, h: width };
-      case "down":  return { shape: "rect", x: px - width / 2,       y: py + offset,         w: width, h: range };
-      case "up":    return { shape: "rect", x: px - width / 2,       y: py - range - offset, w: width, h: range };
-    }
-  };
-}

@@ -1,4 +1,4 @@
-import { FLYING_CRUISE_HEIGHT } from "shared";
+import { FLYING_CRUISE_HEIGHT, EnemyType } from "shared";
 import { ClientEnemyDef } from "../types";
 import { boss } from "./factory";
 
@@ -7,8 +7,8 @@ import { boss } from "./factory";
 // wind-up tell), then the dive frame is driven directly by the boss's airHeight —
 // full height → frame 4, floor → frame 7 — so it plays 4→7 dropping and, because
 // the frame is a pure function of height, auto-reverses 7→4 as it climbs back out.
-function wyvernDef(id: string, name: string): ClientEnemyDef {
-  const base = boss(id, name, { frameWidth: 32, cols: 4, frameRate: 10 });
+function wyvernDef(id: EnemyType, name: string): ClientEnemyDef {
+  const base = boss(id, name, { frameRate: 10 });
   const moveKey = `${id}-move`;
   return {
     ...base,

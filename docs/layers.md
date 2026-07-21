@@ -106,7 +106,9 @@ and would have needed more for boss→player). They are now **one generic resolv
    bursts, boss channels — each a `HitSource`
    `{ shape, affects, attack, claim(targetId), ownerId?, onDealt? }`
    (`server/src/combat/HitSource.ts`). `GameRoom` drains them (`Entity.drainEffects`).
-2. **Targets** are any `CombatTarget` (`{ state.x/y, hurtRadius, damageable, takeHit(attack) }`) —
+2. **Targets** are any `CombatTarget` (`{ state.x/y, hurtBounds, damageable, takeHit(attack) }`) —
+   `hurtBounds` is the damageable box measured from the target's art (see the walking-vs-hurt-bounds
+   gotcha in CLAUDE.md); the resolver tests `shapeHitsBox` against it, not a bare centre point —
    players and enemies, grouped by `layer`. **`takeHit` returns the damage ACTUALLY dealt**
    (post-mitigation, post-overkill); the resolver hands that back to the source via
    `onDealt`, which is how lifesteal stays honest against a corpse or an invulnerable
@@ -126,7 +128,7 @@ via `setEntityDead`).
 
 1. `shared/src/layers.ts` — `Layer` enum, `InteractionProfile`, `canAffect`, and the per-team
    attack masks (`PLAYER_ATTACK_AFFECTS` / `ENEMY_ATTACK_AFFECTS`).
-2. `shared/src/combat/` — the `Attack` value object + `HitShape` geometry (`shapeHitsPoint`).
+2. `shared/src/combat/` — the `Attack` value object + `HitShape` geometry (`shapeHitsPoint` + `shapeHitsBox`, the box test the resolver uses against a target's `hurtBounds`).
 3. `server/src/physics/PhysicsWorld.ts` — bodies carry `layer`/`solidMask` from their profile; the
    H-overlay debug draw reads the same layers.
 4. `server/src/entities/Projectile.ts` — carries `affects`; its swept-ellipse `hitSource()` flows

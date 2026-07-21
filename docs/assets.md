@@ -17,6 +17,7 @@ npm run assets:build      # = node assets/sync-to-client.js
 ## Other scripts in `assets/`
 
 - `generate-weapons.js` — splits `weapon-icons.png` into per-weapon PNGs and writes per-weapon TypeScript definition files into `shared/src/weapons/{category}/{id}/`.
+- `generate-fx-hurtboxes.js` + `generate-enemy-hurtboxes.ts` — derive melee hitboxes from the art, so no reach or hurt size is ever hand-tuned. The first measures the four attack-FX strips into `shared/src/weapons/fxHurtboxes.generated.ts` (a weapon's swing hurtbox); the second measures every enemy + player spritesheet into `shared/src/enemies/hurtBounds.generated.ts` (what each creature can be *hit* on). Both outputs are committed. **`npm run assets:hurtboxes` runs both** — re-run after editing any FX strip, adding an enemy, or replacing a creature sheet. The enemy generator reads `client/src/enemies/spriteGeometry.ts`, so a new enemy needs its geometry there first.
 - `generate-snake-sheets.js` — the Snakes art ships as three per-direction strips instead of one sheet; this composes `fang.png` / `hood-fang.png` into the standard 4-row directional layout (the "left" row is the side strip mirrored per-frame). The output is committed, so only re-run it if the source art changes.
 
 Both require `sharp`, which is **not** a project dependency: `npm install --no-save sharp` first.

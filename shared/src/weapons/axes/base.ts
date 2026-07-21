@@ -1,4 +1,4 @@
-import { Weapon, WeaponCategory, AttackFXType, makeMeleeHurtbox, Override } from "../base";
+import { Weapon, WeaponCategory, AttackFXType, Override } from "../base";
 
 const DEFAULTS = {
   category: "axe" as WeaponCategory,
@@ -6,7 +6,6 @@ const DEFAULTS = {
   damage: 22,
   attackCooldownMs: 600,
   attackForce: 9,
-  getHurtbox: makeMeleeHurtbox(36, 44),
   // Slash arc — same mid-swing diagonal tilt as swords.
   iconAngle: -45,
 };

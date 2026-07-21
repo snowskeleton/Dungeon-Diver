@@ -1,4 +1,4 @@
-import { Weapon, WeaponCategory, AttackFXType, makeMeleeHurtbox, Override } from "../base";
+import { Weapon, WeaponCategory, AttackFXType, Override } from "../base";
 
 const DEFAULTS = {
   category: "spear" as WeaponCategory,
@@ -6,7 +6,6 @@ const DEFAULTS = {
   damage: 18,
   attackCooldownMs: 700,
   attackForce: 8,
-  getHurtbox: makeMeleeHurtbox(60, 20),
   // Straight thrust — 0° offset so the tip points directly at the target.
   iconAngle: 0,
 };

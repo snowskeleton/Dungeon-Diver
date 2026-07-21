@@ -1,7 +1,10 @@
 import Phaser from "phaser";
-import { TILE_SIZE } from "shared";
+import { EnemyType } from "shared";
 import { defineClips } from "../entities/SpriteClips";
 import { ClientEnemyDef } from "./types";
+import { ENEMY_SPRITE_GEOMETRY, frameAt, frameRow } from "./spriteGeometry";
+
+export { frameAt, frameRow };
 
 // Horizontal-facing enemies: the art has a single side view, mirrored with flipX
 // for left. Most are one strip of frames (goos, bats); some sheets carry several
@@ -10,37 +13,21 @@ import { ClientEnemyDef } from "./types";
 
 export interface SheetSpec {
   name: string;
-  /** Source cell width in px. */
-  frameWidth: number;
-  /** Source cell height. Defaults to frameWidth (square cells). */
-  frameHeight?: number;
-  /** Cells per sheet row — needed to turn (row, col) into a frame index. */
-  cols: number;
-  /** Defaults to a full first row: 0 … cols-1. */
-  moveFrames?: number[];
-  /** Defaults to one tile square. Small art (16px bats) is scaled up. */
-  displayW?: number;
-  displayH?: number;
-  /** Share another enemy's sheet. Defaults to the enemy id. */
-  textureKey?: string;
-  frameRate?: number;
-  /** Defaults to the move frames played backwards, which reads as a collapse. */
+  /** Defaults to the locomotion frames played backwards, which reads as a collapse. */
   death?: { frames: number[]; frameRate: number };
+  frameRate?: number;
   /** True for flyers — the sprite is lifted by its synced airHeight and a shadow
    *  is drawn beneath it (see EnemyEntity). */
   airborne?: boolean;
 }
 
-/** Frame index of (row, col) on a sheet `cols` cells wide. */
-export const frameAt = (cols: number, row: number, col: number) => row * cols + col;
-/** `count` consecutive frame indices starting at (row, startCol). */
-export const frameRow = (cols: number, row: number, startCol: number, count: number): number[] =>
-  Array.from({ length: count }, (_, i) => frameAt(cols, row, startCol + i));
-
-export function makeSheetEnemyDef(id: string, spec: SheetSpec): ClientEnemyDef {
-  const textureKey = spec.textureKey ?? id;
-  const frameHeight = spec.frameHeight ?? spec.frameWidth;
-  const moveFrames = spec.moveFrames ?? Array.from({ length: spec.cols }, (_, i) => i);
+// Frame layout comes from ENEMY_SPRITE_GEOMETRY, never from the call site: that
+// table is also what the hurtbox generator measures against, so the client can't
+// render one layout while the server hit-tests another.
+export function makeSheetEnemyDef(id: EnemyType, spec: SheetSpec): ClientEnemyDef {
+  const geo = ENEMY_SPRITE_GEOMETRY[id];
+  const { textureKey, frameHeight } = geo;
+  const moveFrames = geo.frames;
   const death = spec.death ?? { frames: [...moveFrames].reverse(), frameRate: 6 };
 
   const moveKey = `${id}-move`;
@@ -50,11 +37,11 @@ export function makeSheetEnemyDef(id: string, spec: SheetSpec): ClientEnemyDef {
     name: spec.name,
     textureKey,
     airborne: spec.airborne,
-    displayW: spec.displayW ?? TILE_SIZE,
-    displayH: spec.displayH ?? spec.displayW ?? TILE_SIZE,
+    displayW: geo.displayW,
+    displayH: geo.displayH,
     preload: (scene) =>
       scene.load.spritesheet(textureKey, `/sprites/${textureKey}.png`, {
-        frameWidth: spec.frameWidth,
+        frameWidth: geo.frameWidth,
         frameHeight,
       }),
     defineAnimations: (scene) =>

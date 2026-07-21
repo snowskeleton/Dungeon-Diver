@@ -1,11 +1,11 @@
 import Phaser from "phaser";
 import {
   CharacterClass, CharacterType, getCharacterConfig, WeaponId, Weapon, WEAPON_REGISTRY,
-  Facing, PlayerStateView,
+  Facing, PlayerStateView, PLAYER_HURT_BOUNDS,
 } from "shared";
 import { Entity } from "./Entity";
 import { CLIENT_CHARACTER_VISUAL_REGISTRY } from "../characters";
-import { DebugDrawable, DebugShape, DEBUG_COLORS } from "../debug/DebugDraw";
+import { DebugDrawable, DebugShape, DEBUG_COLORS, hurtBoxShape } from "../debug/DebugDraw";
 import { meleeHurtboxShapes } from "../debug/hurtboxShapes";
 
 export class RemotePlayer extends Entity implements DebugDrawable {
@@ -14,6 +14,10 @@ export class RemotePlayer extends Entity implements DebugDrawable {
   private currentHp: number;
   private facing: Facing = "down";
   private isAttacking = false;
+  /** When the current swing's animation began (performance.now()), so the debug
+   *  overlay can ask the weapon for the hurtbox of the frame on screen right now.
+   *  -Infinity until the first swing, which reads as "animation long over". */
+  private swingStartedAt = -Infinity;
   private lastAttackSeq = -1;
   private pendingSnap = false;
   private weapon?: Weapon;
@@ -59,6 +63,7 @@ export class RemotePlayer extends Entity implements DebugDrawable {
     if (attackSeq !== this.lastAttackSeq) {
       if (this.lastAttackSeq !== -1) this.retriggerAttack();
       this.lastAttackSeq = attackSeq;
+      this.swingStartedAt = performance.now();
     }
     if (this.pendingSnap) {
       this.pendingSnap = false;
@@ -82,10 +87,13 @@ export class RemotePlayer extends Entity implements DebugDrawable {
   }
 
   collectDebugShapes(): DebugShape[] {
-    const shapes = [this.bodyDebugCircle(DEBUG_COLORS.playerBody)];
+    const shapes = [
+      this.bodyDebugCircle(DEBUG_COLORS.playerBody),
+      hurtBoxShape(PLAYER_HURT_BOUNDS, this.sprite.x, this.sprite.y),
+    ];
     if (this.weapon) {
       shapes.push(
-        ...meleeHurtboxShapes(this.weapon, this.sprite.x, this.sprite.y, this.facing, this.isAttacking),
+        ...meleeHurtboxShapes(this.weapon, this.sprite.x, this.sprite.y, this.facing, performance.now() - this.swingStartedAt),
       );
     }
     return shapes;

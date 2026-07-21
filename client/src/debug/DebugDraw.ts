@@ -24,5 +24,26 @@ export const DEBUG_COLORS = {
   enemyBody: 0x33ff66, // enemy collision circle (at the feet)
   enemyAttack: 0xffaa00, // enemy attack radius (center-to-center)
   enemyAggro: 0xffff66, // enemy aggro radius (center-to-center)
+  hurt: 0xffffff, // damageable region — the DRAWN sprite's extent, centred on the
+  //                  sprite. Deliberately NOT the collision circle below it: what
+  //                  an entity walks with and what it can be hit on are separate.
   projectile: 0xff33ff, // projectile hit ellipse (forward/side)
 } as const;
+
+/** Outline of a measured hurt box (shared/enemies/hurtBounds.generated.ts) around
+ *  a sprite centre. The overlay draws exactly the region the server hit-tests, so
+ *  art and hitbox disagreeing is visible rather than only felt. */
+export function hurtBoxShape(
+  b: { halfW: number; halfH: number; offsetX: number; offsetY: number },
+  cx: number,
+  cy: number,
+): DebugShape {
+  return {
+    kind: "rect",
+    x: cx + b.offsetX - b.halfW,
+    y: cy + b.offsetY - b.halfH,
+    w: b.halfW * 2,
+    h: b.halfH * 2,
+    color: DEBUG_COLORS.hurt,
+  };
+}

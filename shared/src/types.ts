@@ -96,6 +96,13 @@ export const MAX_CLIENTS = 4;
 export const FOOT_OFFSET = 8;
 export const ENTITY_RADIUS = 5;
 
+// How much of an entity can be HURT is deliberately NOT how much of it blocks
+// movement. ENTITY_RADIUS above is a 5px circle at the feet — what an entity
+// walks and collides with. What it can be DAMAGED on is its drawn sprite, and
+// that isn't a constant: it's MEASURED per creature from the spritesheet and
+// lives in shared/enemies/hurtBounds.generated.ts (ENEMY_HURT_BOUNDS /
+// PLAYER_HURT_BOUNDS), produced by assets/generate-enemy-hurtboxes.ts.
+
 // Cruising altitude (px) a flying boss holds above the ground plane. The server
 // keeps EnemyState.airHeight here between attacks; the client lifts the sprite by
 // it and scales a shadow beneath. A swoop drives it to 0 (claws at the floor) and

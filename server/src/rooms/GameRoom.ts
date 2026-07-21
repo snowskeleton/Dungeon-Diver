@@ -386,10 +386,22 @@ export class GameRoom extends Room<GameState> {
       if (!proj.dead) sources.push(proj.hitSource());
     });
 
-    this.combat.resolve(sources, [
+    const hits = this.combat.resolve(sources, [
       { layer: Layer.PLAYER, targets: this.players },
       { layer: Layer.ENEMY, targets: this.enemies },
     ]);
+
+    // Impact feedback: tell clients where hits landed so they can play the spark.
+    // Filtered to hits ON enemies, which is exactly "a player connected" — melee
+    // sources carry no ownerId (they can't reach their own team, so the resolver
+    // never needs one), and nothing but a player damages an enemy. One message per
+    // tick rather than per hit; a cleave landing on four enemies is four points.
+    if (hits.length > 0) {
+      const impacts = hits
+        .filter((h) => this.enemies.has(h.targetId))
+        .map((h) => ({ x: Math.round(h.x), y: Math.round(h.y) }));
+      if (impacts.length > 0) this.broadcast("hits", { impacts });
+    }
 
     // Reap projectiles that hit a wall, aged out, or spent their pierce.
     this.projectiles.forEach((proj, id) => {

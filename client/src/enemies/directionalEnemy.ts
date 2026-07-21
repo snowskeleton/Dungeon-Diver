@@ -1,8 +1,8 @@
 import Phaser from "phaser";
-import { Facing, TILE_SIZE } from "shared";
+import { Facing, EnemyType } from "shared";
 import { defineClips } from "../entities/SpriteClips";
 import { ClientEnemyDef } from "./types";
-import { frameRow } from "./sheetEnemy";
+import { ENEMY_SPRITE_GEOMETRY, frameRow } from "./spriteGeometry";
 
 // Directional enemies (bones, kultist, the beasts, snakes) ship a 4-row sheet
 // with one row per facing. Row order matches the humanoid sheets — verified for
@@ -15,18 +15,14 @@ const FACINGS: Facing[] = ["up", "right", "down", "left"];
 
 export interface DirectionalSpec {
   name: string;
-  /** Square source cell size in px. */
-  frameSize: number;
-  /** Frames per direction row. */
-  cols: number;
-  /** Defaults to one tile square. */
-  displaySize?: number;
   frameRate?: number;
   deathFrameRate?: number;
 }
 
-export function makeDirectionalEnemyDef(id: string, spec: DirectionalSpec): ClientEnemyDef {
-  const size = spec.displaySize ?? TILE_SIZE;
+// Frame layout comes from ENEMY_SPRITE_GEOMETRY (see makeSheetEnemyDef).
+export function makeDirectionalEnemyDef(id: EnemyType, spec: DirectionalSpec): ClientEnemyDef {
+  const geo = ENEMY_SPRITE_GEOMETRY[id];
+  const size = geo.displayW;
   const moveKey = (f: Facing) => `${id}-move-${f}`;
   const deathKey = `${id}-death`;
 
@@ -37,21 +33,21 @@ export function makeDirectionalEnemyDef(id: string, spec: DirectionalSpec): Clie
     displayH: size,
     preload: (scene) =>
       scene.load.spritesheet(id, `/sprites/${id}.png`, {
-        frameWidth: spec.frameSize,
-        frameHeight: spec.frameSize,
+        frameWidth: geo.frameWidth,
+        frameHeight: geo.frameHeight,
       }),
     defineAnimations: (scene) => {
       const clips: Record<string, { frames: number[]; frameRate: number; repeat: number }> = {};
       for (const f of FACINGS) {
         clips[moveKey(f)] = {
-          frames: frameRow(spec.cols, ROW[f], 0, spec.cols),
+          frames: frameRow(geo.cols, ROW[f], 0, geo.cols),
           frameRate: spec.frameRate ?? 8,
           repeat: -1,
         };
       }
       // One death clip for every facing: the front-facing row, reversed.
       clips[deathKey] = {
-        frames: frameRow(spec.cols, ROW.down, 0, spec.cols).reverse(),
+        frames: frameRow(geo.cols, ROW.down, 0, geo.cols).reverse(),
         frameRate: spec.deathFrameRate ?? 6,
         repeat: 0,
       };

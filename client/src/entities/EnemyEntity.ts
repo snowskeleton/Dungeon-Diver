@@ -1,8 +1,8 @@
 import Phaser from "phaser";
-import { AiState, Facing, EnemyType, EnemyStateView } from "shared";
+import { AiState, Facing, EnemyType, EnemyStateView, ENEMY_HURT_BOUNDS } from "shared";
 import { Entity } from "./Entity";
 import { CLIENT_ENEMY_REGISTRY, ClientEnemyDef } from "../enemies";
-import { DebugDrawable, DebugShape, DEBUG_COLORS } from "../debug/DebugDraw";
+import { DebugDrawable, DebugShape, DEBUG_COLORS, hurtBoxShape } from "../debug/DebugDraw";
 
 export class EnemyEntity extends Entity implements DebugDrawable {
   private targetX: number;
@@ -28,7 +28,15 @@ export class EnemyEntity extends Entity implements DebugDrawable {
 
   // maxHp/aggroRadius/attackRadius are synced from the server (EnemyState) — the
   // enemy classes live server-side, so the client carries no copy of their stats.
-  constructor(scene: Phaser.Scene, x: number, y: number, enemyType: string, maxHp: number, aggroRadius: number, attackRadius: number) {
+  constructor(
+    scene: Phaser.Scene,
+    x: number,
+    y: number,
+    enemyType: string,
+    maxHp: number,
+    aggroRadius: number,
+    attackRadius: number,
+  ) {
     super(scene, x, y, 0xe53e3e, maxHp || 60);
     this.visual = CLIENT_ENEMY_REGISTRY[enemyType as EnemyType];
     if (!this.visual) {
@@ -154,6 +162,7 @@ export class EnemyEntity extends Entity implements DebugDrawable {
     const y = this.sprite.y;
     if (this.aggroRadius > 0) shapes.push({ kind: "circle", x, y, r: this.aggroRadius, color: DEBUG_COLORS.enemyAggro });
     if (this.attackRadius > 0) shapes.push({ kind: "circle", x, y, r: this.attackRadius, color: DEBUG_COLORS.enemyAttack });
+    shapes.push(hurtBoxShape(ENEMY_HURT_BOUNDS[this.enemyType as EnemyType], x, y));
     return shapes;
   }
 

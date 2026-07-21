@@ -12,7 +12,6 @@ const DEFAULTS = {
   damage: 0,
   attackCooldownMs: 250,
   attackForce: 0,
-  getHurtbox: noMelee,
   iconAngle: 0,
   rangedStyle: "thrown" as const,
 };

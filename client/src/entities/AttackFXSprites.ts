@@ -1,12 +1,13 @@
 import Phaser from "phaser";
-import { Facing, AttackFXType } from "shared";
+import { Facing, AttackFXType, StripFXType } from "shared";
 
-export type { AttackFXType };
+export type { AttackFXType, StripFXType };
 
-// The directional swing/stab strips. "nova" is a weapon FX type too, but it's a
-// procedural expanding blast (see NovaFX), not one of these right-facing strips —
-// so the strip tables below are keyed by the strip subset only.
-export type StripFXType = Exclude<AttackFXType, "nova">;
+// The directional swing/stab strips are keyed by StripFXType (shared): "nova" is
+// a weapon FX type too, but it's a procedural expanding blast (see NovaFX), not
+// one of these right-facing strips. That type lives in shared because the melee
+// hurtboxes are measured from these same strips (see shared/weapons/hurtbox.ts),
+// so the strip set has to be one definition, not two.
 
 // All FX strips are right-facing, played once at 14fps, then hidden.
 // Rotation: right=0° down=90° left=180° up=270°
@@ -69,6 +70,44 @@ const ICON_KEYFRAMES: Record<StripFXType, IconKeyframe[]> = {
 // Template icons occupy a 16×16 box in FX pixel space (same size as the body
 // square) — the keyframe offsets assume this display size.
 export const WEAPON_ICON_DISPLAY_SIZE = 16;
+
+// ── Held-at-rest pose ────────────────────────────────────────────────────────
+// Between swings the weapon icon is HELD in the player's right hand, the same way
+// the staff is (see CastFX.showHeldStaff) — every weapon stays in hand, not just
+// the caster ones. The rest angle is the weapon's own `iconAngle` (its natural
+// hold tilt: -45° for a slashing blade, 0° for a thrust/point weapon); the icon
+// art points up at 0°, so this reads as the weapon carried at that angle.
+const HELD_HAND_X = 7; // matches the staff's hand offset
+const HELD_HAND_Y = -6; // just above sprite centre, at hand height
+// In front of the body (depth 2), except facing away, where the far-side hand
+// tucks the weapon behind the player — mirrors the staff's depth flip.
+const HELD_DEPTH_FRONT = 2.6;
+const HELD_DEPTH_BEHIND = 1.9;
+// Which side the right hand lands on depends on facing (see CastFX for the full
+// reasoning): toward the viewer it's on the viewer's left, away it's on the right.
+const HELD_HAND_OFFSET: Record<Facing, { x: number; y: number }> = {
+  down:  { x: -HELD_HAND_X, y: HELD_HAND_Y },
+  up:    { x:  HELD_HAND_X, y: HELD_HAND_Y },
+  right: { x:  HELD_HAND_X, y: HELD_HAND_Y },
+  left:  { x: -HELD_HAND_X, y: HELD_HAND_Y },
+};
+
+/** Rest the weapon icon in the player's right hand, at its natural hold angle.
+ *  Called every frame a weapon is equipped but not mid-swing. */
+export function holdWeaponIconAtRest(
+  icon: Phaser.GameObjects.Image,
+  px: number,
+  py: number,
+  facing: Facing,
+  iconAngle: number,
+) {
+  const off = HELD_HAND_OFFSET[facing];
+  icon.x = px + off.x;
+  icon.y = py + off.y;
+  icon.setAngle(iconAngle);
+  icon.setDepth(facing === "up" ? HELD_DEPTH_BEHIND : HELD_DEPTH_FRONT);
+  icon.setVisible(true);
+}
 
 // Active-swing state per FX sprite, so syncAttackFX() can re-anchor the strip
 // and icon to the entity's current position every frame while it moves.
@@ -165,7 +204,9 @@ export function playAttackFX(
   sprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
     sprite.setVisible(false);
     sprite.off(Phaser.Animations.Events.ANIMATION_UPDATE);
-    weaponIcon?.setVisible(false);
+    // Leave the weapon ICON visible — the swing is over, but the weapon stays in
+    // hand. The owner's sync re-anchors it to the held-at-rest pose next frame
+    // (see HeldWeaponVisual). Only the transient slash STRIP is hidden here.
     activeSwings.delete(sprite);
   });
 }

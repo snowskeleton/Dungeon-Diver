@@ -1,5 +1,5 @@
-import { TILE_SIZE } from "shared";
-import { makeSheetEnemyDef, frameRow, frameAt } from "../sheetEnemy";
+import { makeSheetEnemyDef } from "../sheetEnemy";
+import { frameRow, frameAt, ENEMY_SPRITE_GEOMETRY } from "../spriteGeometry";
 import { defineClips } from "../../entities/SpriteClips";
 import { ClientEnemyDef } from "../types";
 import { boss } from "./factory";
@@ -10,8 +10,8 @@ import { boss } from "./factory";
 // the whole Stone Crash (wind-up, flight, and landing lag). Row 0 idle otherwise.
 // 18×4 @32: row 0 idle/looking, rows 1-2 spellcasting, row 3 stoneface.
 function tenguMaskDef(): ClientEnemyDef {
-  const cols = 18;
-  const base = boss("tengu-mask", "Tengu", { frameWidth: 32, cols, moveFrames: frameRow(cols, 0, 0, 4), frameRate: 6 });
+  const { cols } = ENEMY_SPRITE_GEOMETRY["tengu-mask"];
+  const base = boss("tengu-mask", "Tengu", { frameRate: 6 });
   const novaKey = "tengu-nova";
   const splitKey = "tengu-split";
   const stoneFrame = frameAt(cols, 3, 0); // row-3 stoneface (single frame)
@@ -47,11 +47,5 @@ export const tenguMask = tenguMaskDef();
 // half the boss size — a "smaller version of himself". Summon-only.
 export const tenguShade = makeSheetEnemyDef("tengu-shade", {
   name: "Tengu Shade",
-  textureKey: "tengu-mask",
-  frameWidth: 32,
-  cols: 18,
-  moveFrames: frameRow(18, 0, 0, 4),
-  displayW: TILE_SIZE,
-  displayH: TILE_SIZE,
   frameRate: 6,
 });

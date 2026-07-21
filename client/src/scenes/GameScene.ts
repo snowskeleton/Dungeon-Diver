@@ -17,6 +17,7 @@ import { EnemyEntity } from "../entities/EnemyEntity";
 import { ProjectileEntity } from "../entities/ProjectileEntity";
 import { CLIENT_CHARACTER_VISUAL_REGISTRY } from "../characters";
 import { preloadAttackFX, defineAttackFXAnimations } from "../entities/AttackFXSprites";
+import { HitFX, preloadHitFX, defineHitFXAnimation } from "../entities/HitFX";
 import { preloadBowSheet, defineBowAnimation } from "../entities/RangedWeaponFX";
 import { CLIENT_ENEMY_REGISTRY } from "../enemies";
 import { HitboxDebug } from "../debug/HitboxDebug";
@@ -67,6 +68,7 @@ export class GameScene extends Phaser.Scene {
 
   private currentMapGroup: Phaser.GameObjects.Group | null = null;
   private barriers!: BarrierOverlays;
+  private hitFx!: HitFX;
   private currentSeed = MAP_SEED;
   private currentFloor = 1;
   private mapCols = 0;
@@ -107,6 +109,7 @@ export class GameScene extends Phaser.Scene {
   preload() {
     preloadTiles(this);
     preloadAttackFX(this);
+    preloadHitFX(this);
     preloadChest(this);
 
     // Preload each unique character spritesheet once
@@ -145,6 +148,7 @@ export class GameScene extends Phaser.Scene {
 
   async create() {
     defineAttackFXAnimations(this);
+    defineHitFXAnimation(this);
     defineChestAnimations(this);
 
     // Define animations for each unique character spritesheet once
@@ -170,6 +174,7 @@ export class GameScene extends Phaser.Scene {
     // below is picked up as world content by the UI camera's default-ignore hook.
     this.ui = new UiLayer(this, this.scale.width, this.scale.height);
 
+    this.hitFx = new HitFX(this);
     this.barriers = new BarrierOverlays(this);
     this.rebuildMap(this.currentSeed);
 
@@ -217,6 +222,10 @@ export class GameScene extends Phaser.Scene {
 
       first.room.onMessage("floor_change", (msg: FloorChangeMessage) => {
         this.handleFloorChange(msg);
+      });
+
+      first.room.onMessage("hits", (msg: { impacts: { x: number; y: number }[] }) => {
+        for (const p of msg.impacts) this.hitFx.play(p.x, p.y);
       });
 
       first.room.onMessage("connections_parent_unlocked", (msg: { connectionIds: string[] }) => {

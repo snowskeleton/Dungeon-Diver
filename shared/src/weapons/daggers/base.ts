@@ -1,4 +1,4 @@
-import { Weapon, WeaponCategory, AttackFXType, makeMeleeHurtbox, Override } from "../base";
+import { Weapon, WeaponCategory, AttackFXType, Override } from "../base";
 
 const DEFAULTS = {
   category: "dagger" as WeaponCategory,
@@ -6,7 +6,6 @@ const DEFAULTS = {
   damage: 15,
   attackCooldownMs: 250,
   attackForce: 4,
-  getHurtbox: makeMeleeHurtbox(30, 22),
   // Straight thrust — tip points directly at the target.
   iconAngle: 0,
 };

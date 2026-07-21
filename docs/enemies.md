@@ -2,6 +2,12 @@
 
 Read this before adding or balancing an enemy. Use this recipe, not the generic "add an entity type" steps in CLAUDE.md.
 
+## Hurt bounds are generated, not declared
+
+An enemy's damageable region is measured from its spritesheet — add the enemy's
+geometry to `client/src/enemies/spriteGeometry.ts` and run `npm run assets:hurtboxes`.
+Never write a hurt size by hand. See CLAUDE.md's gotcha on walking-vs-hurt bounds.
+
 ## What you need from the user before starting
 
 1. Spritesheet PNG dropped in `assets/` (confirm dimensions: `node -e "require('sharp')('assets/<name>.png').metadata().then(m=>console.log(m.width,m.height))"`; `sharp` is not a project dependency — `npm install sharp` somewhere scratch and require it by path)

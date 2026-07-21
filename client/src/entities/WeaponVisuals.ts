@@ -6,10 +6,11 @@ import {
   createAttackFXSprite,
   playAttackFX,
   syncAttackFX,
+  holdWeaponIconAtRest,
   WEAPON_ICON_DISPLAY_SIZE,
 } from "./AttackFXSprites";
 import { NovaFX } from "./NovaFX";
-import { createBowSprite, playBowFX, syncBowFX } from "./RangedWeaponFX";
+import { createBowSprite, playBowFX, syncBowFX, showHeldBow } from "./RangedWeaponFX";
 import { createCastSprite, playCastFX, syncCastFX, showHeldStaff } from "./CastFX";
 
 /**
@@ -32,31 +33,45 @@ export interface WeaponVisual {
   destroy(): void;
 }
 
-/** Melee: a one-shot slash/stab strip, optionally with the weapon icon tracked
- *  along its keyframes. Either half may be absent — a weapon can have a strip
- *  with no icon or an icon with no strip. */
-class MeleeSwingVisual implements WeaponVisual {
+/** A weapon carried in hand: its icon rests in the player's right hand between
+ *  uses, and a melee one additionally plays a slash/stab strip on attack (the
+ *  icon sweeping through the arc's keyframes). Covers every hand-held weapon —
+ *  swords, spears, and the strip-less thrown knives alike. Either half may be
+ *  absent: a weapon can have a strip with no icon, or an icon with no strip (a
+ *  thrown weapon, held but never swung). */
+class HeldWeaponVisual implements WeaponVisual {
   private readonly fxSprite?: Phaser.GameObjects.Sprite;
   private readonly icon?: Phaser.GameObjects.Image;
+  /** The weapon's natural hold tilt, from its config (see AttackFXSprites). */
+  private readonly iconAngle: number;
 
   constructor(
     scene: Phaser.Scene,
     private readonly fxType: StripFXType | null,
-    weaponIconTextureKey?: string,
+    weaponIconTextureKey: string | undefined,
+    x: number,
+    y: number,
+    facing: Facing,
   ) {
     if (fxType) this.fxSprite = createAttackFXSprite(scene, fxType);
+    this.iconAngle = WEAPON_REGISTRY[weaponIconTextureKey ?? ""]?.iconAngle ?? 0;
     if (weaponIconTextureKey) {
       this.icon = scene.add.image(0, 0, weaponIconTextureKey);
       this.icon.setOrigin(0.5, 0.5);
-      this.icon.setDepth(2.6);
       this.icon.setDisplaySize(WEAPON_ICON_DISPLAY_SIZE, WEAPON_ICON_DISPLAY_SIZE);
-      this.icon.setVisible(false);
+      // Held in hand from the moment it's equipped, like the staff and bow.
+      holdWeaponIconAtRest(this.icon, x, y, facing, this.iconAngle);
     }
   }
 
-  sync(x: number, y: number): void {
-    // Keep an in-flight swing anchored to the entity.
-    if (this.fxSprite) syncAttackFX(this.fxSprite, x, y, this.icon);
+  sync(x: number, y: number, facing: Facing): void {
+    // While a swing is playing, its keyframes drive the icon (and the strip is
+    // visible); the rest of the time the weapon rests in the hand.
+    if (this.fxSprite?.visible) {
+      syncAttackFX(this.fxSprite, x, y, this.icon);
+    } else if (this.icon) {
+      holdWeaponIconAtRest(this.icon, x, y, facing, this.iconAngle);
+    }
   }
 
   playAttack(x: number, y: number, facing: Facing): void {
@@ -74,12 +89,21 @@ class MeleeSwingVisual implements WeaponVisual {
 class HeldBowVisual implements WeaponVisual {
   private readonly bowSprite: Phaser.GameObjects.Sprite;
 
-  constructor(scene: Phaser.Scene, private readonly weaponId: string) {
+  constructor(
+    scene: Phaser.Scene,
+    private readonly weaponId: string,
+    x: number,
+    y: number,
+    facing: Facing,
+  ) {
     this.bowSprite = createBowSprite(scene, weaponId);
+    // Held in hand from the moment it's equipped (like the staff), so it doesn't
+    // blink out between shots on the slower bows.
+    showHeldBow(this.bowSprite, x, y, facing);
   }
 
-  sync(x: number, y: number): void {
-    syncBowFX(this.bowSprite, x, y);
+  sync(x: number, y: number, facing: Facing): void {
+    syncBowFX(this.bowSprite, x, y, facing);
   }
 
   playAttack(x: number, y: number, facing: Facing): void {
@@ -134,9 +158,8 @@ class NovaVisual implements WeaponVisual {
   }
 }
 
-/** Thrown (knife/star/boomerang): the flying projectile is the whole visual, so
- *  nothing stays in hand. A real object rather than a null field, so Entity's
- *  anim path never has to ask whether a visual exists. */
+/** No weapon at all (an enemy driving its own sprite). A real object rather than
+ *  a null field, so Entity's anim path never has to ask whether a visual exists. */
 class NoVisual implements WeaponVisual {
   sync(): void {}
   playAttack(): void {}
@@ -164,12 +187,15 @@ export function createWeaponVisual(
   facing: Facing,
 ): WeaponVisual {
   if (rangedStyle === "held" && weaponIconTextureKey) {
-    return new HeldBowVisual(scene, weaponIconTextureKey);
+    return new HeldBowVisual(scene, weaponIconTextureKey, x, y, facing);
   }
   if (rangedStyle === "cast" && weaponIconTextureKey) {
     return new HeldStaffVisual(scene, weaponIconTextureKey, x, y, facing);
   }
   if (rangedStyle === "thrown") {
+    // Nothing in hand: the flying projectile is the whole visual. (A held icon
+    // just sitting in the hand between throws looked odd — hidden for now until
+    // there's a better throw pose.)
     return new NoVisual();
   }
   if (fxType === "nova") {
@@ -177,5 +203,5 @@ export function createWeaponVisual(
     const radius = WEAPON_REGISTRY[weaponIconTextureKey ?? ""]?.aoe?.radius ?? 76;
     return new NovaVisual(scene, radius);
   }
-  return new MeleeSwingVisual(scene, fxType, weaponIconTextureKey);
+  return new HeldWeaponVisual(scene, fxType, weaponIconTextureKey, x, y, facing);
 }

@@ -1,4 +1,4 @@
-import { Weapon, WeaponCategory, AttackFXType, makeMeleeHurtbox, Override } from "../base";
+import { Weapon, WeaponCategory, AttackFXType, Override } from "../base";
 
 const DEFAULTS = {
   category: "hammer" as WeaponCategory,
@@ -6,7 +6,6 @@ const DEFAULTS = {
   damage: 35,
   attackCooldownMs: 800,
   attackForce: 15,
-  getHurtbox: makeMeleeHurtbox(38, 40),
   // Heavy overhead swing — same arc tilt as swords/axes.
   iconAngle: -45,
 };

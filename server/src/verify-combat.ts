@@ -4,7 +4,7 @@
 // the exact gather+resolve step GameRoom.tick runs, and asserts damage,
 // knockback, team-filtering, weapon instancing, and the upgrade fold all behave.
 // Run: npx ts-node --transpile-only src/verify-combat.ts
-import { TILE, Layer, SERVER_TICK_MS, WEAPON_REGISTRY, AMMO_REGISTRY, PLAYER_ATTACK_AFFECTS, ENEMY_ATTACK_AFFECTS, PLAYER_PROJECTILE_AFFECTS, ENEMY_PROJECTILE_AFFECTS, Staff, WeaponInstance, WeaponMod, viewFromSlot } from "shared";
+import { TILE, Layer, SERVER_TICK_MS, WEAPON_REGISTRY, AMMO_REGISTRY, PLAYER_ATTACK_AFFECTS, ENEMY_ATTACK_AFFECTS, PLAYER_PROJECTILE_AFFECTS, ENEMY_PROJECTILE_AFFECTS, Staff, WeaponInstance, WeaponMod, viewFromSlot , ENTITY_RADIUS, ENEMY_HURT_BOUNDS} from "shared";
 import { weaponSpell } from "./spells/weaponSpell";
 import { PhysicsWorld } from "./physics/PhysicsWorld";
 import { Player, slotStateFor } from "./entities/Player";
@@ -82,22 +82,79 @@ function resolveStep(
   player.applyInput({ dx: 0, dy: 0, attack: true }, SERVER_TICK_MS); // start a swing
   resolveStep(physics, players, enemies, []);
 
-  check("melee damages enemy", enemy.state.health === enemyHp0 - broadsword.damage,
-    `enemyHp ${enemyHp0}→${enemy.state.health} (−${broadsword.damage})`);
-  check("melee knocks back enemy", enemy.state.stunned === true,
-    `stunned=${enemy.state.stunned}`);
+  // The swing's hurtbox comes from the attack ANIMATION, whose first frames draw
+  // nothing, so tick 1 is wind-up: the enemy's own contact hitbox has already
+  // landed, but the sword has not.
+  check("melee winds up before it damages", enemy.state.health === enemyHp0,
+    `enemyHp still ${enemy.state.health}`);
   check("enemy contact damages player", player.state.health === playerHp0 - enemy["attackDamage"],
     `playerHp ${playerHp0}→${player.state.health}`);
 
-  // Continue the SAME swing (attack held): the hurtbox is emitted again, but the
-  // swing's gate dedupes so the enemy isn't re-hit, and the enemy's contact
-  // cooldown holds so it can't re-hit the player either.
-  const enemyHp1 = enemy.state.health;
   const playerHp1 = player.state.health;
   player.applyInput({ dx: 0, dy: 0, attack: true }, SERVER_TICK_MS);
   resolveStep(physics, players, enemies, []);
-  check("melee hits once per swing", enemy.state.health === enemyHp1, `enemyHp still ${enemy.state.health}`);
   check("enemy contact respects cooldown", player.state.health === playerHp1, `playerHp still ${player.state.health}`);
+
+  // Hold the swing until the blade frames come up — then it lands, once.
+  let swingTicks = 2;
+  while (enemy.state.health === enemyHp0 && swingTicks < 20) {
+    player.applyInput({ dx: 0, dy: 0, attack: true }, SERVER_TICK_MS);
+    resolveStep(physics, players, enemies, []);
+    swingTicks++;
+  }
+  check("melee damages enemy", enemy.state.health === enemyHp0 - broadsword.damage,
+    `enemyHp ${enemyHp0}→${enemy.state.health} (−${broadsword.damage}) after ${swingTicks} ticks`);
+  check("melee knocks back enemy", enemy.state.stunned === true,
+    `stunned=${enemy.state.stunned}`);
+
+  // Continue the SAME swing (attack held): the hurtbox is emitted again, but the
+  // swing's gate dedupes so the enemy isn't re-hit.
+  const enemyHp1 = enemy.state.health;
+  player.applyInput({ dx: 0, dy: 0, attack: true }, SERVER_TICK_MS);
+  resolveStep(physics, players, enemies, []);
+  check("melee hits once per swing", enemy.state.health === enemyHp1, `enemyHp still ${enemy.state.health}`);
+}
+
+// ── Scenario 1b: hurt bounds are the SPRITE, not the physics body. A swing that
+//    never crosses the enemy's centre still connects, because any visible part of
+//    a creature is damageable (measured bounds). This is the case that used to fail:
+//    hurtRadius was 0, so an enemy was a bare point at its centre. ──
+{
+  const physics = newPhysics();
+  const px = 300, py = 300;
+  const player = new Player(physics, px, py, "knight", "guy", "broadsword");
+  player.state.facing = "right";
+
+  // The broadsword's slash art reaches 24px, so the swing rect ends at x=324.
+  // Put the enemy's CENTRE at 330 — beyond the blade, but close enough that its
+  // drawn sprite (a ~10px half-extent) overlaps the arc. With the old point-target
+  // model (hurtRadius 0) this was a clean miss; now the visible overlap connects.
+  const enemy = new GooGreen(physics, px + 30, py);
+  const players = new Map([["p1", player]]);
+  const enemies = new Map([["e1", enemy]]);
+  const hp0 = enemy.state.health;
+
+  let t = 0;
+  while (enemy.state.health === hp0 && t < 20) {
+    player.applyInput({ dx: 0, dy: 0, attack: true }, SERVER_TICK_MS);
+    resolveStep(physics, players, enemies, []);
+    t++;
+  }
+  check("hurt bounds: a glancing hit on the sprite still lands",
+    enemy.state.health < hp0,
+    `enemyHp ${hp0}→${enemy.state.health}`);
+
+  // And the two bounds really are separate: the physics circle is much smaller,
+  // and the hurt box came from the art rather than a constant.
+  check("hurt bounds: hurt region is wider than the collision body",
+    enemy.hurtBounds.halfW > ENTITY_RADIUS && enemy.hurtBounds.halfH > ENTITY_RADIUS,
+    `hurt=${enemy.hurtBounds.halfW}×${enemy.hurtBounds.halfH} body=${ENTITY_RADIUS}`);
+
+  // Non-square art must stay non-square: a spider is 30×15, so a single radius
+  // could only be wrong in one direction or the other.
+  check("hurt bounds: measured boxes are not forced square",
+    ENEMY_HURT_BOUNDS["spider"].halfW !== ENEMY_HURT_BOUNDS["spider"].halfH,
+    `spider=${ENEMY_HURT_BOUNDS["spider"].halfW}×${ENEMY_HURT_BOUNDS["spider"].halfH}`);
 }
 
 // ── Scenario 2: a player-owned arrow damages an enemy but never the owner. ──
@@ -344,12 +401,28 @@ function resolveStep(
   enemies.set("e1", e);
   p.state.facing = "right";
   const hpBefore = e.state.health;
+
+  // The hurtbox is derived from the attack animation, whose leading frames draw
+  // nothing (see shared/weapons/hurtbox.ts), so a swing has a real wind-up: the
+  // first tick must NOT connect. This is load-bearing feel, not an accident.
   p.applyInput({ dx: 0, dy: 0, attack: true }, SERVER_TICK_MS);
   resolveStep(physics, players, enemies, []);
+  check("pipeline: a swing winds up before it can hit",
+    e.state.health === hpBefore,
+    `dealt=${(hpBefore - e.state.health).toFixed(2)} want=0 on the first tick`);
+
+  // Then it lands, once, as the blade frames come up. Ticking the whole swing
+  // also proves the RehitGate still holds across the now-multi-frame hitbox.
+  let ticks = 1;
+  while (e.state.health === hpBefore && ticks < 20) {
+    p.applyInput({ dx: 0, dy: 0, attack: true }, SERVER_TICK_MS);
+    resolveStep(physics, players, enemies, []);
+    ticks++;
+  }
   const dealt = hpBefore - e.state.health;
   check("pipeline: a swing delivers the scaled damage",
     Math.abs(dealt - expected) < 1e-6,
-    `dealt=${dealt.toFixed(2)} want=${expected.toFixed(2)}`);
+    `dealt=${dealt.toFixed(2)} want=${expected.toFixed(2)} after ${ticks} ticks`);
 }
 
 // ── Scenario 10: ranged — the shot carries weapon damage + ammo damage, scaled. ─

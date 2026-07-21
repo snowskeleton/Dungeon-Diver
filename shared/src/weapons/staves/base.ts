@@ -18,7 +18,6 @@ const DEFAULTS = {
   damage: 0,
   attackCooldownMs: 600,
   attackForce: 0,
-  getHurtbox: noMelee,
   iconAngle: 0,
   ammoId: "magic-bolt",
   rangedStyle: "cast" as const,

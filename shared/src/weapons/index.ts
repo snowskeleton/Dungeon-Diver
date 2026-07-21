@@ -120,8 +120,11 @@ export { Bow }      from "./bows/base";
 export { Crossbow } from "./crossbows/base";
 export { Thrown }   from "./thrown/base";
 export { Staff }    from "./staves/base";
-export { makeMeleeHurtbox } from "./base";
-export type { AttackFXType, WeaponCategory, RangedStyle, HitRegion, RectHitRegion, CircleHitRegion, GetHurtbox, WeaponOpts } from "./base";
+export { isStripFx } from "./base";
+export { fxHurtboxAt, swingDurationMs } from "./hurtbox";
+export { FX_HURTBOX_FRAMES, FX_FRAME_MS } from "./fxHurtboxes.generated";
+export type { AttackFXType, WeaponCategory, RangedStyle, HitRegion, RectHitRegion, CircleHitRegion, GetHurtbox, WeaponOpts, StripFXType } from "./base";
+export type { FxFrameBounds } from "./fxHurtboxes.generated";
 export {
   WeaponInstance,
   WeaponMod,

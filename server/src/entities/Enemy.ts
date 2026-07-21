@@ -1,4 +1,4 @@
-import { AiState, SERVER_TICK_MS, EnemyType, EnemyFacingMode, ENEMY_BODY_PROFILE, ENEMY_ATTACK_AFFECTS } from "shared";
+import { AiState, SERVER_TICK_MS, EnemyType, EnemyFacingMode, ENEMY_BODY_PROFILE, ENEMY_ATTACK_AFFECTS , ENEMY_HURT_BOUNDS, PLAYER_HURT_BOUNDS, HurtBounds } from "shared";
 import { EnemyState } from "../schema/EnemyState";
 import { PlayerState } from "../schema/PlayerState";
 import { Entity } from "./Entity";
@@ -117,6 +117,13 @@ export abstract class Enemy extends Entity {
     this.setAirHeight(this.state.isDying ? 0 : this.cruiseHeight);
   }
 
+  /** Measured from this enemy's own spritesheet — see the generator. No enemy
+   *  declares a hurt size by hand; adding one to the EnemyType union without art
+   *  is a compile error in the generated table. */
+  override get hurtBounds(): HurtBounds {
+    return ENEMY_HURT_BOUNDS[this.typeId];
+  }
+
   /** A dying enemy plays its death animation but takes no further hits. */
   override get damageable(): boolean {
     return !this.state.isDying;
@@ -133,7 +140,19 @@ export abstract class Enemy extends Entity {
     }
     let claimed = false;
     return {
-      shape: { kind: "circle", cx: this.state.x, cy: this.state.y, r: this.attackRadius },
+      // `attackRadius` is CENTER-TO-CENTER reach (see the getter), but the
+      // resolver now tests against the target's measured hurt BOX rather than a
+      // bare centre point. Subtracting the player's half-width here keeps
+      // the effective reach exactly attackRadius, so giving creatures real hurt
+      // bounds did not silently hand every enemy 10px of extra grab range. Floors
+      // at 0: a contact circle of r=0 still lands the moment the player's drawn
+      // sprite overlaps the enemy's centre.
+      shape: {
+        kind: "circle",
+        cx: this.state.x,
+        cy: this.state.y,
+        r: Math.max(0, this.attackRadius - PLAYER_HURT_BOUNDS.halfW),
+      },
       affects: ENEMY_ATTACK_AFFECTS,
       ownerId: id,
       // Contact deals no knockback to players — only telegraphed attacks shove.

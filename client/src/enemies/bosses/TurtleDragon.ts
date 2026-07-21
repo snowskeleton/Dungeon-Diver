@@ -1,4 +1,4 @@
-import { frameRow } from "../sheetEnemy";
+import { frameRow, ENEMY_SPRITE_GEOMETRY } from "../spriteGeometry";
 import { defineClips } from "../../entities/SpriteClips";
 import { ClientEnemyDef } from "../types";
 import { boss } from "./factory";
@@ -8,14 +8,15 @@ import { boss } from "./factory";
 // from the boss's abilityId ("shell-spin") passed to resolve as `action`.
 // 16×1 @32: cols 0-3 idle, 4-9 walk, 10-13 spin, 14-15 damage.
 function turtleDragonDef(): ClientEnemyDef {
-  const base = boss("turtle-dragon", "Turtle Dragon", { frameWidth: 32, cols: 16, moveFrames: frameRow(16, 0, 4, 6) });
+  const base = boss("turtle-dragon", "Turtle Dragon");
+  const { cols } = ENEMY_SPRITE_GEOMETRY["turtle-dragon"];
   const spinKey = "turtle-dragon-spin";
   return {
     ...base,
     defineAnimations: (scene) => {
       base.defineAnimations(scene);
       defineClips(scene, base.textureKey, {
-        [spinKey]: { frames: frameRow(16, 0, 10, 4), frameRate: 16, repeat: -1 },
+        [spinKey]: { frames: frameRow(cols, 0, 10, 4), frameRate: 16, repeat: -1 },
       });
     },
     // Both the dash and the stationary whirl render as the spin row.

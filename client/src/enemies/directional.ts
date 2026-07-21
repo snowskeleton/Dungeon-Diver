@@ -1,10 +1,11 @@
 import { makeDirectionalEnemyDef } from "./directionalEnemy";
+import { EnemyType } from "shared";
 import { ClientEnemyDef } from "./types";
 
 // Directional enemies: 4×4 @16 sheets, one row per facing (up/right/down/left),
 // never mirrored. Mirrors entities/enemies/directional.ts.
-const smallDirectional = (id: string, name: string): ClientEnemyDef =>
-  makeDirectionalEnemyDef(id, { name, frameSize: 16, cols: 4, frameRate: 8 });
+const smallDirectional = (id: EnemyType, name: string): ClientEnemyDef =>
+  makeDirectionalEnemyDef(id, { name, frameRate: 8 });
 
 export const bones = smallDirectional("bones", "Bones");
 export const bonesBlader = smallDirectional("bones-blader", "Bones Blader");

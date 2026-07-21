@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { TILE_SIZE, Facing, RangedStyle, FOOT_OFFSET, ENTITY_RADIUS, WEAPON_REGISTRY } from "shared";
-import type { DebugShape } from "../debug/DebugDraw";
+import { DEBUG_COLORS, type DebugShape } from "../debug/DebugDraw";
 import { AttackFXType } from "./AttackFXSprites";
 import { WeaponVisual, createWeaponVisual, createNoWeaponVisual } from "./WeaponVisuals";
 

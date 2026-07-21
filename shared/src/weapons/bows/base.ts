@@ -9,7 +9,6 @@ const DEFAULTS = {
   damage: 0,
   attackCooldownMs: 400,
   attackForce: 0,
-  getHurtbox: noMelee,
   iconAngle: 0,
   ammoId: "arrow",
   rangedStyle: "held" as const,

@@ -1,16 +1,18 @@
-import { TILE_SIZE } from "shared";
+import { EnemyType } from "shared";
 import { makeSheetEnemyDef, SheetSpec } from "../sheetEnemy";
 import { ClientEnemyDef } from "../types";
+import { BOSS_SIZE } from "../spriteGeometry";
 
-/** Bosses render at double a normal enemy so they read as a threat. */
-export const BOSS_SIZE = TILE_SIZE * 2;
+export { BOSS_SIZE };
 
-export type BossSpec = Omit<SheetSpec, "name" | "displayW" | "displayH"> & { displaySize?: number };
+export type BossSpec = Omit<SheetSpec, "name">;
 
-/** A horizontal boss sheet at 2× enemy size, flagged isBoss (excludes it from the
- *  Debug menu's rabble picker). Bosses with special rows wrap this and override
- *  defineAnimations/resolve — see TurtleDragon/Wyvern/TenguMask. */
-export const boss = (id: string, name: string, spec: BossSpec): ClientEnemyDef => {
-  const { displaySize = BOSS_SIZE, ...sheet } = spec;
-  return { ...makeSheetEnemyDef(id, { ...sheet, name, displayW: displaySize, displayH: displaySize }), isBoss: true };
-};
+/** A horizontal boss sheet, flagged isBoss (which excludes it from the Debug
+ *  menu's rabble picker). Display size and frame layout come from
+ *  spriteGeometry.ts like every other enemy — bosses are 2× there. Bosses with
+ *  ability-driven rows wrap this and override defineAnimations/resolve — see
+ *  TurtleDragon/Wyvern/TenguMask. */
+export const boss = (id: EnemyType, name: string, spec: BossSpec = {}): ClientEnemyDef => ({
+  ...makeSheetEnemyDef(id, { ...spec, name }),
+  isBoss: true,
+});

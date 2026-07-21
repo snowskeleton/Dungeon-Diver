@@ -1,4 +1,4 @@
-import { Weapon, WeaponCategory, AttackFXType, makeMeleeHurtbox, Override } from "../base";
+import { Weapon, WeaponCategory, AttackFXType, Override } from "../base";
 
 const DEFAULTS = {
   category: "rapier" as WeaponCategory,
@@ -6,7 +6,6 @@ const DEFAULTS = {
   damage: 15,
   attackCooldownMs: 350,
   attackForce: 5,
-  getHurtbox: makeMeleeHurtbox(50, 18),
   // Straight thrust — tip points directly at the target.
   iconAngle: 0,
 };

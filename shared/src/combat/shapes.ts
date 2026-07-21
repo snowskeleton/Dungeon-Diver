@@ -74,3 +74,51 @@ export function shapeHitsPoint(shape: HitShape, px: number, py: number, pad = 0)
     }
   }
 }
+
+/** An axis-aligned damageable box: half-extents around a centre point. */
+export interface HurtBox {
+  cx: number;
+  cy: number;
+  halfW: number;
+  halfH: number;
+}
+
+/**
+ * Does `shape` overlap the axis-aligned box `box`?
+ *
+ * This replaces padding a point by a scalar radius. Creatures are measured from
+ * their art (see shared/enemies/hurtBounds.generated.ts) and are frequently not
+ * square — the spider is 30×15, the batwing boss 80×64 — so a radius either
+ * under-covers the wide axis or over-covers the narrow one. A box can't.
+ *
+ * `rect` and `circle` are tested EXACTLY, and they are the cases that carry the
+ * game's melee: a swing arc is a rect, contact damage and AOE bursts are circles.
+ *
+ * `segment` and `sweptEllipse` (beams, dash trails, projectiles) reuse the scalar
+ * path with the box's circumradius, which is a deliberate approximation: exact
+ * oriented-box-vs-swept-ellipse is a lot of math for shapes that are already
+ * approximations of the art. It errs INCLUSIVE — a projectile may clip a corner
+ * of empty space around a creature — which is the right direction to err for
+ * "anything you can see should be hittable", and it is never tighter than the
+ * old point test.
+ */
+export function shapeHitsBox(shape: HitShape, box: HurtBox): boolean {
+  switch (shape.kind) {
+    case "rect":
+      // AABB vs AABB.
+      return (
+        box.cx + box.halfW >= shape.x && box.cx - box.halfW <= shape.x + shape.w &&
+        box.cy + box.halfH >= shape.y && box.cy - box.halfH <= shape.y + shape.h
+      );
+    case "circle": {
+      // Closest point on the box to the circle's centre.
+      const nx = Math.max(box.cx - box.halfW, Math.min(shape.cx, box.cx + box.halfW));
+      const ny = Math.max(box.cy - box.halfH, Math.min(shape.cy, box.cy + box.halfH));
+      const dx = shape.cx - nx;
+      const dy = shape.cy - ny;
+      return dx * dx + dy * dy <= shape.r * shape.r;
+    }
+    default:
+      return shapeHitsPoint(shape, box.cx, box.cy, Math.hypot(box.halfW, box.halfH));
+  }
+}

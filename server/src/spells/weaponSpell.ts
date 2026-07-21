@@ -102,11 +102,20 @@ function meleeWeaponSpell(inst: WeaponInstance): Spell {
 
 function meleeEffect(inst: WeaponInstance): SpellEffect {
   const gate = new RehitGate(Infinity); // one hit per target for the whole swing
-  // Emit the weapon's facing-relative hurtbox for this tick. Called on the strike
-  // frame AND every active tick, so the swing is live from its very first frame.
+
+  // Elapsed time into the ATTACK ANIMATION, which is not the same clock as the
+  // spell's active phase: the FX strip always plays at its own frame rate, while
+  // activeMs is the weapon's cooldown. A slow weapon holds isAttacking long after
+  // its animation (and so its hitbox) has finished — which is correct, and is why
+  // this counter is kept here rather than read off the spell's phase progress.
+  let swingMs = 0;
+
+  // Emit the hurtbox for the animation frame currently on screen. Returns null on
+  // a wind-up frame (the strips' first two frames draw nothing) and once the
+  // animation is over, so damage is live exactly while the blade is visible.
   const emit = (caster: Caster) => {
-    const box = inst.getHurtbox(caster.x, caster.y, caster.facing);
-    if (!box) return; // (ranged weapons return null, but they don't use this spell)
+    const box = inst.getHurtbox(caster.x, caster.y, caster.facing, swingMs);
+    if (!box) return;
     const shape: HitShape = box.shape === "rect"
       ? { kind: "rect", x: box.x, y: box.y, w: box.w, h: box.h }
       : { kind: "circle", cx: box.cx, cy: box.cy, r: box.r };
@@ -119,8 +128,15 @@ function meleeEffect(inst: WeaponInstance): SpellEffect {
     });
   };
   return {
-    onActivate: (caster) => { gate.reset(); emit(caster); },
-    onActiveTick: (caster) => emit(caster),
+    onActivate: (caster) => {
+      gate.reset();
+      swingMs = 0;
+      emit(caster);
+    },
+    onActiveTick: (caster, dtMs) => {
+      swingMs += dtMs;
+      emit(caster);
+    },
   };
 }
 

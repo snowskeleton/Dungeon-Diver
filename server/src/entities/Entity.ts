@@ -2,6 +2,7 @@ import type Matter from "matter-js";
 import {
   TILE_PROPS, TileId, TILE_DAMAGE_INTERVAL_MS, InteractionProfile, Attack,
   KNOCKBACK_SCALE, KNOCKBACK_STUN_MS_PER_UNIT, KNOCKBACK_STUN_MAX_MS, SERVER_TICK_MS,
+  HurtBounds, PLAYER_HURT_BOUNDS,
 } from "shared";
 import { EntityState } from "../schema/EntityState";
 import { HitSource } from "../combat/HitSource";
@@ -242,10 +243,16 @@ export abstract class Entity {
     return false;
   }
 
-  /** Radius this body occupies for hit tests (inflates the source shape). 0 makes
-   *  it a point target; raise it to model a real hurt circle. */
-  get hurtRadius(): number {
-    return 0;
+  /** The region this body can be DAMAGED on — the drawn sprite's extent, not the
+   *  physics body's. Walking bounds and hurt bounds are deliberately separate
+   *  questions: ENTITY_RADIUS is a 5px circle at the feet that decides what you
+   *  bump into, while this is the whole visible creature.
+   *
+   *  Both concrete subclasses override with numbers MEASURED FROM THEIR ART
+   *  (Player → PLAYER_HURT_BOUNDS, Enemy → ENEMY_HURT_BOUNDS[type]); the humanoid
+   *  box is the default so a future Entity subclass is never a bare point. */
+  get hurtBounds(): HurtBounds {
+    return PLAYER_HURT_BOUNDS;
   }
 
   /** False once dead so a corpse takes no further hits. Enemies override to gate

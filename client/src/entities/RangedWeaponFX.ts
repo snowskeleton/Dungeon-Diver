@@ -6,6 +6,12 @@ import { Facing } from "shared";
 // attack plays 0→1→0→0 (windup → draw → release → settle) beside the player,
 // rotated toward the fire direction. The actual arrow is a separate server
 // projectile spawned on release, so the bow returns to frame 0 as it "fires".
+//
+// Like the staff (see CastFX.showHeldStaff), the bow is HELD in hand while the
+// weapon is equipped — it rests at frame 0 between shots rather than vanishing.
+// (It used to hide itself on animation-complete, so it only existed for the
+// ~333ms of the draw clip and blinked out whenever the attack cooldown was
+// longer than that — every bow but the fast shortbow.)
 
 export const BOW_DISPLAY_SIZE = 24;
 // How far in front of the player body the bow sits, per axis.
@@ -21,10 +27,6 @@ const FACING_OFFSET: Record<Facing, { x: number; y: number }> = {
   down:  { x: 0, y: BOW_REACH },
   up:    { x: 0, y: -BOW_REACH },
 };
-
-// Active draw state per bow sprite, so syncBowFX() can keep it anchored while
-// the player moves mid-shot.
-const activeDraws = new WeakMap<Phaser.GameObjects.Sprite, { facing: Facing }>();
 
 /** Full anim key for a weapon's draw clip. */
 export function bowDrawKey(weaponId: string): string {
@@ -64,7 +66,20 @@ function place(sprite: Phaser.GameObjects.Sprite, px: number, py: number, facing
   sprite.setAngle(FACING_DEG[facing] + BOW_ANGLE_OFFSET);
 }
 
-/** Play the draw-and-release clip. Hides the bow when it completes. */
+/** Show the bow in its resting held pose (called once the weapon is equipped). */
+export function showHeldBow(
+  sprite: Phaser.GameObjects.Sprite,
+  px: number,
+  py: number,
+  facing: Facing,
+) {
+  sprite.setFrame(0);
+  place(sprite, px, py, facing);
+  sprite.setVisible(true);
+}
+
+/** Play the draw-and-release clip. The bow stays visible (held) afterwards,
+ *  settling back to frame 0 rather than disappearing between shots. */
 export function playBowFX(
   sprite: Phaser.GameObjects.Sprite,
   weaponId: string,
@@ -72,20 +87,22 @@ export function playBowFX(
   py: number,
   facing: Facing,
 ) {
-  activeDraws.set(sprite, { facing });
   place(sprite, px, py, facing);
   sprite.setVisible(true);
   sprite.off(Phaser.Animations.Events.ANIMATION_COMPLETE);
   sprite.play(bowDrawKey(weaponId));
-  sprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
-    sprite.setVisible(false);
-    activeDraws.delete(sprite);
-  });
+  // The clip ends on frame 0 (0→1→0→0); make that explicit so an interrupted
+  // draw can't leave the bow stuck drawn, and DON'T hide it — it stays in hand.
+  sprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => sprite.setFrame(0));
 }
 
-/** Re-anchor an in-flight draw to the player's current position each frame. */
-export function syncBowFX(sprite: Phaser.GameObjects.Sprite, px: number, py: number) {
-  const draw = activeDraws.get(sprite);
-  if (!draw || !sprite.visible) return;
-  place(sprite, px, py, draw.facing);
+/** Keep the held bow anchored to the player each frame, aimed at its facing. */
+export function syncBowFX(
+  sprite: Phaser.GameObjects.Sprite,
+  px: number,
+  py: number,
+  facing: Facing,
+) {
+  if (!sprite.visible) return;
+  place(sprite, px, py, facing);
 }
