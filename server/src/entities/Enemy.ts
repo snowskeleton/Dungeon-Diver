@@ -106,6 +106,19 @@ export abstract class Enemy extends Entity {
     return this.state.isDying;
   }
 
+  /** Scale this enemy's health pool by a multiplier decided at spawn time (party-
+   *  size scaling — see SpawnDirector). Applied to BOTH max and current HP right
+   *  after construction, while current === max, so the enemy simply spawns tougher.
+   *  Rounded to a whole HP. A multiplier of 1 (solo, or the headless harnesses that
+   *  never route through SpawnDirector) is an exact no-op, which is what keeps the
+   *  golden verify-boss baseline byte-identical. */
+  scaleMaxHp(multiplier: number): void {
+    if (multiplier === 1) return;
+    const scaled = Math.round(this.maxHp * multiplier);
+    this.state.maxHealth = scaled;
+    this.state.health = scaled;
+  }
+
   /** Confine this enemy to its home room's interior (playtest B6/B14). Set by
    *  SpawnDirector from the room it spawned in; unset for anything spawned
    *  outside a room, and unset entirely in the headless harnesses — which is why
