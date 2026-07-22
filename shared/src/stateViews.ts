@@ -32,6 +32,7 @@ import type { Facing, AiState } from "./types";
 import type { CharacterClass, CharacterType } from "./characters/base";
 import type { WeaponSlotView } from "./weapons/instance";
 import type { UpgradeSlotView } from "./upgrades";
+import type { RunPhase } from "./lobby";
 
 // ── Colyseus collection shapes ─────────────────────────────────────────────
 // Structural subsets of MapSchema/ArraySchema: exactly the members the client
@@ -86,6 +87,11 @@ export interface PlayerStateView extends EntityStateView {
   readonly activeWeaponIndex: number;
   readonly maxHp: number;
   readonly upgrades: SyncedList<UpgradeSlotView>;
+  /** Display name, chosen in the lobby. Never empty — the server substitutes a
+   *  default rather than letting a blank row appear in the roster. */
+  readonly name: string;
+  /** Lobby readiness. Stays true through the run; it is only read before it starts. */
+  readonly ready: boolean;
 }
 
 export interface EnemyStateView extends EntityStateView {
@@ -172,4 +178,13 @@ export interface GameStateView extends SyncedSchema {
   readonly seed: number;
   readonly dungeonOpts: string;
   readonly paused: boolean;
+  /** "lobby" until the host starts; the client watches this to leave the lobby
+   *  panel and boot GameScene, so it is the run's one start signal. */
+  readonly phase: RunPhase;
+  /** Whose Start button is live. Reassigned if the host leaves the lobby. */
+  readonly hostSessionId: string;
+  readonly roomName: string;
+  /** The 4-character join code, shown in the lobby so it can be shared. */
+  readonly roomCode: string;
+  readonly isPrivate: boolean;
 }

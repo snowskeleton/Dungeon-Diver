@@ -6,7 +6,12 @@ import {
   TRAP_MIN_FLOORS, TRAP_MAX_FLOORS,
   DebugConfig, toDungeonOptions,
   Layer, PLAYER_ATTACK_AFFECTS, ENEMY_ATTACK_AFFECTS,
+  CreateRoomOptions, JoinRoomOptions, RoomMetadata,
+  SetNameMessage, SetLoadoutMessage, SetReadyMessage,
+  MAX_ROOM_NAME_LEN, MAX_PLAYER_NAME_LEN,
+  CharacterClass, CharacterType, WeaponId,
 } from "shared";
+import { allocateRoomCode } from "./roomCodes";
 import { GameState } from "../schema/GameState";
 import { Player, resolveTemplate } from "../entities/Player";
 import { upgradeById } from "../upgrades";
@@ -51,7 +56,7 @@ export class GameRoom extends Room<GameState> {
   // freezes all simulation for everyone (co-op pause).
   private pausedBy = new Set<string>();
 
-  onCreate(options?: { debug?: DebugConfig }) {
+  async onCreate(options?: CreateRoomOptions & { debug?: DebugConfig }) {
     if (options?.debug?.enabled) {
       this.debug = options.debug;
       this.dungeonOpts = toDungeonOptions(this.debug);
@@ -59,6 +64,15 @@ export class GameRoom extends Room<GameState> {
     }
 
     this.setState(new GameState());
+    // The room opens in its lobby phase: the floor below is generated, but
+    // nothing lives on it and nothing ticks until the host starts the run.
+    this.state.roomName = clampName(options?.roomName, MAX_ROOM_NAME_LEN, "Dungeon run");
+    this.state.isPrivate = options?.isPrivate === true;
+    this.state.roomCode = await allocateRoomCode();
+    // Awaited: the seat reservation for the creating client is issued the moment
+    // onCreate resolves, so a code allocated later could be missed by a lookup.
+    await this.setPrivate(this.state.isPrivate);
+    await this.publishMetadata();
     this.loot = new LootDirector(this.state);
     this.spawner = new SpawnDirector(
       this.state,
@@ -103,7 +117,158 @@ export class GameRoom extends Room<GameState> {
       this.state.paused = this.pausedBy.size > 0;
     });
 
+    // Asked for once, when a client's GameScene finishes building its map. The
+    // incremental barrier broadcasts all fire during startRun(), before any
+    // client has left its lobby panel, so without this every empty room would
+    // stay drawn as locked for the whole run.
+    this.onMessage("requestBarrierState", (client) => {
+      client.send("barrier_state", this.floorManager.barrierSnapshot());
+    });
+
+    // ── Lobby messages ──────────────────────────────────────────────────────
+    // All four are refused outright once the run starts. That refusal is what
+    // makes the lobby meaningful: a party's composition is settled before the
+    // first enemy exists, which is also what lets enemy scaling be fixed at
+    // start (D13) instead of chasing a roster that changes mid-floor.
+
+    this.onMessage("setName", (client, msg: SetNameMessage) => {
+      if (!this.requireLobby(client, "rename")) return;
+      const player = this.players.get(client.sessionId);
+      if (!player) return;
+      player.state.name = clampName(msg?.name, MAX_PLAYER_NAME_LEN, "Player");
+      if (client.sessionId === this.state.hostSessionId) void this.publishMetadata();
+    });
+
+    this.onMessage("setLoadout", (client, msg: SetLoadoutMessage) => {
+      if (!this.requireLobby(client, "change loadout")) return;
+      this.replacePlayer(client.sessionId, msg);
+    });
+
+    this.onMessage("setReady", (client, msg: SetReadyMessage) => {
+      if (!this.requireLobby(client, "ready up")) return;
+      const player = this.players.get(client.sessionId);
+      if (player) player.state.ready = msg?.ready === true;
+    });
+
+    this.onMessage("startRun", (client) => {
+      if (!this.requireLobby(client, "start the run")) return;
+      if (client.sessionId !== this.state.hostSessionId) {
+        client.send("lobby_error", { reason: "Only the host can start the run." });
+        return;
+      }
+      const waiting = this.playersNotReady();
+      if (waiting.length > 0) {
+        client.send("lobby_error", { reason: `Waiting on ${waiting.join(", ")}.` });
+        return;
+      }
+      this.startRun();
+    });
+
     this.tickInterval = setInterval(() => this.tick(), SERVER_TICK_MS);
+  }
+
+  /** Guard for every lobby-only message. Answers the client rather than dropping
+   *  the message, so a late click says why nothing happened. */
+  private requireLobby(client: Client, action: string): boolean {
+    if (this.state.phase === "lobby") return true;
+    client.send("lobby_error", { reason: `The run has started — you can't ${action} now.` });
+    return false;
+  }
+
+  /** Everyone the host is still waiting on. The host is implicitly ready (they
+   *  are the one pressing Start) and so are couch players, who share a machine
+   *  with whoever added them. */
+  private playersNotReady(): string[] {
+    const waiting: string[] = [];
+    this.players.forEach((player, sessionId) => {
+      if (sessionId === this.state.hostSessionId) return;
+      if (!player.state.ready) waiting.push(player.state.name);
+    });
+    return waiting;
+  }
+
+  /** Mirror the browsable facts about this room onto its matchmaker listing.
+   *  Metadata rather than state because the room browser reads it WITHOUT
+   *  joining — `getAvailableRooms` returns exactly this object. */
+  private publishMetadata(): Promise<void> {
+    const host = this.state.hostSessionId
+      ? this.players.get(this.state.hostSessionId)
+      : undefined;
+    const metadata: RoomMetadata = {
+      roomName: this.state.roomName,
+      code: this.state.roomCode,
+      hostName: host?.state.name ?? "—",
+      phase: this.state.phase,
+    };
+    return this.setMetadata(metadata);
+  }
+
+  /** Rebuild a lobby player around a new class/skin/weapon.
+   *
+   *  A Player's stats come from its CharacterConfig at construction (charConfig
+   *  is readonly and maxHp/speed fold off it), so changing class is a new Player,
+   *  not a mutated one. Safe only in the lobby: no client is rendering the world
+   *  yet, so swapping the schema instance can't strip a live entity's callbacks. */
+  private replacePlayer(sessionId: string, loadout: SetLoadoutMessage) {
+    const previous = this.players.get(sessionId);
+    if (!previous) return;
+    this.physics.removeBody(previous.body);
+
+    const spawn = this.currentDungeon.playerSpawns[0];
+    const next = this.buildPlayer(spawn.x, spawn.y, loadout);
+    next.state.name = previous.state.name;
+    next.state.ready = previous.state.ready;
+    this.players.set(sessionId, next);
+    this.state.players.set(sessionId, next.state);
+  }
+
+  /** The one place a Player is constructed. Ids arriving from a client are
+   *  validated, never cast: an unknown weapon id would otherwise leave the
+   *  player holding nothing at all. */
+  private buildPlayer(x: number, y: number, options?: JoinRoomOptions): Player {
+    const characterClass = (options?.characterClass ?? "knight") as CharacterClass;
+    const characterType = (options?.characterType ?? "guy") as CharacterType;
+    const weaponId = resolveTemplate(options?.weaponId)?.id as WeaponId | undefined;
+    const player = new Player(this.physics, x, y, characterClass, characterType, weaponId);
+    // Debug-only: pre-grant upgrades so stat folding can be exercised (and balanced)
+    // without walking to a shrine. Unknown ids are ignored rather than fatal.
+    for (const id of this.debug?.startingUpgrades ?? []) {
+      const upgrade = upgradeById(id);
+      if (upgrade) player.addUpgrade(upgrade);
+    }
+    return player;
+  }
+
+  /**
+   * Leave the lobby for good: lock the room, put the party on the entry tile,
+   * and populate the floor.
+   *
+   * `lock()` is the whole of D12's "no dropping into a run in progress" — a
+   * locked room vanishes from the browser AND rejects joinById, so there is no
+   * second path in to keep consistent. It is never unlocked; a run that wants
+   * more players is a new room.
+   */
+  private startRun() {
+    this.state.phase = "run";
+    void this.lock();
+    void this.publishMetadata();
+
+    // Everyone re-lands on a spawn tile. Lobby joins arrive over several minutes
+    // and a player may have been placed against a floor that has since been
+    // regenerated by a debug reroll, so start the run from a known-good tile
+    // rather than from wherever each player's join happened to leave them.
+    const spawns = this.currentDungeon.playerSpawns;
+    let index = 0;
+    this.players.forEach((player) => {
+      const spawn = spawns[index++ % spawns.length];
+      player.teleport(spawn.x, spawn.y);
+    });
+
+    this.spawner.spawnFloorEnemies();
+    const parentUnlocked = this.floorManager.finalizeEmptyRooms();
+    if (parentUnlocked.length > 0) {
+      this.broadcast("connections_parent_unlocked", { connectionIds: parentUnlocked });
+    }
   }
 
   private initFloor(seed: number) {
@@ -211,31 +376,24 @@ export class GameRoom extends Room<GameState> {
     return n;
   }
 
-  onJoin(client: Client, options?: { characterClass?: string; characterType?: string; weaponId?: string }) {
+  onJoin(client: Client, options?: JoinRoomOptions) {
     const spawns = this.currentDungeon.playerSpawns;
     const spawn = spawns[this.spawnIndex % spawns.length];
     this.spawnIndex++;
-    const characterClass = (options?.characterClass ?? "knight") as import("shared").CharacterClass;
-    const characterType = (options?.characterType ?? "guy") as import("shared").CharacterType;
-    // The weapon id comes from the client, so validate it rather than casting: it
-    // now mints a real object, and an unknown id would leave the player weaponless.
-    const weaponId = resolveTemplate(options?.weaponId)?.id as import("shared").WeaponId | undefined;
-    const player = new Player(this.physics, spawn.x, spawn.y, characterClass, characterType, weaponId);
-    // Debug-only: pre-grant upgrades so stat folding can be exercised (and balanced)
-    // without walking to a shrine. Unknown ids are ignored rather than fatal.
-    for (const id of this.debug?.startingUpgrades ?? []) {
-      const upgrade = upgradeById(id);
-      if (upgrade) player.addUpgrade(upgrade);
-    }
+    const player = this.buildPlayer(spawn.x, spawn.y, options);
+    player.state.name = clampName(options?.playerName, MAX_PLAYER_NAME_LEN, "Player");
+    // Couch players share a screen with whoever added them, so making the host
+    // tick a ready box for each of them would be ceremony with no information in it.
+    player.state.ready = options?.couch === true;
     this.players.set(client.sessionId, player);
     this.state.players.set(client.sessionId, player.state);
 
-    if (this.players.size === 1 && this.enemies.size === 0) {
-      this.spawner.spawnFloorEnemies();
-      const parentUnlocked = this.floorManager.finalizeEmptyRooms();
-      if (parentUnlocked.length > 0) {
-        this.broadcast("connections_parent_unlocked", { connectionIds: parentUnlocked });
-      }
+    // First one in hosts. Enemies deliberately do NOT spawn here any more — the
+    // floor stays empty until startRun(), which is what makes the lobby a place
+    // you can stand around in rather than a fight already in progress.
+    if (!this.state.hostSessionId) {
+      this.state.hostSessionId = client.sessionId;
+      void this.publishMetadata();
     }
   }
 
@@ -247,6 +405,13 @@ export class GameRoom extends Room<GameState> {
     // Don't let a disconnect while paused freeze the room forever.
     this.pausedBy.delete(client.sessionId);
     this.state.paused = this.pausedBy.size > 0;
+
+    // A host who leaves the lobby must not take the Start button with them, or
+    // the remaining party is stuck in a room nobody can begin.
+    if (client.sessionId === this.state.hostSessionId) {
+      this.state.hostSessionId = this.players.keys().next().value ?? "";
+      void this.publishMetadata();
+    }
   }
 
   onDispose() {
@@ -330,6 +495,9 @@ export class GameRoom extends Room<GameState> {
   }
 
   private tick() {
+    // Nothing simulates in the lobby: the floor is generated but unpopulated, so
+    // there is no AI to run and standing in the lobby costs the server a boolean.
+    if (this.state.phase !== "run") return;
     // Frozen while any player has the inventory/stats menu open. Message handlers
     // (switch/close) keep running; only the world simulation halts.
     if (this.state.paused) return;
@@ -548,4 +716,12 @@ function shuffle<T>(items: T[]): void {
     const j = Math.floor(Math.random() * (i + 1));
     [items[i], items[j]] = [items[j], items[i]];
   }
+}
+
+/** Trim a client-supplied display string to something safe to render and list.
+ *  Names reach a room browser other people read, so a blank or oversized one is
+ *  replaced rather than rejected — the player is mid-typing, not attacking us. */
+function clampName(raw: string | undefined, max: number, fallback: string): string {
+  const trimmed = (raw ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+  return trimmed.length > 0 ? trimmed : fallback;
 }

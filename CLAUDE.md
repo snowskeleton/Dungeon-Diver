@@ -22,6 +22,7 @@ Concretely, and non-negotiably:
 | [docs/animation.md](docs/animation.md) | Touching character sprites, attack/hurt visuals, or the `attackSeq` path |
 | [docs/weapons-and-ammo.md](docs/weapons-and-ammo.md) | Touching weapons, attack FX, ammo, or projectiles |
 | [docs/loadout.md](docs/loadout.md) | Touching inventory, weapon switching, shops, or pause |
+| [docs/lobby.md](docs/lobby.md) | Touching menus, the room browser, the lobby, matchmaking, or the pause menu |
 | [docs/upgrades.md](docs/upgrades.md) | Touching player stats, weapon modifiers, damage numbers, or reward pedestals |
 | [docs/enemies.md](docs/enemies.md) | Adding or balancing an enemy |
 | [docs/bosses.md](docs/bosses.md) | Designing or building a boss moveset (per-boss abilities spec + bestiary text) |
@@ -50,7 +51,7 @@ Both are defined in `.claude/launch.json` for the preview panel. The Colyseus se
 
 ## Headless verification
 
-Two self-contained harnesses boot the real physics/entities/combat with no server or
+Four self-contained harnesses boot the real physics/entities/combat with no server or
 browser, and print a pass/fail line per assertion:
 
 ```bash
@@ -58,6 +59,13 @@ npx ts-node server/src/verify-combat.ts   # combat substrate, weapon instances, 
 npx ts-node server/src/verify-boss.ts     # every boss's moveset
 npx ts-node server/src/verify-rooms.ts    # room variants against the real FloorManager
 npx ts-node server/src/verify-barriers.ts # one-way exit barriers + enemy room containment
+```
+
+One more needs a **running server** (`npm run dev`), because it drives real
+`colyseus.js` clients through matchmaking:
+
+```bash
+npx ts-node server/src/verify-lobby.ts    # lobby phase, room codes, lobby-only joins
 ```
 
 **`verify-boss.ts` output is a golden regression baseline.** Anything touching the
@@ -70,9 +78,9 @@ npx ts-node server/src/verify-boss.ts > /tmp/boss-before.txt
 npx ts-node server/src/verify-boss.ts | diff /tmp/boss-before.txt -
 ```
 
-Room-level behaviour (shops, reward pedestals, schema sync) needs a **running server**
-and is currently checked with ad-hoc headless `colyseus.js` clients rather than a
-checked-in harness.
+Other room-level behaviour (shops, reward pedestals, schema sync) also needs a running
+server and is still checked with ad-hoc headless `colyseus.js` clients — `verify-lobby.ts`
+is the pattern to copy if you make one of those permanent.
 
 **After replacing any PNG in `assets/`, run `npm run assets:build`** or the client keeps loading the old copy. See [docs/assets.md](docs/assets.md).
 
@@ -88,13 +96,15 @@ shared/src/
   weapons/             ← one Weapon per <category>/<id>/index.ts (+ <id>.png icon); category base.ts holds defaults; index.ts exports WEAPON_REGISTRY + WeaponId union. instance.ts = WeaponInstance/WeaponMod (a WIELDED weapon: template + uid + modifiers) + WeaponSlotView (the wire shape); views.ts = viewFromSlot/viewFromTemplate adapters. Each weapon carries its own fxType; ranged ones carry ammoId + rangedStyle (staves are ranged: `rangedStyle: "cast"` + a per-staff elemental bolt). An `aoe` spec is still supported by `weaponSpell` (wind-up + nova) but no weapon uses it today — it's reserved for the Mage's nova ability
   ammo/                ← projectiles ranged weapons spawn; mirrors weapons/ layout. Behaviour-sharing groups nest under a category base (arrows/, boomerangs/); one-offs (throwing-knife, throwing-star) sit flat. index.ts exports AMMO_REGISTRY + AmmoId union
   debug.ts             ← DebugConfig (the Debug menu's flat settings object) + DEFAULT_DEBUG_CONFIG + toDungeonOptions()
+  lobby.ts             ← the lobby/matchmaking layer: RunPhase, create/join options, RoomMetadata (what a room browser reads WITHOUT joining), the lobby message payloads, and the room-code alphabet. See docs/lobby.md
   stateViews.ts        ← the synced shape of every schema, as read-only interfaces. Server schemas `implements` these, so a renamed @type field is a server-side compile error instead of a silent `undefined` on the client. SYNCED FIELDS ONLY — see the gotcha below
   dungeonGenerator.ts  ← seeded dungeon generation: generateDungeon(seed, opts?) builds a 5×4 grid of 21×16-tile rooms (105×64 tiles total), room graph, type assignment, tile carving, connections/barriers. `opts: DungeonOptions` overrides grid size, forced room type, boss, stairs
   tileData.ts          ← exports MAP_SEED + MAP_DATA = generateDungeon(MAP_SEED), plus spawn/room-center helpers
   index.ts             ← the "shared" package surface (client's Vite aliases `shared` → this file)
 
 server/src/
-  index.ts                  ← Colyseus Server setup (http + ws on port 2567)
+  index.ts                  ← Colyseus Server setup (http + ws on port 2567) + GET /api/rooms/by-code/:code (the only way to reach a PRIVATE room — Colyseus's own listing deliberately omits them)
+  rooms/roomCodes.ts        ← allocating a collision-free 4-char join code, and resolving one back to a room id via matchMaker.query
   rooms/GameRoom.ts         ← main 20 Hz game loop; owns the PhysicsWorld + CombatSystem + the two directors below; join/leave/input/AI tick, then drains every entity's queued effects into the one combat resolve, challenge plumbing, floor advancement (stairs → seed+1). Loot and spawning were split out — resist growing them back in here
   rooms/LootDirector.ts     ← everything reward-shaped: shops, shrine/boss/challenge offers, chests, the rolls behind them, and the validate-then-grant half of the buy/offerPick/chestOpen messages (GameRoom's handlers are one line each)
   rooms/SpawnDirector.ts    ← everything that puts a creature on the floor: the per-room rabble pass, the floor's boss, boss summons, the enemy pool + count. One private addEnemy() is the only place an enemy comes into existence
@@ -120,10 +130,15 @@ server/src/
   schema/GameState.ts       ← root schema: MapSchema of players + enemies + projectiles + shops (keyed by room id), floor number, `paused` flag
 
 client/src/
-  main.ts                   ← Phaser.Game config (800×576, pixelArt, WebGL); scene list [MenuScene, GameScene] — MenuScene auto-starts. Dev-only placeholder-asset report + `window.__game`
-  launch.ts                 ← LaunchConfig (what MenuScene hands GameScene: debug config + P1 loadout) and pickLoadout() = character picker → weapon picker
-  scenes/MenuScene.ts       ← title screen: Start / Options / Debug. Start and Debug both run pickLoadout() then `scene.start("GameScene", config)`
-  scenes/GameScene.ts       ← main scene; init(LaunchConfig) resets per-run state, async create() connects to server, wires state sync (players/enemies/projectiles/shops) + floor-change/barrier messages, room-locked camera. Owns the inventory HUD, PAUSED overlay, and P1 store card. Esc → menu
+  main.ts                   ← Phaser.Game config (800×576, pixelArt, WebGL); scene list [MenuScene, BrowseScene, LobbyScene, GameScene] — MenuScene auto-starts. Dev-only placeholder-asset report + `window.__game`
+  launch.ts                 ← Loadout + pickLoadout() = character picker → weapon picker. Run from the LOBBY on a player who already exists, so it pre-selects the current pick (a class change falls back to that class's starting weapon)
+  net/serverUrl.ts          ← the ws endpoint AND its matching http origin, resolved together so the socket and the REST calls can't disagree about where the server is
+  net/Party.ts              ← the 1–4 connections this machine holds to one room. Built in the LOBBY and handed to GameScene, which joins nothing. Also listRooms() for the browser. See docs/lobby.md
+  options/profile.ts        ← name + last-used loadout, persisted. What removed the two mandatory picker modals in front of the game
+  scenes/MenuScene.ts       ← title screen: Play Solo / Play Online / Options / Debug. Solo and Debug host a PRIVATE room; all four paths end in a lobby
+  scenes/BrowseScene.ts     ← the room browser: public list (polled), join-by-code, host-a-room
+  scenes/LobbyScene.ts      ← party staging in the room you'll play in; watches state.phase and starts GameScene when it flips to "run"
+  scenes/GameScene.ts       ← main scene; init({party, debug}) resets per-run state, create() builds views for the party's existing connections, wires state sync (players/enemies/projectiles/shops) + floor-change/barrier messages, room-locked camera. Owns the inventory HUD, PAUSED overlay, P1 store card, and the pause menu. Esc → pause menu
   characters/index.ts       ← CLIENT_CHARACTER_VISUAL_REGISTRY (CharacterType → preload/defineAnimations/spriteConfig)
   enemies/index.ts          ← CLIENT_ENEMY_REGISTRY: a thin `Record<EnemyType, ClientEnemyDef>` wiring table — each id maps to a named def imported from a group module. No definitions here; the annotation makes the compiler flag any id missing a def
   enemies/{goos,bats,floaters,critters,directional}.ts ← per-group visual defs (name + textureKey + displayW/H + `airborne?` + preload/defineAnimations/resolve()), mirroring the server's entities/enemies/*.ts grouping. Add an enemy by exporting its def here + one line in index.ts
@@ -147,12 +162,17 @@ client/src/
   entities/AcquireFX.ts     ← one-shot "item get!" flourish: weapon icon pops above the head + centered stats panel. Takes the synced SLOT so it shows the ROLLED stats; fires on a new weapon uid appearing
   entities/OfferPedestalEntity.ts ← in-world reward pedestal (pulsing "?"); ghosts out once claimed. Not an Entity (no HP bar)
   input/InputSource.ts      ← interface + KeyboardInputSource (wasd/arrows) + GamepadInputSource. read()=movement/attack; readActions()=discrete intents (prev/next slot, toggle menu, interact/buy) edge-detected by LocalPlayer
-  input/LocalPlayerManager.ts ← manages 1–4 local Colyseus connections; getCentroid() for camera
+  input/LocalPlayerManager.ts ← builds one LocalPlayer VIEW per party member and assigns its input device by seat; getCentroid() for camera. It no longer dials the server — see net/Party.ts
   ui/FieldPanel.ts          ← generic DOM settings panel rendered from a FieldSpec list (toggle/number/select/multiselect) + optional preset chips; backs both Options and Debug
   ui/CharacterPicker.ts     ← join-time class + skin chooser (DOM overlay), shown before the weapon picker
   ui/WeaponPicker.ts        ← join-time weapon chooser (DOM overlay)
   debug/debugFields.ts      ← DEBUG_FIELDS + DEBUG_PRESETS: the Debug menu as data. Add a knob here (and to shared DebugConfig); the panel renders itself
   options/gameOptions.ts    ← OPTION_FIELDS + localStorage-backed GameOptions (camera zoom, hitbox overlay, controls hint)
+  ui/menuDom.ts             ← the shared stylesheet + builders for the full-screen DOM menus (browser, lobby, pause). The older pickers predate it and still carry their own copies
+  ui/LobbyPanel.ts          ← the lobby's DOM view: roster, ready badges, host's Start button
+  ui/RoomBrowserPanel.ts    ← the browser's DOM view: room list, code box, host form
+  ui/PauseMenu.ts           ← D7's resumable pause menu (Resume / Inventory / Options / Abandon run)
+  ui/sceneBackdrop.ts       ← the canvas drawn behind a DOM menu scene
   ui/GameHud.ts             ← the always-on screen furniture: party HP, floor line, PAUSED overlay, P1 store card, controls hint. Lives on the UiLayer (zoom-1 UI camera)
   ui/InventoryHud.ts        ← fixed HUD row of owned weapons, active slot highlighted (rebuilds only on change)
   ui/InventoryMenu.ts       ← pause menu (DOM overlay): owned weapons + expanded stats + rolled mod labels + held upgrades; opening it pauses the room
@@ -170,7 +190,9 @@ client/src/
 
 **Authoritative server**: clients send `{ dx, dy, attack }` inputs; server computes all movement, collision, combat, and AI. Client only renders interpolated positions.
 
-**One Colyseus connection per player** — even for same-screen co-op. P1 uses WASD+Space, P2 uses arrows+Enter, P3/P4 use gamepads. Press **P** in-game to add a local player. All connect to the same room.
+**A room's lobby and its run are the same Colyseus room, in two phases.** `GameState.phase` is `"lobby"` until the host starts it, then `"run"` forever. Nothing simulates in the lobby and no enemy exists yet — `spawnFloorEnemies()` runs from `startRun()`, not from the first join — so the party is settled before the floor is populated. "No dropping into a run in progress" (playtest D12) is then just `room.lock()`: a locked room is both unlisted and unjoinable, so there is no second door. Solo is not a separate path — it is a private room nobody can find. See [docs/lobby.md](docs/lobby.md).
+
+**One Colyseus connection per player** — even for same-screen co-op. P1 uses WASD+Space, P2 uses arrows+Enter, P3/P4 use gamepads. Press **P** in the **lobby** to add a couch player — mid-run it only prints a hint, because the room is locked once the run starts. All connect to the same room, so couch co-op and online co-op are the same thing from the server's side.
 
 **First player's room is the world observer**: `GameScene` uses `localPlayers[0].room.state` to watch all players + enemies and render remote entities. Enemies are never locally controlled.
 

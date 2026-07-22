@@ -477,7 +477,7 @@
     <div class="doc-title">game-2 Roadmap</div>
     <div class="doc-subtitle">
       Roguelike · Co-op 1–4 · Top-down dungeon crawl · Public release target<br>
-      Updated 21 July 2026 — Floors 0–4 done, plus wave/timed/dark rooms. <strong>First external playtest (20 July) reshuffled what's next</strong>: Floor 4.5 is a bug-and-feel response, Floor 5 is now the systems phase (currency, class identity, lobby) and picks up the deferred puzzle rooms. Notes + decision log in <code>docs/playtest-2026-07-20.md</code>
+      Updated 22 July 2026 — Floors 0–4 done, plus wave/timed/dark rooms, and <strong>the menu rebuild + the whole lobby/matchmaking block (22 July)</strong> — strangers can find each other now. <strong>First external playtest (20 July) reshuffled what's next</strong>: Floor 4.5 is a bug-and-feel response, Floor 5 is now the systems phase (currency, class identity, lobby) and picks up the deferred puzzle rooms. Notes + decision log in <code>docs/playtest-2026-07-20.md</code>
     </div>
   </header>
 
@@ -841,7 +841,7 @@
           <ul class="task-list">
             <li><span class="tm done">&#10003;</span> <strong>Barrier locks the second player out</strong> &mdash; if two players don't cross a doorway in the same tick, one is ejected back. Fix: <strong>one-way barriers</strong> &mdash; latecomers walk in, nobody walks out. Committed on entry, but the room starts without the whole party</li>
             <li><span class="tm done">&#10003;</span> <strong><code>P</code> (add local player) spawns invisible, inside a wall</strong> &mdash; late-joiner spawn isn't validated against walkable tiles and the sprite never attaches</li>
-            <li><span class="tm">&mdash;</span> <strong>Menu rebuild</strong> &mdash; a pause menu you can <em>resume</em> from. Escape closes the topmost overlay; quitting a run is explicit and confirmed. <strong>Partly done:</strong> Escape now closes the topmost overlay (offer picker, then pause menu) and only quits from bare gameplay, behind an "abandon run?" confirm &mdash; so a run can no longer be lost to a reflexive keypress. The real resumable menu this replaces is still to build; <code>client/src/ui/ConfirmDialog.ts</code> goes away with it</li>
+            <li><span class="tm done">&#10003;</span> <strong>Menu rebuild</strong> &mdash; <strong>done.</strong> Escape opens a real pause menu (Resume / Inventory &amp; stats / Options / Abandon run) that a run can be resumed from; it still peels overlays one at a time, and abandoning is a labelled entry behind a confirm rather than the default meaning of the key. <code>ConfirmDialog.ts</code> survives after all &mdash; a labelled entry and a confirmed one are not the same promise to the other three people in the party. Built together with the lobby below; see <code>docs/lobby.md</code></li>
           </ul>
 
           <div class="phase-milestone"><strong>2. Cheap feel wins</strong></div>
@@ -903,11 +903,13 @@
             <li><span class="tm">&mdash;</span> <strong>Class special power</strong> &mdash; Knight first: a <strong>regenerating shield</strong>, so the melee class can hold the front line without paying HP for it. Build it as the pattern; Rogue/Ranger/Mage powers get designed once we've seen it work</li>
           </ul>
 
-          <div class="phase-milestone"><strong>Menus &amp; matchmaking</strong></div>
+          <div class="phase-milestone"><strong>Menus &amp; matchmaking</strong> &mdash; <strong>done</strong>, landed early alongside the Floor 4.5 menu rebuild. Full notes in <code>docs/lobby.md</code>.</div>
           <ul class="task-list">
-            <li><span class="tm">&mdash;</span> Choose <strong>Solo or Shared</strong> at game start</li>
-            <li><span class="tm">&mdash;</span> Shared shows a browsable room list, or create your own. Rooms are <strong>public-listed or private-by-code</strong>, player's choice</li>
-            <li><span class="tm">&mdash;</span> <strong>Lobby-only joins</strong> &mdash; no dropping into a run in progress</li>
+            <li><span class="tm done">&#10003;</span> <strong>Play Solo or Play Online</strong> at game start. Solo isn't a separate code path &mdash; it's a private room nobody can find, which is what keeps couch co-op working inside it</li>
+            <li><span class="tm done">&#10003;</span> Browsable list of open rooms, join by 4-character code, or host your own &mdash; <strong>public-listed or private-by-code</strong>, chosen at creation</li>
+            <li><span class="tm done">&#10003;</span> <strong>Lobby-only joins</strong> &mdash; a room's lobby and its run are the same Colyseus room in two phases, so "no dropping into a run in progress" is one <code>room.lock()</code> and there is no second door to keep consistent. Nothing simulates and nothing spawns until the host starts</li>
+            <li><span class="tm done">&#10003;</span> A real lobby: roster with everyone's class and weapon, change your loadout in place, ready-up gating the host's Start, couch players added with <code>P</code>. Name and last loadout persist, so the two picker modals that used to stand between "Start" and the game are gone</li>
+            <li><span class="tm">&mdash;</span> <strong>Still open:</strong> pause is room-wide (any player freezes everyone &mdash; fine on a couch, a griefing surface with strangers), and there is no reconnect &mdash; a drop loses the run</li>
           </ul>
 
           <div class="phase-milestone"><strong>Puzzle rooms</strong> &mdash; unblocked, because the movement abilities are what they're built around.</div>

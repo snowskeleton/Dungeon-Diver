@@ -1,9 +1,10 @@
 import Phaser from "phaser";
 import { Room } from "colyseus.js";
 import {
-  TILE_SIZE, ROOM_W, ROOM_H, generateDungeon, roomCellAt, MAP_SEED, FloorChangeMessage,
+  TILE_SIZE, ROOM_W, ROOM_H, generateDungeon, roomCellAt, MAP_SEED,
+  FloorChangeMessage, BarrierStateMessage,
   WEAPON_REGISTRY, AMMO_REGISTRY, DungeonOptions, DungeonResult, toDungeonOptions,
-  RoomType,
+  RoomType, DebugConfig,
   GameStateView, PlayerStateView, EnemyStateView, ProjectileStateView,
   ShopStateView, ShopItemStateView, OfferStateView, ChestStateView,
 } from "shared";
@@ -29,8 +30,18 @@ import { UiLayer } from "../ui/UiLayer";
 import { ShopItemEntity } from "../entities/ShopItemEntity";
 import { OfferPedestalEntity } from "../entities/OfferPedestalEntity";
 import { ChestEntity, preloadChest, defineChestAnimations } from "../entities/ChestEntity";
-import { LaunchConfig, Loadout, defaultLoadout, pickLoadout } from "../launch";
-import { loadOptions } from "../options/gameOptions";
+import { Party } from "../net/Party";
+import { PauseMenu } from "../ui/PauseMenu";
+import { GameOptions, OPTION_FIELDS, loadOptions, saveOptions } from "../options/gameOptions";
+import { showFieldPanel } from "../ui/FieldPanel";
+
+/** What LobbyScene hands over: a party that is already in the room, and the
+ *  debug knobs the floor was built with (null unless this client hosted a debug
+ *  room — joiners read the same knobs off the schema instead). */
+export interface GameSceneData {
+  party: Party;
+  debug: DebugConfig | null;
+}
 
 
 /** Server's `GameState.dungeonOpts`, or null if state hasn't synced yet. */
@@ -75,14 +86,15 @@ export class GameScene extends Phaser.Scene {
   private mapCols = 0;
   private mapRows = 0;
 
-  private launch!: LaunchConfig;
+  private party!: Party;
+  private debug: DebugConfig | null = null;
   // The knobs this floor was generated with — "{}" for a normal game. Must match
   // the server's, or the client renders a different map than the one it's playing.
   private dungeonOpts: DungeonOptions = {};
-  // True while a DOM character/weapon picker is up (see the Escape handler).
-  private pickerOpen = false;
-  // True while the abandon-run confirm is up, so Escape can't stack dialogs.
-  private quitPending = false;
+  private pauseMenu = new PauseMenu();
+  // True while a DOM dialog owned by the pause menu (confirm, options) is up, so
+  // Escape can't stack a second one behind it.
+  private dialogOpen = false;
 
   constructor() {
     super({ key: "GameScene" });
@@ -90,12 +102,14 @@ export class GameScene extends Phaser.Scene {
 
   // Phaser reuses the scene instance across scene.start(), so every field the
   // previous run mutated has to be reset here rather than at construction.
-  init(config?: LaunchConfig) {
-    this.launch = config ?? { debug: null, loadout: defaultLoadout() };
-    this.dungeonOpts = this.launch.debug ? toDungeonOptions(this.launch.debug) : {};
-    this.currentSeed = this.launch.debug?.seed || MAP_SEED;
+  init(data: GameSceneData) {
+    this.party = data.party;
+    this.debug = data.debug;
+    this.dungeonOpts = this.debug ? toDungeonOptions(this.debug) : {};
+    this.currentSeed = this.debug?.seed || MAP_SEED;
     this.currentFloor = 1;
     this.ready = false;
+    this.dialogOpen = false;
 
     this.remotePlayers.clear();
     this.enemies.clear();
@@ -184,21 +198,15 @@ export class GameScene extends Phaser.Scene {
     const options = loadOptions();
     this.hitboxDebug = new HitboxDebug(this, options.showHitboxes);
 
-    const connecting = this.ui.add(
-      this.add
-        .text(400, 288, "Connecting to server…", {
-          fontSize: "18px",
-          color: "#ffffff",
-        })
-        .setOrigin(0.5)
-        .setDepth(20),
-    );
-
-    this.localManager = new LocalPlayerManager(this, this.launch.debug);
+    // No connecting spinner any more: the party has been connected since the
+    // lobby, so by the time this scene exists the room is already in hand.
+    this.localManager = new LocalPlayerManager(this, this.party);
 
     const spawn = this.dungeon.playerSpawns[0];
+    const locals = this.localManager.buildAll(spawn.x, spawn.y);
+    for (const player of locals) this.trackLocalPlayer(player);
 
-    const first = await this.joinLocal(spawn.x, spawn.y, this.launch.loadout);
+    const first = locals[0];
     if (first) {
       this.observerRoom = first.room;
       this.setupWorldSync(first.room);
@@ -245,41 +253,41 @@ export class GameScene extends Phaser.Scene {
       first.room.onMessage("connections_child_unlocked", (msg: { connectionIds: string[] }) => {
         for (const connId of msg.connectionIds) this.barriers.hideChild(connId);
       });
+
+      first.room.onMessage("barrier_state", (msg: BarrierStateMessage) => {
+        this.applyBarrierState(msg);
+      });
+
+      // The map above was built with every parent barrier standing, which is the
+      // right guess for a fresh floor and the wrong one for the floor we are
+      // actually joining — the pre-clear of empty rooms happened while this
+      // client was still in the lobby. Reconcile against the server's picture.
+      first.room.send("requestBarrierState");
     }
 
-    this.input.keyboard!.addKey("P").on("down", async () => {
-      const sp = this.dungeon.playerSpawns[0];
-      await this.joinLocal(sp.x, sp.y);
+    // Players are added in the lobby now, not mid-run: the party is fixed when
+    // the room locks (D12), which is also what lets difficulty be scaled once at
+    // the start rather than chased. The key still answers, so pressing it out of
+    // habit explains itself instead of doing nothing.
+    this.input.keyboard!.addKey("P").on("down", () => {
+      this.hud.flash("Players join from the lobby — this run is locked.");
     });
 
-    // Escape peels off one layer at a time (playtest B3). Previously it always
-    // quit to the menu, so the pause menu could be opened but never closed, and a
-    // reflexive Escape threw away a run in progress.
-    //   1. a join picker is up — it handles its own Escape (Phaser still sees the
-    //      keypress through the DOM overlay, so we must not act on it here)
-    //   2. an overlay is up (offer picker, then pause menu) — close the topmost
-    //   3. bare gameplay — confirm, because abandoning a run can't be undone
-    this.input.keyboard!.addKey("ESC").on("down", async () => {
-      if (this.pickerOpen) return;
-      if (this.quitPending) return;
+    // Escape peels one layer at a time (playtest B3), and the bottom of the
+    // stack is now a menu rather than the exit:
+    //   1. a dialog owned by the pause menu is up — it handles its own Escape
+    //   2. an in-world overlay is up (offer picker, then inventory) — close it
+    //   3. the pause menu is up — resume
+    //   4. bare gameplay — open the pause menu
+    this.input.keyboard!.addKey("ESC").on("down", () => {
+      if (this.dialogOpen) return;
 
       for (const player of this.localManager.getAll()) {
         if (player.closeTopOverlay()) return;
       }
 
-      this.quitPending = true;
-      try {
-        const quit = await confirmDialog(
-          "ABANDON RUN?",
-          "There is no save — this run ends here and the floor is lost.",
-          "Abandon run",
-        );
-        if (!quit) return;
-      } finally {
-        this.quitPending = false;
-      }
-      await this.localManager.leaveAll();
-      this.scene.start("MenuScene");
+      if (this.pauseMenu.isOpen) this.resume();
+      else this.openPauseMenu();
     });
 
     this.inventoryHud = new InventoryHud(this, 56, this.ui);
@@ -287,7 +295,6 @@ export class GameScene extends Phaser.Scene {
     this.darkness = new DarknessOverlay(this);
     this.hud = new GameHud(this, this.ui, options.showControlsHint);
 
-    connecting.destroy();
     this.ready = true;
   }
 
@@ -319,9 +326,26 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setZoom(loadOptions().cameraZoom);
   }
 
+  /** Redraw every barrier overlay from the server's snapshot. Absolute, not a
+   *  delta: the point is to be right even when a delta was missed. */
+  private applyBarrierState(state: BarrierStateMessage) {
+    const parentStanding = new Set(state.parentStanding);
+    const childStanding = new Set(state.childStanding);
+    for (const conn of this.dungeon.connections) {
+      if (parentStanding.has(conn.id)) this.barriers.showParent(conn.id, conn.barrierParent);
+      else this.barriers.hideParent(conn.id);
+
+      if (childStanding.has(conn.id)) this.barriers.showChild(conn.id, conn.barrierChild);
+      else this.barriers.hideChild(conn.id);
+    }
+  }
+
   private handleFloorChange(msg: FloorChangeMessage) {
     this.currentFloor = msg.floor;
     this.rebuildMap(msg.seed);
+    // The new floor's pre-clear broadcast arrived BEFORE this message — i.e.
+    // before the map it refers to existed — so ask again rather than trusting it.
+    this.observerRoom?.send("requestBarrierState");
 
     // Don't destroy remote players: the server keeps them in the schema across
     // floors (no onAdd re-fires), so destroying them here would leave their stale
@@ -335,28 +359,9 @@ export class GameScene extends Phaser.Scene {
     this.projectiles.clear();
   }
 
-  /**
-   * Join one local player. P1 arrives with the loadout already chosen in the menu;
-   * P2–P4 (the `P` key) pick theirs here.
-   */
-  private async joinLocal(x: number, y: number, preset?: Loadout): Promise<LocalPlayer | null> {
-    let loadout = preset;
-    if (!loadout) {
-      const slot = this.localManager.getAll().length + 1;
-      this.pickerOpen = true;
-      try {
-        loadout = (await pickLoadout(`Player ${slot}`)) ?? undefined;
-      } finally {
-        this.pickerOpen = false;
-      }
-      if (!loadout) return null; // player cancelled
-    }
-
-    const player = await this.localManager.addPlayer(
-      x, y, loadout.characterClass, loadout.characterType, loadout.weaponId,
-    );
-    if (!player) return null;
-
+  /** Point one local player's view at its own PlayerState, and make sure the
+   *  world sync doesn't also draw it as a remote. */
+  private trackLocalPlayer(player: LocalPlayer) {
     const sessionId = player.room.sessionId;
     this.localSessionIds.add(sessionId);
 
@@ -372,8 +377,82 @@ export class GameScene extends Phaser.Scene {
       this.remotePlayers.get(sessionId)!.destroy();
       this.remotePlayers.delete(sessionId);
     }
+  }
 
-    return player;
+  // ── Pause menu (playtest D7) ───────────────────────────────────────────────
+  // The menu is per-SCREEN, not per-player: one machine, one Escape key. The
+  // pause it triggers still travels on P1's connection, so the room freezes for
+  // the whole party exactly as the inventory menu already did.
+
+  private openPauseMenu() {
+    const first = this.localManager.getAll()[0];
+    if (!first) return;
+    first.setRoomPaused(true);
+    this.pauseMenu.show(
+      {
+        onResume: () => this.resume(),
+        onInventory: () => {
+          // Hand off rather than stack: the inventory holds the pause itself, so
+          // Escape from there returns to the game, not to this menu.
+          this.pauseMenu.hide();
+          first.openInventoryMenu();
+        },
+        onOptions: () => void this.openOptionsFromPause(),
+        onAbandon: () => void this.abandonRun(),
+      },
+      {
+        roomCode: this.party.state.roomCode,
+        floor: this.currentFloor,
+        // Everyone in the ROOM, not just this screen: pausing freezes the whole
+        // party, so "solo" here would be a lie to three other people.
+        partySize: this.party.state.players.size,
+      },
+    );
+  }
+
+  private resume() {
+    this.pauseMenu.hide();
+    this.localManager.getAll()[0]?.setRoomPaused(false);
+  }
+
+  /** Options, mid-run. Only the settings that can be re-read live are applied
+   *  here — the camera zoom is, the hitbox overlay's starting state isn't. */
+  private async openOptionsFromPause() {
+    this.dialogOpen = true;
+    try {
+      const result = await showFieldPanel<GameOptions>({
+        title: "Options",
+        fields: OPTION_FIELDS,
+        initial: loadOptions(),
+        buttons: [
+          { id: "cancel", label: "Back" },
+          { id: "save", label: "Save", primary: true },
+        ],
+      });
+      if (result.button === "save") {
+        saveOptions(result.values);
+        this.cameras.main.setZoom(result.values.cameraZoom);
+      }
+    } finally {
+      this.dialogOpen = false;
+    }
+  }
+
+  private async abandonRun() {
+    this.dialogOpen = true;
+    try {
+      const quit = await confirmDialog(
+        "ABANDON RUN?",
+        "There is no save — this run ends here and the floor is lost.",
+        "Abandon run",
+      );
+      if (!quit) return;
+    } finally {
+      this.dialogOpen = false;
+    }
+    this.pauseMenu.hide();
+    await this.localManager.leaveAll();
+    this.scene.start("MenuScene");
   }
 
   private setupWorldSync(room: Room) {
@@ -521,7 +600,7 @@ export class GameScene extends Phaser.Scene {
     this.hud.update({
       players: this.localManager.getAll(),
       floor: this.currentFloor,
-      debug: this.launch.debug != null,
+      debug: this.debug != null,
       paused: this.observerRoom?.state.paused ?? false,
     });
   }

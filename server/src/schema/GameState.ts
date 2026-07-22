@@ -6,7 +6,7 @@ import { ShopState } from "./ShopState";
 import { OfferState } from "./OfferState";
 import { ChestState } from "./ChestState";
 import { RoomChallengeState } from "./RoomChallengeState";
-import { GameStateView } from "shared";
+import { GameStateView, RunPhase } from "shared";
 
 export class GameState extends Schema implements GameStateView {
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
@@ -33,4 +33,13 @@ export class GameState extends Schema implements GameStateView {
   // True while any player has the inventory/stats menu open — the tick freezes
   // all simulation while set (the store does NOT use this).
   @type("boolean") paused: boolean = false;
+  // ── Lobby ────────────────────────────────────────────────────────────────
+  // A room gathers a party before it simulates anything. Everything below is
+  // read by the lobby panel; `phase` is also the client's signal to start
+  // GameScene, and it only ever moves lobby → run.
+  @type("string") phase: RunPhase = "lobby";
+  @type("string") hostSessionId: string = "";
+  @type("string") roomName: string = "";
+  @type("string") roomCode: string = "";
+  @type("boolean") isPrivate: boolean = false;
 }

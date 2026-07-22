@@ -2,7 +2,9 @@ import { Server } from "colyseus";
 import { createServer } from "http";
 import path from "path";
 import express from "express";
+import { ROOM_CODE_LOOKUP_PATH, isRoomCode } from "shared";
 import { GameRoom } from "./rooms/GameRoom";
+import { findRoomByCode } from "./rooms/roomCodes";
 import { assertUpgradesCoverAllIds } from "./upgrades";
 
 // Fail at boot, not silently at pick time, if the shared UpgradeId union and the
@@ -14,6 +16,23 @@ const app = express();
 
 app.use(express.json());
 app.get("/healthz", (_req, res) => res.send("ok"));
+
+// Private rooms are unlisted by design, so a player holding a join code can't
+// find one with Colyseus's own room listing — this is the only way in. Public
+// rooms need no endpoint: the client reads them straight off `getAvailableRooms`.
+app.get(`${ROOM_CODE_LOOKUP_PATH}/:code`, async (req, res) => {
+  const code = String(req.params.code ?? "");
+  if (!isRoomCode(code)) {
+    res.status(400).json({ error: "That isn't a valid room code." });
+    return;
+  }
+  const result = await findRoomByCode(code);
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+  res.json({ roomId: result.roomId });
+});
 
 const httpServer = createServer(app);
 const gameServer = new Server({ server: httpServer });

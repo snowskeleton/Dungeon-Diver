@@ -29,4 +29,8 @@ export class PlayerState extends EntityState implements PlayerStateView {
   // Folded max HP — the client HUD draws the bar against this, and upgrades move it.
   @type("uint16") maxHp: number = 100;
   @type([UpgradeSlotState]) upgrades = new ArraySchema<UpgradeSlotState>();
+  // Lobby identity. Both survive into the run: the name because the HUD and the
+  // party roster want it, `ready` because nothing reads it once the run starts.
+  @type("string") name: string = "Player";
+  @type("boolean") ready: boolean = false;
 }

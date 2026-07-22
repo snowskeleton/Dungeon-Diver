@@ -2,9 +2,10 @@
 //
 // Exists because abandoning a run is irreversible and there is no save: Escape
 // used to drop straight to the menu and nuked a live co-op session mid-playtest
-// (B3). This is deliberately the smallest thing that makes quitting a decision
-// rather than an accident — the real resumable pause menu (decision D7) replaces
-// it wholesale, and this file should go away with it.
+// (B3). The plan was for D7's pause menu to delete this file — but a labelled
+// "Abandon run" entry in a menu and a confirmed one are not the same promise to
+// the other three people in the party, so it survives as the last step of that
+// entry rather than as the meaning of a keypress.
 
 const CSS = `
   #confirm-overlay {

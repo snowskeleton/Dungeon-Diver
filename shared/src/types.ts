@@ -67,6 +67,20 @@ export interface FloorChangeMessage {
   spawnY: number;
 }
 
+/** The server's answer to `requestBarrierState`: which barriers are standing on
+ *  the CURRENT floor, by connection id.
+ *
+ *  The incremental lock/unlock broadcasts are deltas, and a client that wasn't
+ *  listening when one fired has no way to recover it — which is every client at
+ *  the moment a run starts (they are in the lobby) and again at every floor
+ *  change (the pre-clear broadcast precedes `floor_change`, so it lands before
+ *  the map it describes exists). Asking for the whole picture after building a
+ *  map is what makes the overlays right regardless of ordering. */
+export interface BarrierStateMessage {
+  parentStanding: string[];
+  childStanding: string[];
+}
+
 export const TILE_SIZE = 32;
 
 /** World position of a tile's centre. Entities and props are positioned at tile

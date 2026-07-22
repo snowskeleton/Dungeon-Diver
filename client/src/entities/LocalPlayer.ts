@@ -161,6 +161,13 @@ export class LocalPlayer extends Entity implements DebugDrawable {
       this.setMenuPaused(false);
       return;
     }
+    this.openInventoryMenu();
+  }
+
+  /** Open the inventory. Public because the pause menu offers it as an entry —
+   *  the menu key is no longer the only way in. */
+  openInventoryMenu() {
+    if (this.invMenu.isOpen) return;
     const ps = (this.room.state as any).players.get(this.room.sessionId);
     if (!ps) return;
     this.invMenu.show(
@@ -193,6 +200,13 @@ export class LocalPlayer extends Entity implements DebugDrawable {
       return true;
     }
     return false;
+  }
+
+  /** Freeze/unfreeze the whole room. Public because the pause menu is owned by
+   *  GameScene (one per screen) but the pause itself is a message on a player's
+   *  own connection — there is one pause concept, not one per overlay. */
+  setRoomPaused(paused: boolean) {
+    this.setMenuPaused(paused);
   }
 
   private setMenuPaused(paused: boolean) {

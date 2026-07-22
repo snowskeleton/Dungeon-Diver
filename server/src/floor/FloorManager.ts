@@ -98,6 +98,26 @@ export class FloorManager {
     return parentUnlocked;
   }
 
+  /**
+   * Which barriers are standing right now, per side.
+   *
+   * The incremental broadcasts (parent unlocked, child locked/unlocked) only
+   * reach clients that were listening when they fired, and a client entering the
+   * run from the lobby was not: the floor is populated and its empty rooms
+   * pre-cleared during startRun(), while every client is still looking at a
+   * lobby panel. This is the snapshot that makes a client's barrier overlays
+   * correct no matter when it started drawing them.
+   */
+  barrierSnapshot(): { parentStanding: string[]; childStanding: string[] } {
+    const parentStanding: string[] = [];
+    const childStanding: string[] = [];
+    this.barriers.forEach((state, connId) => {
+      if (state.parent) parentStanding.push(connId);
+      if (state.child) childStanding.push(connId);
+    });
+    return { parentStanding, childStanding };
+  }
+
   // Called each tick with a player position. Returns connectionIds for newly locked entry barriers.
   // barrierChild activates the first time any player fully enters a child room's interior,
   // but only if that room has enemies — empty rooms never lock the retreat path.

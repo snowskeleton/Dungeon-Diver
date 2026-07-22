@@ -23,8 +23,12 @@ export class GameHud {
   private readonly floorText: Phaser.GameObjects.Text;
   private readonly pausedText: Phaser.GameObjects.Text;
   private readonly storeCard: Phaser.GameObjects.Text;
+  private readonly toast: Phaser.GameObjects.Text;
+  private readonly scene: Phaser.Scene;
+  private toastTimer?: Phaser.Time.TimerEvent;
 
   constructor(scene: Phaser.Scene, ui: UiLayer, showControlsHint: boolean) {
+    this.scene = scene;
     this.hpText = ui.add(
       scene.add
         .text(8, 8, "", { fontSize: "14px", color: "#ffffff", backgroundColor: "#00000088" })
@@ -63,6 +67,17 @@ export class GameHud {
         .setVisible(false),
     );
 
+    this.toast = ui.add(
+      scene.add
+        .text(400, 460, "", {
+          fontSize: "13px", color: "#f6e05e", backgroundColor: "#000000cc",
+        })
+        .setOrigin(0.5)
+        .setDepth(25)
+        .setPadding(10, 6)
+        .setVisible(false),
+    );
+
     if (showControlsHint) {
       // Was anchored to the bottom of the MAP, so it sat wherever the last tile
       // row happened to be rather than on screen. It's a HUD line — pin it to the
@@ -70,12 +85,20 @@ export class GameHud {
       ui.add(
         scene.add
           .text(8, scene.scale.height - 20,
-            "WASD+Space  |  P2: Arrows+Enter  |  Q/E: switch weapon  |  I: pause  |  F: buy  |  P: join  |  Esc: menu", {
+            "WASD+Space  |  P2: Arrows+Enter  |  Q/E: switch weapon  |  I: inventory  |  F: interact  |  Esc: pause menu", {
             fontSize: "11px", color: "#888888",
           })
           .setDepth(10),
       );
     }
+  }
+
+  /** A transient one-line message. Used where a key press has to say why it did
+   *  nothing — silence reads as a bug, and a modal would be far too much. */
+  flash(text: string, durationMs = 2600): void {
+    this.toast.setText(text).setVisible(true);
+    this.toastTimer?.remove();
+    this.toastTimer = this.scene.time.delayedCall(durationMs, () => this.toast.setVisible(false));
   }
 
   update(opts: {
