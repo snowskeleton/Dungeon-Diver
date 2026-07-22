@@ -7,12 +7,14 @@ export interface GameOptions {
   cameraZoom: number;
   showHitboxes: boolean;
   showControlsHint: boolean;
+  showMinimap: boolean;
 }
 
 export const DEFAULT_OPTIONS: GameOptions = {
   cameraZoom: 2,
   showHitboxes: false,
   showControlsHint: true,
+  showMinimap: true,
 };
 
 export const OPTION_FIELDS: FieldSpec<GameOptions>[] = [
@@ -25,6 +27,10 @@ export const OPTION_FIELDS: FieldSpec<GameOptions>[] = [
     help: "Start with the H overlay already on",
   },
   { kind: "toggle", key: "showControlsHint", label: "Controls hint" },
+  {
+    kind: "toggle", key: "showMinimap", label: "Minimap",
+    help: "Show the dungeon minimap in the top-right corner",
+  },
 ];
 
 const STORAGE_KEY = "game2.options";

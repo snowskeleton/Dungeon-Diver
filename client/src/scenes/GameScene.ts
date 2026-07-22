@@ -26,6 +26,7 @@ import { InventoryHud } from "../ui/InventoryHud";
 import { ChallengeBanner } from "../ui/ChallengeBanner";
 import { confirmDialog } from "../ui/ConfirmDialog";
 import { GameHud } from "../ui/GameHud";
+import { Minimap } from "../ui/Minimap";
 import { UiLayer } from "../ui/UiLayer";
 import { ShopItemEntity } from "../entities/ShopItemEntity";
 import { OfferPedestalEntity } from "../entities/OfferPedestalEntity";
@@ -77,6 +78,18 @@ export class GameScene extends Phaser.Scene {
   private dungeon!: DungeonResult;
   private ui!: UiLayer;
   private hud!: GameHud;
+  private minimap!: Minimap;
+  /** Rooms the party has stood in this floor — the minimap's "explored" set.
+   *  Client-side only, derived from the camera's per-frame room cell. */
+  private exploredRooms = new Set<string>();
+  /** Connection ids whose advance-blocking parent barrier is still standing.
+   *  A room is "cleared" on the minimap once none of its outgoing parent
+   *  barriers stand — this mirrors the barrier messages GameScene already gets. */
+  private parentStandingConns = new Set<string>();
+  /** Connection ids whose retreat-blocking child barrier is standing — i.e. the
+   *  party is locked into the child room. Lets a terminal room (no outgoing
+   *  barrier of its own) still read as "locked" while it's being fought. */
+  private childStandingConns = new Set<string>();
   private ready = false;
 
   private currentMapGroup: Phaser.GameObjects.Group | null = null;
@@ -122,6 +135,10 @@ export class GameScene extends Phaser.Scene {
 
     this.currentMapGroup = null;
     this.observerRoom = null;
+
+    this.exploredRooms.clear();
+    this.parentStandingConns.clear();
+    this.childStandingConns.clear();
   }
 
   preload() {
@@ -194,10 +211,14 @@ export class GameScene extends Phaser.Scene {
 
     this.hitFx = new HitFX(this);
     this.barriers = new BarrierOverlays(this);
+    // Built before rebuildMap so its first call can lay out the minimap. The
+    // toggle is applied once options are loaded, just below.
+    this.minimap = new Minimap(this, this.ui);
     this.rebuildMap(this.currentSeed);
 
     const options = loadOptions();
     this.hitboxDebug = new HitboxDebug(this, options.showHitboxes);
+    this.minimap.setVisible(options.showMinimap);
 
     // No connecting spinner any more: the party has been connected since the
     // lobby, so by the time this scene exists the room is already in hand.
@@ -241,18 +262,25 @@ export class GameScene extends Phaser.Scene {
       });
 
       first.room.onMessage("connections_parent_unlocked", (msg: { connectionIds: string[] }) => {
-        for (const connId of msg.connectionIds) this.barriers.hideParent(connId);
+        for (const connId of msg.connectionIds) {
+          this.barriers.hideParent(connId);
+          this.parentStandingConns.delete(connId);
+        }
       });
 
       first.room.onMessage("connections_child_locked", (msg: { connectionIds: string[] }) => {
         for (const connId of msg.connectionIds) {
           const conn = this.dungeon.connections.find(c => c.id === connId);
           if (conn) this.barriers.showChild(connId, conn.barrierChild);
+          this.childStandingConns.add(connId);
         }
       });
 
       first.room.onMessage("connections_child_unlocked", (msg: { connectionIds: string[] }) => {
-        for (const connId of msg.connectionIds) this.barriers.hideChild(connId);
+        for (const connId of msg.connectionIds) {
+          this.barriers.hideChild(connId);
+          this.childStandingConns.delete(connId);
+        }
       });
 
       first.room.onMessage("barrier_state", (msg: BarrierStateMessage) => {
@@ -317,9 +345,15 @@ export class GameScene extends Phaser.Scene {
     this.roomTypes = dungeon.roomTypes;
 
     this.currentMapGroup = buildMap(this, dungeon.mapData as any, dungeon.rows, dungeon.cols);
+    // Every parent barrier is standing on a fresh map — the guess reconciled
+    // against the server via requestBarrierState. The minimap reads this to
+    // decide which rooms are cleared.
+    this.parentStandingConns = new Set(dungeon.connections.map((c) => c.id));
+    this.childStandingConns.clear();
     for (const conn of dungeon.connections) {
       this.barriers.showParent(conn.id, conn.barrierParent);
     }
+    this.minimap?.rebuild(dungeon);
 
     const totalW = dungeon.cols * TILE_SIZE;
     const totalH = dungeon.rows * TILE_SIZE;
@@ -332,6 +366,8 @@ export class GameScene extends Phaser.Scene {
   private applyBarrierState(state: BarrierStateMessage) {
     const parentStanding = new Set(state.parentStanding);
     const childStanding = new Set(state.childStanding);
+    this.parentStandingConns = parentStanding;
+    this.childStandingConns = childStanding;
     for (const conn of this.dungeon.connections) {
       if (parentStanding.has(conn.id)) this.barriers.showParent(conn.id, conn.barrierParent);
       else this.barriers.hideParent(conn.id);
@@ -443,6 +479,7 @@ export class GameScene extends Phaser.Scene {
         if (result.button === "save") {
           saveOptions(result.values);
           this.cameras.main.setZoom(result.values.cameraZoom);
+          this.minimap.setVisible(result.values.showMinimap);
         }
         break;
       }
@@ -577,6 +614,24 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  /** Which rooms the minimap should paint as cleared. A room is cleared once
+   *  nothing gates it any more: no outgoing advance-barrier of its own still
+   *  stands, and no retreat-barrier locks the party into it. Derived from the
+   *  same barrier bookkeeping the overlays use — no extra server signal. */
+  private clearedRooms(): Set<string> {
+    const cleared = new Set<string>();
+    for (const room of this.dungeon.rooms) {
+      const gatedOut = this.dungeon.connections.some(
+        (c) => c.parentRoomId === room.id && this.parentStandingConns.has(c.id),
+      );
+      const lockedIn = this.dungeon.connections.some(
+        (c) => c.childRoomId === room.id && this.childStandingConns.has(c.id),
+      );
+      if (!gatedOut && !lockedIn) cleared.add(room.id);
+    }
+    return cleared;
+  }
+
   update() {
     if (!this.ready) return;
     this.localManager.update();
@@ -616,6 +671,16 @@ export class GameScene extends Phaser.Scene {
     // Darkness is decided entirely from the locally generated room type.
     this.darkness.update(this.roomTypes.get(roomId) === "dark", x, y, bx, by);
     const obs = this.observerRoom?.state;
+
+    // Minimap: the party's current cell is explored the moment the camera enters
+    // it. Cleared rooms are derived from the barrier state GameScene tracks.
+    this.exploredRooms.add(roomId);
+    this.minimap.update({
+      currentRoomId: roomId,
+      explored: this.exploredRooms,
+      cleared: this.clearedRooms(),
+    });
+    this.minimap.updateMarker(x, y);
     this.hud.update({
       players: this.localManager.getAll(),
       floor: this.currentFloor,
