@@ -29,6 +29,7 @@ Concretely, and non-negotiably:
 | [docs/layers.md](docs/layers.md) | Touching collision, projectile targeting, friendly fire, or hit resolution |
 | [docs/assets.md](docs/assets.md) | Adding or replacing art |
 | [docs/retrodiffusion.md](docs/retrodiffusion.md) | Generating new art with the RetroDiffusion AI (icons, ammo, props, tiles) |
+| [docs/playtest-2026-07-20.md](docs/playtest-2026-07-20.md) | Picking up bug/feel work — the first external playtest's notes, sorted into bugs / quick wins / direction |
 | [docs/lessons.md](docs/lessons.md) | Building a debug tool, a tunables panel, or a persistent weapon sprite |
 
 `roadmap.html` at the project root is the living design document (phases, asset checklist, open questions).

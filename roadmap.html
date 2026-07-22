@@ -477,7 +477,7 @@
     <div class="doc-title">game-2 Roadmap</div>
     <div class="doc-subtitle">
       Roguelike · Co-op 1–4 · Top-down dungeon crawl · Public release target<br>
-      Updated July 2026 — Floors 0–4 done (upgrades, per-instance weapons, reward pedestals, chest rooms, trap tiles); Content Pass is next up. Puzzle rooms deferred out of Floor 4
+      Updated 21 July 2026 — Floors 0–4 done, plus wave/timed/dark rooms. <strong>First external playtest (20 July) reshuffled what's next</strong>: Floor 4.5 is a bug-and-feel response, Floor 5 is now the systems phase (currency, class identity, lobby) and picks up the deferred puzzle rooms. Notes + decision log in <code>docs/playtest-2026-07-20.md</code>
     </div>
   </header>
 
@@ -819,7 +819,7 @@
           <ul class="task-list">
             <li><span class="tm done">&#10003;</span> Chest rooms: 7% spawn weight, no combat. One chest at room center; interact for a guaranteed weapon &mdash; no choice, no cost, contents never previewed. Brown rolls 1 modifier, the 15%-rare gold rolls 2</li>
             <li><span class="tm done">&#10003;</span> Trap tiles: 1% roll per eligible room (never boss/shop/shrine/chest, never the start room); warps the whole party 1&ndash;3 floors forward. Rendered as a violet tile in plain sight, kept off doorways and room centers, so it's always avoidable</li>
-            <li><span class="tm">&mdash;</span> Puzzle rooms: <strong>deferred out of Floor 4</strong> &mdash; lever/switch objects trigger environmental changes (fire, wall tiles, doors). Needs a dedicated design pass before any code: what a switch targets, how state syncs, and whether a puzzle can ever softlock a room. Picked up in a later phase, not blocking</li>
+            <li><span class="tm">&mdash;</span> Puzzle rooms: <strong>deferred out of Floor 4</strong> &mdash; lever/switch objects trigger environmental changes (fire, wall tiles, doors). Needs a dedicated design pass before any code: what a switch targets, how state syncs, and whether a puzzle can ever softlock a room. <strong>Picked up in Floor 5</strong>, where the class movement abilities give them something to be built around and the "small, optional, multiple solutions" scope makes the softlock question moot</li>
           </ul>
           <div class="phase-art-note">
             <strong>Already landed:</strong> the OO boss framework (aim-lock, movement behaviors) + three full movesets — Turtle Dragon (rock projectiles, Tremor Slam, Shell Spin), Wyvern (flying, diving swoop), Tengu Mask (three abilities). Shop &amp; Healing Shrine rooms also exist. Chest art is imported (6-frame open animation, brown + gold). <strong>Art still needed:</strong> the trap tile is a flat violet placeholder, consistent with the other five flat-color tiles (only FLOOR has real art) &mdash; the whole tileset wants one art pass together.
@@ -827,11 +827,109 @@
         </div>
       </details>
 
+      <details class="phase-card next" open>
+        <summary>
+          <span class="floor-num">FLOOR 4.5</span>
+          <span class="phase-name">Playtest Response</span>
+          <span class="phase-badge badge-next">Up Next</span>
+          <span class="phase-chevron">&#9654;</span>
+        </summary>
+        <div class="phase-body">
+          <div class="phase-milestone"><strong>Milestone:</strong> Two people can play a full run together without a bug ending the session. Everything here comes from the first external playtest &mdash; full notes and the decision log (D1&ndash;D18) in <code>docs/playtest-2026-07-20.md</code>.</div>
+
+          <div class="phase-milestone"><strong>1. Session-enders</strong> &mdash; these end a co-op run outright.</div>
+          <ul class="task-list">
+            <li><span class="tm">&mdash;</span> <strong>Barrier locks the second player out</strong> &mdash; if two players don't cross a doorway in the same tick, one is ejected back. Fix: <strong>one-way barriers</strong> &mdash; latecomers walk in, nobody walks out. Committed on entry, but the room starts without the whole party</li>
+            <li><span class="tm">&mdash;</span> <strong><code>P</code> (add local player) spawns invisible, inside a wall</strong> &mdash; late-joiner spawn isn't validated against walkable tiles and the sprite never attaches</li>
+            <li><span class="tm">&mdash;</span> <strong>Menu rebuild</strong> &mdash; a pause menu you can <em>resume</em> from. Escape closes the topmost overlay; quitting a run is explicit and confirmed. (Today Escape always quits: "you can pause, but you can never unpause")</li>
+          </ul>
+
+          <div class="phase-milestone"><strong>2. Cheap feel wins</strong></div>
+          <ul class="task-list">
+            <li><span class="tm">&mdash;</span> Interaction prompts ("press F") on chests, shop pedestals, offer pedestals, stairs &mdash; the tester couldn't tell a chest from scenery</li>
+            <li><span class="tm">&mdash;</span> Room-entry grace period so a door-adjacent enemy can't free-hit you</li>
+            <li><span class="tm">&mdash;</span> Slower enemies, more of them &mdash; encounters should read as positioning, not reflex</li>
+            <li><span class="tm">&mdash;</span> Enemy line-of-sight: no aggro through walls (also stops bosses chasing into the entry corridor)</li>
+            <li><span class="tm">&mdash;</span> Universal death feedback &mdash; several enemies currently just stop moving</li>
+            <li><span class="tm">&mdash;</span> Telegraph incoming waves before they spawn</li>
+            <li><span class="tm">&mdash;</span> Lock camera zoom at default; remove the zoom-out option (it's a workaround for samey textures &mdash; fix the textures instead)</li>
+            <li><span class="tm">&mdash;</span> Make the stairs read as stairs &mdash; the tester didn't register there <em>were</em> multiple floors</li>
+            <li><span class="tm">&mdash;</span> Bug sweep: projectiles pass through closed barriers &middot; boss stun-lockable against a wall &middot; walk-through chests &middot; oversized crossbow/hammer icons &middot; axes don't mirror &middot; ghost "Wave 1/3" banner &middot; oversized boulder hitboxes &middot; knockback-immune enemies</li>
+            <li><span class="tm">&mdash;</span> Move respawn behind the debug menu &mdash; the design is permadeath</li>
+            <li><span class="tm">&mdash;</span> Rebind weapon switch off <code>Q</code>/<code>E</code></li>
+          </ul>
+
+          <div class="phase-milestone"><strong>3. Co-op actually works</strong></div>
+          <ul class="task-list">
+            <li><span class="tm">&mdash;</span> <strong>Per-player boss rewards</strong> &mdash; each player picks 1 of 3, picks mutually exclusive across the party. (Today it's first-come: "Hey! You took my reward!")</li>
+            <li><span class="tm">&mdash;</span> <strong>Party stairs prompt</strong> &mdash; "Player X wants to descend. Join them to continue"; the floor advances only once every player is on the stairs. Descending without clearing stays <em>intentional</em> &mdash; trading loot for speed is a real choice</li>
+            <li><span class="tm">&mdash;</span> <strong>Enemy HP scales with party size</strong> &mdash; &times;1.0 / 1.5 / 2.0 / 2.5 for 1&ndash;4 players, fixed at run start. Scale the enemies, never nerf the player for bringing a friend</li>
+            <li><span class="tm">&mdash;</span> <strong>Minimap</strong> &mdash; called out emphatically, and load-bearing once players split up to find the exit</li>
+          </ul>
+
+          <div class="phase-art-note">
+            <strong>Design note:</strong> splitting the party to clear a floor faster was a play pattern we hadn't planned for and now want to support. It creates the tension the whole phase is built around &mdash; <em>stick together for power, split up for speed</em>. One-way barriers and the minimap are its prerequisites.
+          </div>
+        </div>
+      </details>
+
       <details class="phase-card next">
         <summary>
           <span class="floor-num">FLOOR 5</span>
-          <span class="phase-name">Content Pass</span>
+          <span class="phase-name">Systems: Economy, Classes, Lobby</span>
           <span class="phase-badge badge-next">Up Next</span>
+          <span class="phase-chevron">&#9654;</span>
+        </summary>
+        <div class="phase-body">
+          <div class="phase-milestone"><strong>Milestone:</strong> A run has an economy, classes have an identity, and strangers can find each other. Built in dependency order &mdash; currency, then lobby, then class powers, then puzzles.</div>
+
+          <div class="phase-milestone"><strong>Currency</strong> &mdash; replaces the HP-cost shop.</div>
+          <ul class="task-list">
+            <li><span class="tm">&mdash;</span> Enemies drop gold into <strong>one shared party purse</strong>. Shared deliberately: a contested resource makes players negotiate, and that's better co-op than four isolated wallets. (Rewards are personal, money is communal)</li>
+            <li><span class="tm">&mdash;</span> Shop tiers at <strong>50g / 100g / 150g</strong></li>
+            <li><span class="tm">&mdash;</span> <strong>Budgeted, not per-enemy-priced.</strong> State the intent as constants &mdash; <code>TARGET_SPEND_PER_PLAYER_PER_FLOOR&nbsp;=&nbsp;100</code>, <code>TARGET_CLEAR_FRACTION&nbsp;=&nbsp;0.7</code> &mdash; and derive the floor's gold budget (&asymp;143g &times; players). <code>SpawnDirector</code> divides it across what it spawned, weighted by a <code>goldWeight</code> getter on each <code>Enemy</code> subclass. Enemy and room counts can then change freely without breaking the economy. No id&rarr;gold table</li>
+            <li><span class="tm">&mdash;</span> Tier costs stay <em>fixed</em> and the per-floor budget stays <em>flat</em> across floors &mdash; what scales with depth is the shop's <em>quality</em>. Keeps "one item per floor" true on floor 9 and keeps prices learnable</li>
+            <li><span class="tm">&mdash;</span> Gold sinks: the shop, plus <strong>shrines now cost gold</strong>. Boss and chest offers stay free picks; gold may appear as one of the choices on an offer pedestal</li>
+            <li><span class="tm">&mdash;</span> Rushing a floor short-changes you &mdash; that shortfall <em>is</em> the cost of speed, and it's what makes descending early an interesting choice rather than a free one</li>
+          </ul>
+
+          <div class="phase-milestone"><strong>Classes get an identity</strong></div>
+          <ul class="task-list">
+            <li><span class="tm">&mdash;</span> <strong>Weapon categories restricted per class</strong> &mdash; Knight: hammers + maces (6) &middot; Mage: staves (6) &middot; Ranger: bows + crossbows (3) &middot; Rogue: daggers + thrown (6). Swords, axes, spears and rapiers (31) stay open to everyone, so ~74% of the pool is shared and loot stays varied</li>
+            <li><span class="tm">&mdash;</span> Restriction is <strong>one-way</strong>: weapons are restricted to classes, classes aren't restricted to weapons. A staff is Mage-only; the Mage may still swing a broadsword. Reversible if classes read too weakly</li>
+            <li><span class="tm">&mdash;</span> <strong>Type-based, never string-based</strong> &mdash; each class declares its usable weapon <em>categories</em> as a compiler-checked list on its <code>CharacterConfig</code>. Adding a category without assigning it is a build error, not a silent "nobody can use this"</li>
+            <li><span class="tm">&mdash;</span> <strong>Loot rolls filtered by party composition</strong> &mdash; no staves drop without a Mage present. A filter on the roll, not a post-hoc reject, so the odds stay correct</li>
+            <li><span class="tm">&mdash;</span> <strong>Movement ability per class</strong>, on its own cooldown: Blink (through bars/grates, over gaps) &middot; Jump (over gaps) &middot; Charge (through breakable walls) &middot; Dash (distance). Never through locked barriers</li>
+            <li><span class="tm">&mdash;</span> <strong>Class special power</strong> &mdash; Knight first: a <strong>regenerating shield</strong>, so the melee class can hold the front line without paying HP for it. Build it as the pattern; Rogue/Ranger/Mage powers get designed once we've seen it work</li>
+          </ul>
+
+          <div class="phase-milestone"><strong>Menus &amp; matchmaking</strong></div>
+          <ul class="task-list">
+            <li><span class="tm">&mdash;</span> Choose <strong>Solo or Shared</strong> at game start</li>
+            <li><span class="tm">&mdash;</span> Shared shows a browsable room list, or create your own. Rooms are <strong>public-listed or private-by-code</strong>, player's choice</li>
+            <li><span class="tm">&mdash;</span> <strong>Lobby-only joins</strong> &mdash; no dropping into a run in progress</li>
+          </ul>
+
+          <div class="phase-milestone"><strong>Puzzle rooms</strong> &mdash; unblocked, because the movement abilities are what they're built around.</div>
+          <ul class="task-list">
+            <li><span class="tm">&mdash;</span> Scope that finally makes them safe: <strong>small, optional, multiple solutions</strong>. Because nothing behind a puzzle is required, no puzzle can strand a party &mdash; which was the exact softlock worry that deferred them out of Floor 4</li>
+            <li><span class="tm">&mdash;</span> Obstacles that answer to a specific movement ability: a chest behind bars (Blink), across a gap (Jump/Blink), behind a crumbly wall (Charge)</li>
+            <li><span class="tm">&mdash;</span> Pressure plates &mdash; a second player stands on it, <em>or</em> shove a boulder onto it. Torches to light (or extinguish) to reveal a chest. A pot on a plate whose removal springs a trap or a secret</li>
+            <li><span class="tm">&mdash;</span> Material solutions: burn wooden barriers with magic, shatter stone with a hammer, blow up crumbly walls</li>
+            <li><span class="tm">&mdash;</span> Four-Swords-style co-op: boulders that need two players, plates that need multiple bodies</li>
+          </ul>
+
+          <div class="phase-art-note">
+            <strong>Open, tracked in <code>docs/playtest-2026-07-20.md</code> &sect;7:</strong> what each class starts with &middot; whether rolls should <em>favor</em> the party's exclusive categories rather than merely permit them &middot; whether <code>ClassPower</code> is a new OO family or the Knight's shield is just an always-on <code>Upgrade</code> the class is born with &middot; how much of the lobby is real matchmaking vs. UI over Colyseus room listing.
+          </div>
+        </div>
+      </details>
+
+      <details class="phase-card later">
+        <summary>
+          <span class="floor-num">FLOOR 5.5</span>
+          <span class="phase-name">Content Pass</span>
+          <span class="phase-badge badge-later">Later</span>
           <span class="phase-chevron">&#9654;</span>
         </summary>
         <div class="phase-body">
@@ -845,6 +943,7 @@
             <li><span class="tm done">&#10003;</span> Timed-clear rooms — beat the clock for a bonus pedestal; missing it is not a failure</li>
             <li><span class="tm">—</span> Defend-the-objective room (the rest of the old "Bounty" slot) — needs a destructible entity</li>
             <li><span class="tm">—</span> More upgrades: weapon enhancements, passive abilities</li>
+            <li><span class="tm">—</span> <strong>Per-weapon special attacks</strong> beyond the current stab/smash — AOE blast, buckshot spread, single heavy shot. Possibly "different weapons cast different spells" rather than spells being a Mage-only pool. The nova is already built and sitting unused</li>
             <li><span class="tm">—</span> Enemy pool shifts by floor range within the dungeon theme</li>
           </ul>
           <div class="phase-art-note">
@@ -863,11 +962,19 @@
         <div class="phase-body">
           <div class="phase-milestone"><strong>Milestone:</strong> A complete stranger can sit down and play without help.</div>
           <ul class="task-list">
-            <li><span class="tm">—</span> Main menu: new game, player count, character select</li>
             <li><span class="tm">—</span> Win screen (cleared floor 10) and death screen with run summary</li>
-            <li><span class="tm">—</span> Sound effects + ambient music</li>
+            <li><span class="tm">—</span> <strong>Sound effects + ambient music</strong> — the tester noticed the silence within three minutes. Biggest single gap between this and something that feels like a game</li>
+            <li><span class="tm">—</span> <strong>Controller support</strong> — gamepad input exists but is untested. M/kb is the default only because it's easiest to test, and it doesn't feel great</li>
+            <li><span class="tm">—</span> <strong>Weapon balance pass</strong> — all 42 weapons are visually final and none are balanced against each other</li>
+            <li><span class="tm">—</span> Texture variety pass so rooms are distinguishable at the locked zoom (see Floor 4.5)</li>
             <li><span class="tm">—</span> Difficulty balancing pass across all 10 floors</li>
             <li><span class="tm">—</span> Itch.io build; Steam prep if scope warrants</li>
+          </ul>
+          <div class="phase-milestone"><strong>Endgame &amp; replay — direction, not yet scheduled.</strong></div>
+          <ul class="task-list">
+            <li><span class="tm">—</span> <strong>A defined ending with meta-unlocks</strong> (Hades / Isaac), not endless scaling. Endless was explicitly flagged as a failure mode — it goes unplayable rather than climactic. Unlock weapons, classes, items and bosses across runs; track per-class completion</li>
+            <li><span class="tm">—</span> Multiple themed <strong>dungeons</strong>, each unlocked by clearing the last — gated hard by art budget, since a new dungeon means a new enemy set</li>
+            <li><span class="tm">—</span> <strong>Plan of record:</strong> ship v1 with one level set. Only justify a second set if people like the first</li>
           </ul>
           <div class="phase-art-note">
             <strong>Art needed:</strong> Title / menu art. Minimal new sprites if content is solid by Floor 5.
