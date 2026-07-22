@@ -677,18 +677,35 @@ export class GameRoom extends Room<GameState> {
     this.players.forEach((p) => p.applyTileEffects(dtMs));
     this.enemies.forEach((e) => { if (!e.isDying) e.applyTileEffects(dtMs); });
 
-    // 9. Stairs and trap detection. Both descend; a trap just skips further and
-    //    isn't something the player chose. `stairsActive` gates both, so two
+    // 9. Stairs and trap detection.
+    //    Stairs are a PARTY action: the floor only advances once every living
+    //    player is standing on the stairs at the same time (solo = the instant
+    //    the lone player steps on). We tally on-stairs vs living players each
+    //    tick and sync it so the client can show a "N/M on stairs" prompt.
+    //    Dead players (awaiting the step-10 respawn) are left out of the
+    //    required count, so a downed teammate can never strand the party; a
+    //    disconnect drops them from `this.players` entirely, same effect.
+    //    Traps are NOT a choice and fire the instant a single player lands on
+    //    one, skipping several floors. `stairsActive` gates both, so two
     //    players landing on tiles in the same tick still only advance once.
+    let onStairs = 0;
+    let living = 0;
+    let trapDepth = 0;
+    this.players.forEach((player) => {
+      if (player.isDead) return;
+      living += 1;
+      const tile = this.physics.tileAt(player.state.x, player.state.y);
+      if (tile === TILE.STAIRS) onStairs += 1;
+      else if (tile === TILE.TRAP) trapDepth = this.rollTrapDepth();
+    });
+    this.state.playersOnStairs = onStairs;
+    this.state.stairsPartySize = living;
     if (!this.stairsActive) {
-      this.players.forEach((player) => {
-        const tile = this.physics.tileAt(player.state.x, player.state.y);
-        if (tile === TILE.STAIRS) {
-          this.advanceFloor();
-        } else if (tile === TILE.TRAP) {
-          this.advanceFloor(this.rollTrapDepth());
-        }
-      });
+      if (trapDepth > 0) {
+        this.advanceFloor(trapDepth);
+      } else if (living > 0 && onStairs === living) {
+        this.advanceFloor();
+      }
     }
 
     // 10. Dead players respawn.

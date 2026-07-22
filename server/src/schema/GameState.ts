@@ -33,6 +33,12 @@ export class GameState extends Schema implements GameStateView {
   // True while any player has the inventory/stats menu open — the tick freezes
   // all simulation while set (the store does NOT use this).
   @type("boolean") paused: boolean = false;
+  // Party-stairs prompt (playtest D5): the floor only descends once every living
+  // player stands on the stairs together. Recomputed each tick — `playersOnStairs`
+  // of `stairsPartySize` are on it right now — so the client can render a
+  // "N/M on stairs" prompt. Solo is stairsPartySize 1, so it descends at once.
+  @type("uint8") playersOnStairs: number = 0;
+  @type("uint8") stairsPartySize: number = 0;
   // ── Lobby ────────────────────────────────────────────────────────────────
   // A room gathers a party before it simulates anything. Everything below is
   // read by the lobby panel; `phase` is also the client's signal to start

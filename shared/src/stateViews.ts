@@ -178,6 +178,12 @@ export interface GameStateView extends SyncedSchema {
   readonly seed: number;
   readonly dungeonOpts: string;
   readonly paused: boolean;
+  /** How many living players are standing on the stairs right now, of
+   *  `stairsPartySize`. The floor descends only when the two are equal; the
+   *  client shows an "N/M on stairs" prompt from these. */
+  readonly playersOnStairs: number;
+  /** Living player count the stairs prompt measures against (1 when solo). */
+  readonly stairsPartySize: number;
   /** "lobby" until the host starts; the client watches this to leave the lobby
    *  panel and boot GameScene, so it is the run's one start signal. */
   readonly phase: RunPhase;

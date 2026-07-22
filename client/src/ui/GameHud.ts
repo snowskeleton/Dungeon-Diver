@@ -25,6 +25,7 @@ export class GameHud {
   private readonly pausedText: Phaser.GameObjects.Text;
   private readonly storeCard: Phaser.GameObjects.Text;
   private readonly toast: Phaser.GameObjects.Text;
+  private readonly stairsPrompt: Phaser.GameObjects.Text;
   private readonly scene: Phaser.Scene;
   private toastTimer?: Phaser.Time.TimerEvent;
 
@@ -79,6 +80,21 @@ export class GameHud {
         .setVisible(false),
     );
 
+    // The party-stairs prompt: shown while at least one player stands on the
+    // stairs but the whole party has not gathered yet. Sits above the store card
+    // so a shop/reward card on the exit tile doesn't overlap it.
+    this.stairsPrompt = ui.add(
+      scene.add
+        .text(400, 430, "", {
+          fontSize: "15px", color: "#f6e05e", backgroundColor: "#000000cc",
+          fontStyle: "bold", align: "center",
+        })
+        .setOrigin(0.5)
+        .setDepth(26)
+        .setPadding(12, 8)
+        .setVisible(false),
+    );
+
     if (showControlsHint) {
       // Was anchored to the bottom of the MAP, so it sat wherever the last tile
       // row happened to be rather than on screen. It's a HUD line — pin it to the
@@ -116,6 +132,8 @@ export class GameHud {
     floor: number;
     debug: boolean;
     paused: boolean;
+    playersOnStairs: number;
+    stairsPartySize: number;
   }): void {
     const hpLines = opts.players
       .map((lp, i) => `P${i + 1} HP: ${Math.round(lp.hp)}`)
@@ -125,7 +143,23 @@ export class GameHud {
       opts.debug ? `Floor ${opts.floor}  ·  DEBUG` : `Floor ${opts.floor}`,
     );
     this.pausedText.setVisible(opts.paused);
+    this.updateStairsPrompt(opts.playersOnStairs, opts.stairsPartySize);
     this.updateStoreCard(opts.players[0]);
+  }
+
+  // Prompt shown while someone is waiting on the stairs. Nothing appears until at
+  // least one player is on them; a solo party (size 1) only ever satisfies the
+  // whole-party rule the same tick it descends, so the prompt effectively never
+  // shows for solo — exactly right.
+  private updateStairsPrompt(onStairs: number, partySize: number): void {
+    if (onStairs <= 0 || partySize <= 0 || onStairs >= partySize) {
+      this.stairsPrompt.setVisible(false);
+      return;
+    }
+    this.stairsPrompt.setText(
+      `Waiting for party...  ${onStairs}/${partySize} on the stairs`,
+    );
+    this.stairsPrompt.setVisible(true);
   }
 
   // Show the P1 store card whenever P1 is standing on an unpurchased pedestal, or
