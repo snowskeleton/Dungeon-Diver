@@ -1,6 +1,5 @@
 import { Mace } from "../base";
-
-export default new Mace({
-  id: "star-mace",
-  name: "Star Mace",
-});
+export class StarMace extends Mace {
+  readonly id = "star-mace";
+  readonly name = "Star Mace";
+}

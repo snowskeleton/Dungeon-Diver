@@ -4,9 +4,9 @@ import { Bow } from "../base";
 // docs/weapons-and-ammo.md), so this fires for 25/shot at 550ms ≈ 45 DPS. The
 // longbow's role: slower cadence and a bigger per-hit bite than the shortbow,
 // only marginally ahead of it on sustained damage.
-export default new Bow({
-  id: "longbow",
-  name: "Longbow",
-  damage: 10,
-  attackCooldownMs: 550,
-});
+export class Longbow extends Bow {
+  readonly id = "longbow";
+  readonly name = "Longbow";
+  get damage() { return 10; }
+  get attackCooldownMs() { return 550; }
+}

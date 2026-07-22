@@ -67,8 +67,19 @@ The **held-bow draw** is a separate concern (`RangedWeaponFX.ts`): a 2-frame dra
 
 ## Adding a weapon
 
-- **Melee**: `shared/src/weapons/<category>/<id>/index.ts` (`export default new <Category>({ id, name, … })`) + `<id>.png` icon → register in `weapons/index.ts` (`ALL_WEAPONS` + the category `…Id` union) → `node assets/sync-to-client.js`. `GameScene` preloads the icon and the melee FX from the registry automatically.
-- **Ranged**: same, but the weapon carries `ammoId` + `rangedStyle`, and you also add an ammo entry — under `ammo/arrows/` or `ammo/boomerangs/` if it fits that behaviour bundle (use the `Arrow`/`Boomerang` base and override only the per-variant stats), else flat at `ammo/<id>/` with `new Ammo({…})`. Register both in their `index.ts` aggregates (+ union types), then `node assets/sync-to-client.js`. No new client wiring — `GameScene` iterates the registries.
+Weapons are OO like enemies: a concrete class per weapon, extending its category base, overriding only what differs. Stats are getters (`get damage() { return 22; }`), not a config object.
+
+- **Melee**: `shared/src/weapons/<category>/<id>/index.ts`:
+  ```ts
+  import { Sword } from "../base";
+  export class Flamberge extends Sword {
+    readonly id = "flamberge";      // typed WeaponId — a typo is a compile error
+    readonly name = "Flamberge";
+    get damage() { return 22; }     // override only what differs from the category
+  }
+  ```
+  Add `<id>.png` icon → register in `weapons/index.ts` (import the class, add it to the `WEAPONS` array + the category `…Id` union) → `node assets/sync-to-client.js`. `WEAPON_REGISTRY` is derived from `WEAPONS`, so there's no separate map to update. `GameScene` preloads the icon and the melee FX from the registry automatically. (If the weapon's name collides with its category — e.g. the plain `Spear`/`Crossbow` — alias the base import: `import { Spear as SpearBase } from "../base"`.)
+- **Ranged**: same, but the class overrides `get ammoId()` (and `rangedStyle` if it differs from the category default), and you also add an ammo entry — under `ammo/arrows/` or `ammo/boomerangs/` if it fits that behaviour bundle (use the `Arrow`/`Boomerang` base and override only the per-variant stats), else flat at `ammo/<id>/` with `new Ammo({…})` (ammo is still plain config). Register both in their `index.ts` aggregates (+ union types), then `node assets/sync-to-client.js`. No new client wiring — `GameScene` iterates the registries.
 
 Bow/crossbow icon PNGs are 2-frame draw sheets (64×32); thrown-weapon icons are single-frame and double as the projectile art (same PNG copied into both `weapons/thrown/<id>/` and the ammo folder).
 

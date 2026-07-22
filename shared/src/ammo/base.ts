@@ -129,5 +129,6 @@ export class Ammo implements AmmoConfig {
 
 /** Partial override for category subclass constructors — only id/name/damage are
  *  required; everything else (speed, lifetime, behaviour) falls back to the
- *  category's DEFAULTS. Mirrors weapons' `Override`. */
+ *  category's DEFAULTS. (Ammo is still plain config — a constructor + DEFAULTS
+ *  merge — whereas weapons are now getter-based classes.) */
 export type AmmoOverride = Partial<AmmoOpts> & Pick<AmmoOpts, "id" | "name">;

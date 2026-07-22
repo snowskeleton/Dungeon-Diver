@@ -1,15 +1,13 @@
-import { Weapon, WeaponCategory, AttackFXType, Override } from "../base";
+import { Weapon, WeaponCategory, AttackFXType } from "../base";
 
-const DEFAULTS = {
-  category: "dagger" as WeaponCategory,
-  fxType: "stab" as AttackFXType,
-  damage: 15,
-  attackCooldownMs: 250,
-  attackForce: 4,
-  // Straight thrust — tip points directly at the target.
-  iconAngle: 0,
-};
-
-export class Dagger extends Weapon {
-  constructor(o: Override) { super({ ...DEFAULTS, ...o }); }
+// Straight thrust — tip points directly at the target.
+// Category base — the defaults every dagger inherits; a concrete
+// weapon overrides only what makes it distinct.
+export abstract class Dagger extends Weapon {
+  get category(): WeaponCategory { return "dagger"; }
+  get fxType(): AttackFXType { return "stab"; }
+  get damage() { return 15; }
+  get attackCooldownMs() { return 250; }
+  get attackForce() { return 4; }
+  get iconAngle() { return 0; }
 }

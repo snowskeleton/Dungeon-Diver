@@ -1,8 +1,6 @@
 import { Sword } from "../base";
-
-export default new Sword({
-  id: "frost-blade",
-  name: "Frost Blade",
-  damage: 24,
-
-});
+export class FrostBlade extends Sword {
+  readonly id = "frost-blade";
+  readonly name = "Frost Blade";
+  get damage() { return 24; }
+}

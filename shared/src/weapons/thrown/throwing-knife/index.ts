@@ -1,7 +1,6 @@
 import { Thrown } from "../base";
-
-export default new Thrown({
-  id: "throwing-knife",
-  name: "Throwing Knife",
-  ammoId: "throwing-knife",
-});
+export class ThrowingKnife extends Thrown {
+  readonly id = "throwing-knife";
+  readonly name = "Throwing Knife";
+  get ammoId() { return "throwing-knife"; }
+}

@@ -1,8 +1,7 @@
 import { Bow } from "../base";
-
-export default new Bow({
-  id: "shortbow",
-  name: "Shortbow",
-  attackCooldownMs: 350,
-  ammoId: "wooden-arrow",
-});
+export class Shortbow extends Bow {
+  readonly id = "shortbow";
+  readonly name = "Shortbow";
+  get attackCooldownMs() { return 350; }
+  get ammoId() { return "wooden-arrow"; }
+}

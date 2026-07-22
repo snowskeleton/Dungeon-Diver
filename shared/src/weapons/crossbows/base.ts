@@ -1,19 +1,15 @@
-import { Weapon, WeaponCategory, AttackFXType, GetHurtbox, Override } from "../base";
+import { Weapon, WeaponCategory, AttackFXType, RangedStyle } from "../base";
 
-// Ranged: no melee hitbox. Attacking spawns the weapon's ammo projectile.
-const noMelee: GetHurtbox = () => null;
-
-const DEFAULTS = {
-  category: "crossbow" as WeaponCategory,
-  fxType: "long-slash" as AttackFXType, // unused for ranged; type requires a value
-  damage: 0,
-  attackCooldownMs: 600,
-  attackForce: 0,
-  iconAngle: 0,
-  ammoId: "steel-arrow",
-  rangedStyle: "held" as const,
-};
-
-export class Crossbow extends Weapon {
-  constructor(o: Override) { super({ ...DEFAULTS, ...o }); }
+// Ranged: no melee hitbox. Fires the weapon's ammo projectile.
+// Category base — the defaults every crossbow inherits; a concrete
+// weapon overrides only what makes it distinct.
+export abstract class Crossbow extends Weapon {
+  get category(): WeaponCategory { return "crossbow"; }
+  get fxType(): AttackFXType { return "long-slash"; }
+  get damage() { return 0; }
+  get attackCooldownMs() { return 600; }
+  get attackForce() { return 0; }
+  get iconAngle() { return 0; }
+  get ammoId(): string { return "steel-arrow"; }
+  get rangedStyle(): RangedStyle { return "held"; }
 }

@@ -1,9 +1,7 @@
 import { Spear } from "../base";
-
-export default new Spear({
-  id: "trident",
-  name: "Trident",
-  damage: 20,
-  attackForce: 9,
-
-});
+export class Trident extends Spear {
+  readonly id = "trident";
+  readonly name = "Trident";
+  get damage() { return 20; }
+  get attackForce() { return 9; }
+}

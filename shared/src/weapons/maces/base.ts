@@ -1,15 +1,13 @@
-import { Weapon, WeaponCategory, AttackFXType, Override } from "../base";
+import { Weapon, WeaponCategory, AttackFXType } from "../base";
 
-const DEFAULTS = {
-  category: "mace" as WeaponCategory,
-  fxType: "slash" as AttackFXType,
-  damage: 25,
-  attackCooldownMs: 550,
-  attackForce: 12,
-  // Slash arc — mid-swing diagonal tilt.
-  iconAngle: -45,
-};
-
-export class Mace extends Weapon {
-  constructor(o: Override) { super({ ...DEFAULTS, ...o }); }
+// Slash arc — mid-swing diagonal tilt.
+// Category base — the defaults every mace inherits; a concrete
+// weapon overrides only what makes it distinct.
+export abstract class Mace extends Weapon {
+  get category(): WeaponCategory { return "mace"; }
+  get fxType(): AttackFXType { return "slash"; }
+  get damage() { return 25; }
+  get attackCooldownMs() { return 550; }
+  get attackForce() { return 12; }
+  get iconAngle() { return -45; }
 }
