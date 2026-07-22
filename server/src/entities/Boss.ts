@@ -52,6 +52,9 @@ export abstract class Boss extends Enemy implements DashCaster, SummonCaster {
   protected get aggroRadius(): number { return 400; }
   protected get attackRadius(): number { return 26; }
   protected get knockbackResistance(): number { return 12; }
+  /** A boss always gets a beat to act after being staggered, so a stream of
+   *  ranged hits can't chain-stun it into a statue (playtest B7). */
+  protected get stunImmunityMs(): number { return 900; }
 
   constructor(physics: PhysicsWorld, x: number, y: number) {
     super(physics, x, y);

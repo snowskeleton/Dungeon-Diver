@@ -839,9 +839,9 @@
 
           <div class="phase-milestone"><strong>1. Session-enders</strong> &mdash; these end a co-op run outright.</div>
           <ul class="task-list">
-            <li><span class="tm">&mdash;</span> <strong>Barrier locks the second player out</strong> &mdash; if two players don't cross a doorway in the same tick, one is ejected back. Fix: <strong>one-way barriers</strong> &mdash; latecomers walk in, nobody walks out. Committed on entry, but the room starts without the whole party</li>
-            <li><span class="tm">&mdash;</span> <strong><code>P</code> (add local player) spawns invisible, inside a wall</strong> &mdash; late-joiner spawn isn't validated against walkable tiles and the sprite never attaches</li>
-            <li><span class="tm">&mdash;</span> <strong>Menu rebuild</strong> &mdash; a pause menu you can <em>resume</em> from. Escape closes the topmost overlay; quitting a run is explicit and confirmed. (Today Escape always quits: "you can pause, but you can never unpause")</li>
+            <li><span class="tm done">&#10003;</span> <strong>Barrier locks the second player out</strong> &mdash; if two players don't cross a doorway in the same tick, one is ejected back. Fix: <strong>one-way barriers</strong> &mdash; latecomers walk in, nobody walks out. Committed on entry, but the room starts without the whole party</li>
+            <li><span class="tm done">&#10003;</span> <strong><code>P</code> (add local player) spawns invisible, inside a wall</strong> &mdash; late-joiner spawn isn't validated against walkable tiles and the sprite never attaches</li>
+            <li><span class="tm">&mdash;</span> <strong>Menu rebuild</strong> &mdash; a pause menu you can <em>resume</em> from. Escape closes the topmost overlay; quitting a run is explicit and confirmed. <strong>Partly done:</strong> Escape now closes the topmost overlay (offer picker, then pause menu) and only quits from bare gameplay, behind an "abandon run?" confirm &mdash; so a run can no longer be lost to a reflexive keypress. The real resumable menu this replaces is still to build; <code>client/src/ui/ConfirmDialog.ts</code> goes away with it</li>
           </ul>
 
           <div class="phase-milestone"><strong>2. Cheap feel wins</strong></div>
@@ -849,12 +849,12 @@
             <li><span class="tm">&mdash;</span> Interaction prompts ("press F") on chests, shop pedestals, offer pedestals, stairs &mdash; the tester couldn't tell a chest from scenery</li>
             <li><span class="tm">&mdash;</span> Room-entry grace period so a door-adjacent enemy can't free-hit you</li>
             <li><span class="tm">&mdash;</span> Slower enemies, more of them &mdash; encounters should read as positioning, not reflex</li>
-            <li><span class="tm">&mdash;</span> Enemy line-of-sight: no aggro through walls (also stops bosses chasing into the entry corridor)</li>
-            <li><span class="tm">&mdash;</span> Universal death feedback &mdash; several enemies currently just stop moving</li>
+            <li><span class="tm done">&#10003;</span> Enemy line-of-sight: no aggro through walls (also stops bosses chasing into the entry corridor)</li>
+            <li><span class="tm done">&#10003;</span> Universal death feedback &mdash; several enemies currently just stop moving</li>
             <li><span class="tm">&mdash;</span> Telegraph incoming waves before they spawn</li>
             <li><span class="tm">&mdash;</span> Lock camera zoom at default; remove the zoom-out option (it's a workaround for samey textures &mdash; fix the textures instead)</li>
             <li><span class="tm">&mdash;</span> Make the stairs read as stairs &mdash; the tester didn't register there <em>were</em> multiple floors</li>
-            <li><span class="tm">&mdash;</span> Bug sweep: projectiles pass through closed barriers &middot; boss stun-lockable against a wall &middot; walk-through chests &middot; oversized crossbow/hammer icons &middot; axes don't mirror &middot; ghost "Wave 1/3" banner &middot; oversized boulder hitboxes &middot; knockback-immune enemies</li>
+            <li><span class="tm done">&#10003;</span> Bug sweep <strong>done</strong>: projectiles pass through closed barriers &middot; boss stun-lockable against a wall &middot; walk-through chests &middot; oversized crossbow icons &middot; axes don't mirror when held &middot; ghost "Wave 1/3" banner &middot; knockback-immune enemies. <em>Two did not reproduce and still need a live look: the oversized <strong>hammer</strong> icon (it renders at the same 16px as every sword) and the <strong>boulder hitboxes</strong> (cover blocks are one 32&times;32 collider under art that fills the whole cell &mdash; the snag is more likely the solver catching on seams between merged wall rects).</em></li>
             <li><span class="tm">&mdash;</span> Move respawn behind the debug menu &mdash; the design is permadeath</li>
             <li><span class="tm">&mdash;</span> Rebind weapon switch off <code>Q</code>/<code>E</code></li>
           </ul>

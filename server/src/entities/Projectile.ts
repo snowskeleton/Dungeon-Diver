@@ -102,6 +102,10 @@ export class Projectile {
       const tile = this.physics.tileAt(this.state.x, this.state.y);
       if (tile === null || !TILE_PROPS[tile as TileId].walkable) {
         this.dead = true;
+      } else if (this.physics.barrierAt(this.state.x, this.state.y)) {
+        // A locked door stops a shot like a wall does — the doorway tile itself
+        // is walkable, so the tile test above can't see it (playtest B5).
+        this.dead = true;
       }
     }
   }

@@ -86,6 +86,12 @@ export const TILE_DAMAGE_INTERVAL_MS = 500;
 // with overage. The stun (suppresses the enemy's chase for a moment) is what makes
 // even a small clear read — otherwise the enemy immediately walks back into the push.
 export const KNOCKBACK_SCALE = 6;            // px of push per unit of overage
+// A hit that FAILS to clear resistance still nudges, for this fraction of its raw
+// force, and never stuns (playtest B12). Without the floor, resistance is a binary
+// wall: GooGold resists 8, so daggers (4), rapiers (5), swords (7) and spears (8)
+// all bounced off it with no reaction at all and read as "that enemy is immune to
+// knockback". Heavy enemies should shrug off light hits, not ignore them.
+export const KNOCKBACK_MIN_FRACTION = 0.3;
 export const KNOCKBACK_STUN_MS_PER_UNIT = 60; // ms of stun per unit of overage
 export const KNOCKBACK_STUN_MAX_MS = 3000;    // cap so big hits don't stun-lock forever
 export const SERVER_TICK_MS = 50;   // 20 Hz

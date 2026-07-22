@@ -6,6 +6,9 @@ import { HitSource } from "../combat/HitSource";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
 import type { AttackStats } from "../spells/Spell";
 
+/** The interior box an enemy is confined to — see Enemy.confineTo. */
+export type RoomBounds = { xMin: number; xMax: number; yMin: number; yMax: number };
+
 const PATROL_RANGE = 64;
 
 /** Per-spawn overrides for a projectile a boss emits. `lifetimeMs` lets a timed
@@ -101,6 +104,31 @@ export abstract class Enemy extends Entity {
 
   get isDying(): boolean {
     return this.state.isDying;
+  }
+
+  /** Confine this enemy to its home room's interior (playtest B6/B14). Set by
+   *  SpawnDirector from the room it spawned in; unset for anything spawned
+   *  outside a room, and unset entirely in the headless harnesses — which is why
+   *  the golden verify-boss baseline is unaffected. */
+  confineTo(rect: RoomBounds): void {
+    this.homeBounds = rect;
+  }
+
+  private homeBounds: RoomBounds | null = null;
+
+  /** Movement intent is clipped at the room edge so a wandering or chasing enemy
+   *  can't leave. Per-axis so an enemy sliding along the boundary still slides
+   *  rather than sticking. Knockback is deliberately NOT clipped — being blasted
+   *  into a doorway is combat feel, and the enemy walks itself back in. */
+  move(dx: number, dy: number, speed: number): void {
+    const b = this.homeBounds;
+    if (b) {
+      if (dx < 0 && this.state.x <= b.xMin) dx = 0;
+      if (dx > 0 && this.state.x >= b.xMax) dx = 0;
+      if (dy < 0 && this.state.y <= b.yMin) dy = 0;
+      if (dy > 0 && this.state.y >= b.yMax) dy = 0;
+    }
+    super.move(dx, dy, speed);
   }
 
   /** Set the airborne height (px) the client renders the sprite at. Public so a

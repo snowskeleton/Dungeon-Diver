@@ -213,7 +213,19 @@ export abstract class Entity {
     this.repositionHpBar(ratio);
   }
 
+  /** True once destroy() has run. Colyseus `onChange` callbacks outlive the view
+   *  they were registered for — a local player joining destroys the RemotePlayer
+   *  the observer room briefly created for the same session (playtest B2) — and
+   *  driving a destroyed sprite throws INSIDE the sync callback, which takes the
+   *  rest of that room's state handling down with it. Views check this. */
+  get isDestroyed(): boolean {
+    return this.destroyed;
+  }
+  private destroyed = false;
+
   destroy() {
+    if (this.destroyed) return;
+    this.destroyed = true;
     this.sprite.destroy();
     this.charSprite?.destroy();
     this.weaponVisual.destroy();

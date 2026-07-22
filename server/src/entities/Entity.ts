@@ -1,7 +1,7 @@
 import type Matter from "matter-js";
 import {
   TILE_PROPS, TileId, TILE_DAMAGE_INTERVAL_MS, InteractionProfile, Attack,
-  KNOCKBACK_SCALE, KNOCKBACK_STUN_MS_PER_UNIT, KNOCKBACK_STUN_MAX_MS, SERVER_TICK_MS,
+  KNOCKBACK_SCALE, KNOCKBACK_MIN_FRACTION, KNOCKBACK_STUN_MS_PER_UNIT, KNOCKBACK_STUN_MAX_MS, SERVER_TICK_MS,
   HurtBounds, PLAYER_HURT_BOUNDS,
 } from "shared";
 import { EntityState } from "../schema/EntityState";
@@ -212,31 +212,57 @@ export abstract class Entity {
   applyKnockback(fromX: number, fromY: number, force: number): void {
     if (this.isDead) return;
     const overage = force - this.knockbackResistance;
-    if (overage <= 0) return; // didn't clear resistance → ignored entirely
+    // Clearing resistance is what STAGGERS (push + stun). Falling short still
+    // nudges — see KNOCKBACK_MIN_FRACTION — so no weapon reads as doing nothing.
+    // A zero-force source (bows/staves carry force on the ammo, not the weapon)
+    // still does nothing at all, which is correct.
+    const staggers = overage > 0;
+    const effective = staggers ? overage : force * KNOCKBACK_MIN_FRACTION;
+    if (effective <= 0) return;
 
     const dx = this.state.x - fromX;
     const dy = this.state.y - fromY;
     const dist = Math.hypot(dx, dy);
     if (dist === 0) return;
 
-    const push = overage * KNOCKBACK_SCALE;
+    const push = effective * KNOCKBACK_SCALE;
     // Geometric series: total displacement = v0*dt / (1 − decay) = push.
     const v0 = (push * (1 - KNOCKBACK_DECAY)) / (SERVER_TICK_MS / 1000);
     this.addKnockback((dx / dist) * v0, (dy / dist) * v0);
+
+    // Stun resilience (playtest B7). While the immunity window is open the body
+    // still gets shoved — knockback feel is preserved — but its control tick is
+    // NOT interrupted. Without this, a fast enough stream of hits re-stuns on
+    // every impact and the target never acts again: the tester killed a boss
+    // from range that way, and it only fought back when they stopped shooting.
+    // Default is 0, so ordinary enemies and players are untouched.
+    if (!staggers || this.stunImmuneMs > 0) return;
 
     this.stunMs = Math.min(KNOCKBACK_STUN_MAX_MS, overage * KNOCKBACK_STUN_MS_PER_UNIT);
     this.state.stunned = true;
   }
 
+  /** How long after a hitstun ends this body cannot be stunned again. 0 (the
+   *  default) means every qualifying hit stuns, which is right for rank-and-file
+   *  enemies — a boss overrides it so it always gets a window to act. */
+  protected get stunImmunityMs(): number { return 0; }
+
+  private stunImmuneMs = 0;
+
   // Advances the hitstun timer. Returns true while still stunned — callers skip
   // the rest of their control tick so the knockback impulse (carried by
   // commitVelocity) lands cleanly. Shared by enemy AI and player input.
   updateStun(dtMs: number): boolean {
+    if (this.stunImmuneMs > 0) this.stunImmuneMs -= dtMs;
+
     if (this.stunMs > 0) {
       this.stunMs -= dtMs;
       if (this.stunMs <= 0) {
         this.stunMs = 0;
         this.state.stunned = false;
+        // Opens the moment the stun ends, so the window is time to ACT rather
+        // than time that elapsed while helpless.
+        this.stunImmuneMs = this.stunImmunityMs;
       }
       return true;
     }

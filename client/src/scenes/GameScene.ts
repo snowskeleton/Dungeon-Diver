@@ -23,6 +23,7 @@ import { CLIENT_ENEMY_REGISTRY } from "../enemies";
 import { HitboxDebug } from "../debug/HitboxDebug";
 import { InventoryHud } from "../ui/InventoryHud";
 import { ChallengeBanner } from "../ui/ChallengeBanner";
+import { confirmDialog } from "../ui/ConfirmDialog";
 import { GameHud } from "../ui/GameHud";
 import { UiLayer } from "../ui/UiLayer";
 import { ShopItemEntity } from "../entities/ShopItemEntity";
@@ -80,6 +81,8 @@ export class GameScene extends Phaser.Scene {
   private dungeonOpts: DungeonOptions = {};
   // True while a DOM character/weapon picker is up (see the Escape handler).
   private pickerOpen = false;
+  // True while the abandon-run confirm is up, so Escape can't stack dialogs.
+  private quitPending = false;
 
   constructor() {
     super({ key: "GameScene" });
@@ -249,10 +252,32 @@ export class GameScene extends Phaser.Scene {
       await this.joinLocal(sp.x, sp.y);
     });
 
-    // Escape quits to the menu — but the join pickers use Escape to cancel, and
-    // Phaser still sees the keypress through them, so ignore it while one is open.
+    // Escape peels off one layer at a time (playtest B3). Previously it always
+    // quit to the menu, so the pause menu could be opened but never closed, and a
+    // reflexive Escape threw away a run in progress.
+    //   1. a join picker is up — it handles its own Escape (Phaser still sees the
+    //      keypress through the DOM overlay, so we must not act on it here)
+    //   2. an overlay is up (offer picker, then pause menu) — close the topmost
+    //   3. bare gameplay — confirm, because abandoning a run can't be undone
     this.input.keyboard!.addKey("ESC").on("down", async () => {
       if (this.pickerOpen) return;
+      if (this.quitPending) return;
+
+      for (const player of this.localManager.getAll()) {
+        if (player.closeTopOverlay()) return;
+      }
+
+      this.quitPending = true;
+      try {
+        const quit = await confirmDialog(
+          "ABANDON RUN?",
+          "There is no save — this run ends here and the floor is lost.",
+          "Abandon run",
+        );
+        if (!quit) return;
+      } finally {
+        this.quitPending = false;
+      }
       await this.localManager.leaveAll();
       this.scene.start("MenuScene");
     });

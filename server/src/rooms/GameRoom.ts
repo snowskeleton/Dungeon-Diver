@@ -123,7 +123,7 @@ export class GameRoom extends Room<GameState> {
     this.floorManager = new FloorManager(rooms, connections, this.physics);
     this.stairsActive = false;
 
-    this.loot.setFloor(this.currentDungeon);
+    this.loot.setFloor(this.currentDungeon, this.physics);
     this.spawner.setFloor(this.currentDungeon, this.physics, this.floorManager);
 
     this.loot.spawnShops();
@@ -339,10 +339,37 @@ export class GameRoom extends Room<GameState> {
     // 1. Player inputs.
     this.players.forEach((player) => player.applyInput(player.lastInput, dtMs));
 
+    // 1a. Which rooms are awake this tick. An empty room simulates NOTHING —
+    //     see `dormant` below — so the floor is only ever as busy as the party
+    //     can see, and creatures can't drift out of a room nobody is watching.
+    const playerPositions: Array<{ x: number; y: number }> = [];
+    this.players.forEach((p) => playerPositions.push({ x: p.state.x, y: p.state.y }));
+    const awakeRooms = this.floorManager.occupiedRoomIds(playerPositions);
+    /** An enemy in a room with no player in it. Dormant enemies are skipped for
+     *  AI (step 2) AND for contact damage (step 3) — "nothing ticks" is the whole
+     *  point (playtest B14). Anything with no home room (spawned outside a room)
+     *  is never dormant, so nothing can be stranded frozen. */
+    const dormant = (id: string): boolean => {
+      const roomId = this.floorManager.getEnemyRoom(id);
+      return roomId !== undefined && !awakeRooms.has(roomId);
+    };
+
+    // 1b. One-way barriers (playtest B1/G1). A player inside a locked room is
+    //     COMMITTED — their body starts colliding with that room's exit barrier —
+    //     while a player still outside ignores it and can walk in late. This is
+    //     re-evaluated every tick, so clearing the room releases everyone.
+    this.players.forEach((player) => {
+      this.physics.setPlayerCommitted(
+        player.body,
+        this.floorManager.isCommittedAt(player.state.x, player.state.y),
+      );
+    });
+
     // 2. Enemy AI — per-enemy visibility: a player is hidden only from enemies
     //    in rooms that don't touch the passageway the player is currently in.
     this.enemies.forEach((enemy, id) => {
       if (enemy.isDying) return;
+      if (dormant(id)) return;
 
       const enemyRoomId = this.floorManager.getEnemyRoom(id);
       const visiblePlayers = new Map<string, PlayerState>();
@@ -373,6 +400,7 @@ export class GameRoom extends Room<GameState> {
     };
     this.players.forEach((player, sid) => drain(sid, PLAYER_ATTACK_AFFECTS, player.drainEffects()));
     this.enemies.forEach((enemy, id) => {
+      if (dormant(id)) return;
       const contact = enemy.contactHitSource(id);
       if (contact) sources.push(contact);
       drain(id, ENEMY_ATTACK_AFFECTS, enemy.drainEffects());
@@ -503,9 +531,10 @@ export class GameRoom extends Room<GameState> {
     // 11. Softlock guard: unlock rooms that locked behind a player who is no longer
     //     inside (death respawn above, or disconnect). Runs after step 10 so dead
     //     players' positions are already back at spawn.
-    const playerPositions: Array<{ x: number; y: number }> = [];
-    this.players.forEach((p) => playerPositions.push({ x: p.state.x, y: p.state.y }));
-    const abandoned = this.floorManager.releaseAbandonedRooms(playerPositions);
+    // Recomputed rather than reusing step 1a's snapshot: respawn moved people.
+    const settledPositions: Array<{ x: number; y: number }> = [];
+    this.players.forEach((p) => settledPositions.push({ x: p.state.x, y: p.state.y }));
+    const abandoned = this.floorManager.releaseAbandonedRooms(settledPositions);
     if (abandoned.length > 0) {
       this.broadcast("connections_child_unlocked", { connectionIds: abandoned });
     }

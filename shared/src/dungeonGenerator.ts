@@ -139,11 +139,21 @@ export function roomCellAt(x: number, y: number): { gx: number; gy: number; id: 
  * cell am I looking at", FloorManager wants "am I really in there".
  */
 export function roomInteriorContains(room: RoomData, x: number, y: number): boolean {
-  const xMin = (room.tileCol + 1) * TILE_SIZE;
-  const xMax = (room.tileCol + ROOM_W - 1) * TILE_SIZE;
-  const yMin = (room.tileRow + 1) * TILE_SIZE;
-  const yMax = (room.tileRow + ROOM_H - 1) * TILE_SIZE;
-  return x >= xMin && x < xMax && y >= yMin && y < yMax;
+  const r = roomInteriorRect(room);
+  return x >= r.xMin && x < r.xMax && y >= r.yMin && y < r.yMax;
+}
+
+/** The same interior box as roomInteriorContains, as numbers. Enemy containment
+ *  (playtest B6/B14 — creatures must not wander or aggro out of their room)
+ *  needs the bounds themselves, and deriving them twice is how the membership
+ *  test and the clamp would drift apart. */
+export function roomInteriorRect(room: RoomData): { xMin: number; xMax: number; yMin: number; yMax: number } {
+  return {
+    xMin: (room.tileCol + 1) * TILE_SIZE,
+    xMax: (room.tileCol + ROOM_W - 1) * TILE_SIZE,
+    yMin: (room.tileRow + 1) * TILE_SIZE,
+    yMax: (room.tileRow + ROOM_H - 1) * TILE_SIZE,
+  };
 }
 
 export interface BarrierRect {
@@ -525,7 +535,18 @@ function assignRoomTypes(
   // All other rooms: the forced type, or a weighted roll
   for (const id of roomIds) {
     if (id === bossRoomId) continue;
-    roomTypes.set(id, forceRoomType ?? pickRoomType(rng));
+    const rolled = forceRoomType ?? pickRoomType(rng);
+    // The start room never spawns enemies (players must not be jumped on load),
+    // so an objective there could never be completed: the tester saw a permanent
+    // "Wave 1 / 3" banner on the room they spawned in (playtest B4). Demote it to
+    // a plain combat room.
+    //
+    // The roll above happens either way, and combat/wave/timed carve identically,
+    // so this consumes the same rng draws in the same order and leaves every
+    // existing seed's tile map byte-for-byte unchanged — see the determinism
+    // contract in CLAUDE.md.
+    const orphanedObjective = id === startId && (rolled === "wave" || rolled === "timed");
+    roomTypes.set(id, orphanedObjective ? "combat" : rolled);
   }
   return { roomTypes, bossRoomId };
 }
@@ -769,6 +790,51 @@ function pickExitAndSpawn(
   return { exitRoomId, exitRoom, spawnTile };
 }
 
+/**
+ * One spawn point per party slot, all DISTINCT and all on plain floor.
+ *
+ * They used to be four copies of the same tile center, which is what put a
+ * late-joining player inside a wall (playtest B2): two entity bodies created at
+ * the exact same position have no separation normal for the physics solver to
+ * work with, and it resolves the degenerate overlap by flinging one of them an
+ * arbitrary distance — sometimes through geometry.
+ *
+ * The spread is a fixed ring around the spawn tile, taken in a fixed order and
+ * filtered to plain TILE.FLOOR, so it consumes no rng (the floor stays
+ * deterministic) and can never place anyone on the stairs, a trap, or a wall.
+ * Slots that find nowhere legal fall back to the spawn tile — being stacked is
+ * better than being out of bounds, and the ring only runs dry in a room with
+ * almost no floor.
+ */
+function buildPlayerSpawns(
+  mapData: TileId[][],
+  spawnTile: { col: number; row: number },
+  dims: FloorDims,
+): Array<{ x: number; y: number }> {
+  const RING: Array<[number, number]> = [
+    [0, 0],
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+    [1, 1],
+    [-1, -1],
+    [1, -1],
+    [-1, 1],
+  ];
+  const spawns: Array<{ x: number; y: number }> = [];
+  for (const [dc, dr] of RING) {
+    if (spawns.length >= 4) break;
+    const col = spawnTile.col + dc;
+    const row = spawnTile.row + dr;
+    if (col < 0 || col >= dims.cols || row < 0 || row >= dims.rows) continue;
+    if (mapData[row][col] !== TILE.FLOOR) continue;
+    spawns.push(tileCenter(col, row));
+  }
+  while (spawns.length < 4) spawns.push(tileCenter(spawnTile.col, spawnTile.row));
+  return spawns;
+}
+
 // ── 8. Colour boss passageway tiles gold ───────────────────────────────────
 function stampBossPassage(
   mapData: TileId[][],
@@ -867,7 +933,7 @@ export function generateDungeon(seed: number, opts: DungeonOptions = {}): Dungeo
   stampBossPassage(mapData, connections, bossRoomId);
   placeTraps(mapData, roomDataMap, roomTypes, startId, rng);
 
-  const playerSpawns = [0, 1, 2, 3].map(() => tileCenter(spawnTile.col, spawnTile.row));
+  const playerSpawns = buildPlayerSpawns(mapData, spawnTile, dims);
 
   return {
     mapData,

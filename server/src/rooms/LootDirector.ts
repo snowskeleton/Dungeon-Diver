@@ -9,12 +9,19 @@ import { OfferState, OfferChoiceState } from "../schema/OfferState";
 import { ChestState } from "../schema/ChestState";
 import { Player, resolveTemplate, slotStateFor } from "../entities/Player";
 import { upgradeById, upgradePool, rollWeaponMod } from "../upgrades";
+import { PhysicsWorld } from "../physics/PhysicsWorld";
 
 const SHOP_ITEM_COUNT = 3;
 // How many choices a reward pedestal presents.
 const OFFER_CHOICES = 3;
 // How close (px) a player must stand to a pedestal to buy it.
 const BUY_RADIUS = 40;
+// The chest's collision box. Matches the 28px sprite the client draws (see
+// ChestEntity), kept a little shorter so a player can press up against its front
+// face and still be inside interact range.
+const CHEST_SOLID_W = 26;
+const CHEST_SOLID_H = 20;
+
 // Chance a chest room's chest is the rarer gold one.
 const GOLD_CHEST_CHANCE = 0.15;
 // Modifiers rolled onto the weapon inside a chest. A chest is pure loot — even the
@@ -34,10 +41,17 @@ export class LootDirector {
 
   constructor(private readonly state: GameState) {}
 
+  /** The floor's physics world. Handed over in setFloor rather than the
+   *  constructor because GameRoom builds the PhysicsWorld from the first
+   *  generated floor, which happens after the directors exist — the same reason
+   *  SpawnDirector takes it here. */
+  private physics!: PhysicsWorld;
+
   /** Point at the newly generated floor. Called from GameRoom.initFloor before any
    *  of the spawn methods. */
-  setFloor(dungeon: DungeonResult) {
+  setFloor(dungeon: DungeonResult, physics: PhysicsWorld) {
     this.dungeon = dungeon;
+    this.physics = physics;
   }
 
   // ---- placement -----------------------------------------------------------
@@ -102,6 +116,11 @@ export class LootDirector {
       chest.weaponId = this.rollShopWeapons(1)[0];
       const modCount = chest.gold ? GOLD_CHEST_MODS : BROWN_CHEST_MODS;
       for (let i = 0; i < modCount; i++) chest.mods.push(rollWeaponMod(this.state.floor));
+
+      // Solid: you used to walk straight through a chest (playtest B8). Sized to
+      // the drawn sprite, and slightly shorter than it is wide so you can stand
+      // close enough to the front of it to interact.
+      this.physics.addSolidProp(room.id, pos.x, pos.y, CHEST_SOLID_W, CHEST_SOLID_H);
 
       this.state.chests.set(room.id, chest);
     }

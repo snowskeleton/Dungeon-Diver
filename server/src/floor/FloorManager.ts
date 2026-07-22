@@ -52,7 +52,12 @@ export class FloorManager {
     const state = this.barriers.get(conn.id);
     if (!state || state[side]) return false;
     const rect = side === "parent" ? conn.barrierParent : conn.barrierChild;
-    this.physics.addBarrier(barrierBodyId(conn.id, side), rect.cx, rect.cy, rect.w, rect.h);
+    const id = barrierBodyId(conn.id, side);
+    // `parent` is a plain wall: nobody advances until the room is cleared.
+    // `child` is ONE-WAY (playtest G1) — a latecomer may still walk in, but a
+    // player already inside is committed and can't walk back out.
+    if (side === "parent") this.physics.addBarrier(id, rect.cx, rect.cy, rect.w, rect.h);
+    else this.physics.addExitBarrier(id, rect.cx, rect.cy, rect.w, rect.h);
     state[side] = true;
     return true;
   }
@@ -167,6 +172,37 @@ export class FloorManager {
       this.enteredChildRooms.delete(roomId);
     }
     return childUnlocked;
+  }
+
+  /** Which rooms have a player in or at them. A room with nobody in it is
+   *  DORMANT: GameRoom skips its enemies entirely — no AI, no movement, no
+   *  contact damage (playtest B14). A player standing in a passageway counts as
+   *  present in BOTH rooms it joins, so the creatures you're walking towards are
+   *  already awake rather than snapping to life once you're through the door. */
+  occupiedRoomIds(playerPositions: Array<{ x: number; y: number }>): Set<string> {
+    const ids = new Set<string>();
+    for (const p of playerPositions) {
+      const room = this.roomAt(p.x, p.y);
+      if (room) ids.add(room.id);
+      for (const conn of this.connections) {
+        if (!this.inPassageway(p.x, p.y, conn)) continue;
+        ids.add(conn.parentRoomId);
+        ids.add(conn.childRoomId);
+      }
+    }
+    return ids;
+  }
+
+  /** Is this point inside a room that is locked right now? Drives the one-way
+   *  exit barriers: a player here is COMMITTED and can't walk back out, while a
+   *  player still outside keeps a mask that ignores the barrier and can walk in.
+   *  Deliberately tested on the room INTERIOR (roomAt), which excludes the
+   *  doorway the barrier body occupies — so commitment never turns on while a
+   *  player overlaps the body. */
+  isCommittedAt(x: number, y: number): boolean {
+    const room = this.roomAt(x, y);
+    if (!room) return false;
+    return this.enteredChildRooms.has(room.id) && !this.clearedRooms.has(room.id);
   }
 
   isRoomCleared(roomId: string): boolean {

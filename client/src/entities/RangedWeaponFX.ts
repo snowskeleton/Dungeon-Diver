@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { Facing } from "shared";
+import { WEAPON_ICON_DISPLAY_SIZE } from "./AttackFXSprites";
 
 // Ranged weapons (bows, crossbows) render a 2-frame draw sheet instead of a
 // melee slash strip: frame 0 = relaxed/unloaded, frame 1 = drawn/loaded. The
@@ -13,7 +14,12 @@ import { Facing } from "shared";
 // ~333ms of the draw clip and blinked out whenever the attack cooldown was
 // longer than that — every bow but the fast shortbow.)
 
-export const BOW_DISPLAY_SIZE = 24;
+// Matched to WEAPON_ICON_DISPLAY_SIZE on purpose. Bows and crossbows used to
+// render at 24 while every hand weapon rendered at 16, from art that fills its
+// 32×32 frame just as tightly — so a crossbow read as half again the size of the
+// character carrying it (playtest B10). One held weapon should not be bigger than
+// another just because it shoots.
+export const BOW_DISPLAY_SIZE = WEAPON_ICON_DISPLAY_SIZE;
 // How far in front of the player body the bow sits, per axis.
 const BOW_REACH = 9;
 // The bow art aims up-and-right (~45° above the +x axis). This offset rotates it

@@ -45,6 +45,7 @@ export class RemotePlayer extends Entity implements DebugDrawable {
   }
 
   setTarget(state: PlayerStateView) {
+    if (this.isDestroyed) return;
     const { weaponId, attackSeq } = state;
     this.targetX = state.x;
     this.targetY = state.y;

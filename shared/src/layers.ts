@@ -13,7 +13,20 @@ export enum Layer {
   PROP          = 1 << 5, // 0x20  bushes / destructibles / breakables
   PICKUP        = 1 << 6, // 0x40  dropped items, hearts
   HAZARD        = 1 << 7, // 0x80  lingering fire / poison ground tiles
+  BARRIER_EXIT  = 1 << 8, // 0x100 a locked room's ONE-WAY exit barrier (see below)
 }
+
+// One-way barriers (playtest G1). A locked room's exit barrier must let a
+// latecomer walk IN while stopping anyone from walking OUT — which a solid body
+// cannot express, since matter collision is symmetric. So the barrier gets its
+// own category and only players who are COMMITTED (already inside the room's
+// interior) carry the bit in their mask. Walking in is free; once you're in, the
+// bit goes on and the same body becomes a wall behind you.
+//
+// Commitment flips on the room INTERIOR, which is inset a tile past the doorway
+// the barrier sits in — so a player can never gain the bit while overlapping the
+// body and get squeezed out to an arbitrary side.
+export const PLAYER_COMMITTED_SOLID_MASK = Layer.WALL | Layer.PLAYER | Layer.ENEMY | Layer.BARRIER_EXIT;
 
 // The three masks any interacting thing may carry. Solid bodies use layer +
 // solidMask; hit sources (projectiles, swings, AOE) use layer + affects;

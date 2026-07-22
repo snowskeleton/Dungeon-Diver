@@ -172,6 +172,29 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     this.setMenuPaused(true);
   }
 
+  /** Close the topmost open overlay, if any, and report whether we did.
+   *
+   *  Escape used to quit the run unconditionally — "you can pause, but you can
+   *  never unpause" (playtest B3), and it killed a live session. Escape now peels
+   *  overlays off one at a time and only reaches the quit path on bare gameplay.
+   *
+   *  Dismissing the offer picker is allowed and simply takes nothing: the pedestal
+   *  is not consumed (the server only grants on an `offerPick` message), so the
+   *  choice stays there to walk back into. */
+  closeTopOverlay(): boolean {
+    if (this.offerPicker.isOpen) {
+      this.offerPicker.hide();
+      this.setMenuPaused(false);
+      return true;
+    }
+    if (this.invMenu.isOpen) {
+      this.invMenu.hide();
+      this.setMenuPaused(false);
+      return true;
+    }
+    return false;
+  }
+
   private setMenuPaused(paused: boolean) {
     this.menuOpen = paused;
     this.room.send("setPause", { paused });

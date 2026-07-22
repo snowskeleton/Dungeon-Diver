@@ -104,7 +104,13 @@ export function holdWeaponIconAtRest(
   const off = HELD_HAND_OFFSET[facing];
   icon.x = px + off.x;
   icon.y = py + off.y;
-  icon.setAngle(iconAngle);
+  // Mirror when facing left, exactly as the character sheet does (playtest B10:
+  // "axes don't mirror when held"). The art is drawn pointing right, so facing
+  // left it must be flipped AND its hold tilt negated — flipping alone leaves an
+  // asymmetric weapon like an axe cocked the wrong way.
+  const mirrored = facing === "left";
+  icon.setFlipX(mirrored);
+  icon.setAngle(mirrored ? -iconAngle : iconAngle);
   icon.setDepth(facing === "up" ? HELD_DEPTH_BEHIND : HELD_DEPTH_FRONT);
   icon.setVisible(true);
 }

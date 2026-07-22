@@ -3,7 +3,7 @@ import {
   ROOM_W, ROOM_H,
   ENEMY_BASE_COUNT, ENEMY_FLOOR_BONUS_INTERVAL, ENEMY_PLAYER_SCALE,
   DungeonResult, DungeonOptions, RoomData, RoomType,
-  DebugConfig,
+  DebugConfig, roomInteriorRect,
 } from "shared";
 import { GameState } from "../schema/GameState";
 import { Enemy, EnemyClass } from "../entities/Enemy";
@@ -141,6 +141,10 @@ export class SpawnDirector {
     this.enemies.set(id, enemy);
     this.state.enemies.set(id, enemy.state);
     this.floorManager.assignEnemy(id, x, y);
+    // Creatures stay in the room they spawned in (playtest B6/B14) — no wandering
+    // out through a doorway, and no chasing a player into the next room.
+    const home = this.floorManager.roomAt(x, y);
+    if (home) enemy.confineTo(roomInteriorRect(home));
     return enemy;
   }
 

@@ -1,5 +1,16 @@
 import Matter from "matter-js";
-import { TILE_PROPS, TILE_SIZE, TileId, SERVER_TICK_MS, FOOT_OFFSET, ENTITY_RADIUS, Layer, CORPSE_SOLID_MASK } from "shared";
+import {
+  TILE_PROPS,
+  TILE_SIZE,
+  TileId,
+  SERVER_TICK_MS,
+  FOOT_OFFSET,
+  ENTITY_RADIUS,
+  Layer,
+  CORPSE_SOLID_MASK,
+  PLAYER_BODY_PROFILE,
+  PLAYER_COMMITTED_SOLID_MASK,
+} from "shared";
 
 // ---- Coordinate mapping (defined here and nowhere else) ----
 // Schema state.x/y is the sprite CENTER — that's the client contract and it
@@ -149,6 +160,47 @@ export class PhysicsWorld {
     });
     this.barriers.set(id, body);
     Matter.Composite.add(this.engine.world, body);
+  }
+
+  /** A locked room's exit barrier. Unlike addBarrier this is NOT a wall: it sits
+   *  on Layer.BARRIER_EXIT, which only a committed player's mask includes, so it
+   *  blocks the way out without blocking the way in. See shared/src/layers.ts. */
+  addExitBarrier(id: string, cx: number, cy: number, w: number, h: number): void {
+    if (this.barriers.has(id)) return;
+    const body = Matter.Bodies.rectangle(cx, cy, w, h, {
+      isStatic: true,
+      label: `barrier_${id}`,
+      collisionFilter: { category: Layer.BARRIER_EXIT, mask: Layer.PLAYER },
+    });
+    this.barriers.set(id, body);
+    Matter.Composite.add(this.engine.world, body);
+  }
+
+  /** Toggle whether this player body is held in by exit barriers. */
+  setPlayerCommitted(body: Matter.Body, committed: boolean): void {
+    body.collisionFilter.mask = committed
+      ? PLAYER_COMMITTED_SOLID_MASK
+      : PLAYER_BODY_PROFILE.solidMask;
+  }
+
+  /** A solid piece of room furniture — today just the chest, which you could
+   *  previously walk straight through (playtest B8). Same static-rect machinery
+   *  as a barrier, and deliberately in the same map: both are "solid rectangles
+   *  that aren't tiles", both must be cleared when the floor is rebuilt, and both
+   *  should stop an arrow. */
+  addSolidProp(id: string, cx: number, cy: number, w: number, h: number): void {
+    this.addBarrier(`prop_${id}`, cx, cy, w, h);
+  }
+
+  /** Is this point inside a standing barrier? Projectiles are not matter bodies,
+   *  so they'd otherwise sail straight through a shut door (playtest B5). Both
+   *  sides block: a one-way barrier is one-way for *walking*, not for arrows. */
+  barrierAt(x: number, y: number): boolean {
+    for (const body of this.barriers.values()) {
+      const b = body.bounds;
+      if (x >= b.min.x && x <= b.max.x && y >= b.min.y && y <= b.max.y) return true;
+    }
+    return false;
   }
 
   removeBarrier(id: string): void {

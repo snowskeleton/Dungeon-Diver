@@ -77,14 +77,76 @@ export class EnemyEntity extends Entity implements DebugDrawable {
       this.charSprite?.setDepth(1);
       this.hpBar.setVisible(false);
       this.hpBarBg.setVisible(false);
+      this.playDeathFlourish();
     } else if (!state.isDying && this.dying) {
+      // Revive (only the debug respawn does this today) has to undo every part of
+      // the flourish, tweens included, or the enemy comes back invisible.
       this.dying = false;
       this.currentEnemyAnim = undefined;
+      if (this.charSprite) this.scene.tweens.killTweensOf(this.charSprite);
+      this.scene.tweens.killTweensOf(this);
+      this.deathLift = 0;
       this.charSprite?.setDepth(2);
+      this.charSprite?.setAlpha(1);
+      this.charSprite?.clearTint();
+      if (this.charSprite && this.livingScale) {
+        this.charSprite.setScale(this.livingScale.x, this.livingScale.y);
+      }
       this.hpBar.setVisible(true);
       this.hpBarBg.setVisible(true);
     }
   }
+
+  /**
+   * The universal death read: a white flash, then fade out while drifting up and
+   * swelling slightly.
+   *
+   * Every enemy gets this REGARDLESS of its death clip, because the per-enemy
+   * clips can't be relied on — `makeSheetEnemyDef` defaults `death` to the walk
+   * frames reversed, which for most creatures is indistinguishable from standing
+   * still, and the tester duly reported that "several of them just kinda stop
+   * moving when they're dead" (playtest B11). A creature dying is the single most
+   * important thing the game has to communicate, so it can't be left to whether
+   * someone authored a clip for that sheet.
+   *
+   * The corpse lingers server-side (see Enemy.takeHit) — this is purely the view.
+   */
+  private playDeathFlourish() {
+    const sprite = this.charSprite;
+    if (!sprite) return;
+
+    this.livingScale = { x: sprite.scaleX, y: sprite.scaleY };
+    sprite.setTintFill(0xffffff);
+    this.scene.time.delayedCall(90, () => {
+      if (!this.isDestroyed) sprite.clearTint();
+    });
+
+    this.scene.tweens.add({
+      targets: sprite,
+      alpha: 0,
+      scaleX: sprite.scaleX * 1.25,
+      scaleY: sprite.scaleY * 1.25,
+      duration: 620,
+      delay: 90,
+      ease: "Quad.easeOut",
+    });
+
+    // The upward drift goes through a field rather than tweening sprite.y:
+    // update() reassigns that every frame from the interpolated body position,
+    // and would simply overwrite a positional tween.
+    this.scene.tweens.add({
+      targets: this,
+      deathLift: 10,
+      duration: 620,
+      delay: 90,
+      ease: "Quad.easeOut",
+    });
+  }
+
+  /** Extra px the corpse has drifted upward during its death flourish. */
+  private deathLift = 0;
+  /** Sprite scale before the flourish swelled it, so a revive can restore it. */
+  private livingScale?: { x: number; y: number };
 
   update() {
     if (!this.dying) {
@@ -96,7 +158,7 @@ export class EnemyEntity extends Entity implements DebugDrawable {
       this.charSprite.x = this.sprite.x;
       // Lift the sprite by its airborne height; the ground point (sprite.x/y,
       // where the shadow and the server hitbox sit) stays put.
-      this.charSprite.y = this.sprite.y - this.airHeight;
+      this.charSprite.y = this.sprite.y - this.airHeight - this.deathLift;
       this.playEnemyAnim();
       this.updateTelegraph();
       this.updateShadow();
@@ -197,6 +259,11 @@ export class EnemyEntity extends Entity implements DebugDrawable {
   }
 
   override destroy() {
+    // The death flourish's tweens hold this view and its sprite; a floor change
+    // can remove the enemy mid-fade, and a tween left running would keep writing
+    // to a destroyed sprite.
+    if (this.charSprite) this.scene.tweens.killTweensOf(this.charSprite);
+    this.scene.tweens.killTweensOf(this);
     this.shadow?.destroy();
     super.destroy();
   }
