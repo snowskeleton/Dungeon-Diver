@@ -1,9 +1,7 @@
 import { Mace } from "../base";
-
-export default new Mace({
-  id: "flail",
-  name: "Flail",
-  damage: 27,
-  attackForce: 13,
-
-});
+export class Flail extends Mace {
+  readonly id = "flail";
+  readonly name = "Flail";
+  get damage() { return 27; }
+  get attackForce() { return 13; }
+}

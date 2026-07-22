@@ -1,9 +1,7 @@
 import { Axe } from "../base";
-
-export default new Axe({
-  id: "double-axe",
-  name: "Double Axe",
-  damage: 26,
-  attackCooldownMs: 700,
-
-});
+export class DoubleAxe extends Axe {
+  readonly id = "double-axe";
+  readonly name = "Double Axe";
+  get damage() { return 26; }
+  get attackCooldownMs() { return 700; }
+}

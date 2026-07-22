@@ -1,98 +1,103 @@
-import { Weapon } from "./base";
+import { Weapon, WeaponClass } from "./base";
 
 // ─── Swords ──────────────────────────────────────────────────────────────────
-import shortSword     from "./swords/short-sword";
-import broadsword     from "./swords/broadsword";
-import flamberge      from "./swords/flamberge";
-import ornateSword    from "./swords/ornate-sword";
-import crimsonBlade   from "./swords/crimson-blade";
-import frostBlade     from "./swords/frost-blade";
-import goldBlade      from "./swords/gold-blade";
-import mysticBlade    from "./swords/mystic-blade";
-import woodSword      from "./swords/wood-sword";
-import sabre          from "./swords/sabre";
-import gildedSword    from "./swords/gilded-sword";
-import stiletto       from "./swords/stiletto";
-import serpentBlade   from "./swords/serpent-blade";
-import tealBlade      from "./swords/teal-blade";
-import crystalBlade   from "./swords/crystal-blade";
-import infernoBlade   from "./swords/inferno-blade";
-import shadowBlade    from "./swords/shadow-blade";
-import lightningBlade from "./swords/lightning-blade";
+import { ShortSword }     from "./swords/short-sword";
+import { Broadsword }     from "./swords/broadsword";
+import { Flamberge }      from "./swords/flamberge";
+import { OrnateSword }    from "./swords/ornate-sword";
+import { CrimsonBlade }   from "./swords/crimson-blade";
+import { FrostBlade }     from "./swords/frost-blade";
+import { GoldBlade }      from "./swords/gold-blade";
+import { MysticBlade }    from "./swords/mystic-blade";
+import { WoodenSword }    from "./swords/wood-sword";
+import { Sabre }          from "./swords/sabre";
+import { GildedSword }    from "./swords/gilded-sword";
+import { Stiletto }       from "./swords/stiletto";
+import { SerpentBlade }   from "./swords/serpent-blade";
+import { TealBlade }      from "./swords/teal-blade";
+import { CrystalBlade }   from "./swords/crystal-blade";
+import { InfernoBlade }   from "./swords/inferno-blade";
+import { ShadowBlade }    from "./swords/shadow-blade";
+import { LightningBlade } from "./swords/lightning-blade";
 
 // ─── Axes ─────────────────────────────────────────────────────────────────────
-import battleAxe  from "./axes/battle-axe";
-import hatchet    from "./axes/hatchet";
-import moonAxe    from "./axes/moon-axe";
-import doubleAxe  from "./axes/double-axe";
-import warAxe     from "./axes/war-axe";
-import darkAxe    from "./axes/dark-axe";
+import { BattleAxe } from "./axes/battle-axe";
+import { Hatchet }   from "./axes/hatchet";
+import { MoonAxe }   from "./axes/moon-axe";
+import { DoubleAxe } from "./axes/double-axe";
+import { WarAxe }    from "./axes/war-axe";
+import { DarkAxe }   from "./axes/dark-axe";
 
 // ─── Spears ───────────────────────────────────────────────────────────────────
-import javelin from "./spears/javelin";
-import lance   from "./spears/lance";
-import spear   from "./spears/spear";
-import trident from "./spears/trident";
+import { Javelin } from "./spears/javelin";
+import { Lance }   from "./spears/lance";
+import { Spear }   from "./spears/spear";
+import { Trident } from "./spears/trident";
 
 // ─── Rapiers ──────────────────────────────────────────────────────────────────
-import blueRapier   from "./rapiers/blue-rapier";
-import silverRapier from "./rapiers/silver-rapier";
-import tealRapier   from "./rapiers/teal-rapier";
+import { BlueRapier }   from "./rapiers/blue-rapier";
+import { SilverRapier } from "./rapiers/silver-rapier";
+import { TealRapier }   from "./rapiers/teal-rapier";
 
 // ─── Maces ────────────────────────────────────────────────────────────────────
-import starMace    from "./maces/star-mace";
-import morningStar from "./maces/morning-star";
-import flail       from "./maces/flail";
-import club        from "./maces/club";
-import orbMace     from "./maces/orb-mace";
+import { StarMace }    from "./maces/star-mace";
+import { MorningStar } from "./maces/morning-star";
+import { Flail }       from "./maces/flail";
+import { Club }        from "./maces/club";
+import { OrbMace }     from "./maces/orb-mace";
 
 // ─── Daggers ──────────────────────────────────────────────────────────────────
-import kris         from "./daggers/kris";
-import curvedDagger from "./daggers/curved-dagger";
+import { Kris }         from "./daggers/kris";
+import { CurvedDagger } from "./daggers/curved-dagger";
 
 // ─── Hammers ──────────────────────────────────────────────────────────────────
-import warHammer from "./hammers/war-hammer";
+import { WarHammer } from "./hammers/war-hammer";
 
 // ─── Bows ─────────────────────────────────────────────────────────────────────
-import shortbow from "./bows/shortbow";
-import longbow  from "./bows/longbow";
+import { Shortbow } from "./bows/shortbow";
+import { Longbow }  from "./bows/longbow";
 
 // ─── Crossbows ────────────────────────────────────────────────────────────────
-import crossbow from "./crossbows/crossbow";
+import { Crossbow } from "./crossbows/crossbow";
 
 // ─── Thrown ───────────────────────────────────────────────────────────────────
-import throwingKnife  from "./thrown/throwing-knife";
-import throwingStar   from "./thrown/throwing-star";
-import boomerang      from "./thrown/boomerang";
-import steelBoomerang from "./thrown/steel-boomerang";
+import { ThrowingKnife }  from "./thrown/throwing-knife";
+import { ThrowingStar }   from "./thrown/throwing-star";
+import { Boomerang }      from "./thrown/boomerang";
+import { SteelBoomerang } from "./thrown/steel-boomerang";
 
 // ─── Staves ───────────────────────────────────────────────────────────────────
-import oakStaff     from "./staves/oak-staff";
-import cane         from "./staves/cane";
-import arcaneStaff  from "./staves/arcane-staff";
-import rubyStaff    from "./staves/ruby-staff";
-import emeraldStaff from "./staves/emerald-staff";
-import crystalWand  from "./staves/crystal-wand";
+import { OakStaff }     from "./staves/oak-staff";
+import { Cane }         from "./staves/cane";
+import { ArcaneStaff }  from "./staves/arcane-staff";
+import { RubyStaff }    from "./staves/ruby-staff";
+import { EmeraldStaff } from "./staves/emerald-staff";
+import { CrystalWand }  from "./staves/crystal-wand";
 
 // ─── Registry ─────────────────────────────────────────────────────────────────
 
-const ALL_WEAPONS: Weapon[] = [
-  shortSword, broadsword, flamberge, ornateSword, crimsonBlade, frostBlade,
-  goldBlade, mysticBlade, woodSword, sabre, gildedSword, stiletto,
-  serpentBlade, tealBlade, crystalBlade, infernoBlade, shadowBlade, lightningBlade,
-  battleAxe, hatchet, moonAxe, doubleAxe, warAxe, darkAxe,
-  javelin, lance, spear, trident,
-  blueRapier, silverRapier, tealRapier,
-  starMace, morningStar, flail, club, orbMace,
-  kris, curvedDagger,
-  warHammer,
-  shortbow, longbow,
-  crossbow,
-  throwingKnife, throwingStar, boomerang, steelBoomerang,
-  oakStaff, cane, arcaneStaff, rubyStaff, emeraldStaff, crystalWand,
+// Every weapon, as a class. Mirrors REGULAR_ENEMIES / BOSSES: the array of
+// classes is the source of truth the compiler checks, and WEAPON_REGISTRY below
+// is the id→template lookup derived from it (weapons, unlike enemies, are
+// referenced by id across the wire, so the map is a genuine need, not a shortcut).
+export const WEAPONS: WeaponClass[] = [
+  ShortSword, Broadsword, Flamberge, OrnateSword, CrimsonBlade, FrostBlade,
+  GoldBlade, MysticBlade, WoodenSword, Sabre, GildedSword, Stiletto,
+  SerpentBlade, TealBlade, CrystalBlade, InfernoBlade, ShadowBlade, LightningBlade,
+  BattleAxe, Hatchet, MoonAxe, DoubleAxe, WarAxe, DarkAxe,
+  Javelin, Lance, Spear, Trident,
+  BlueRapier, SilverRapier, TealRapier,
+  StarMace, MorningStar, Flail, Club, OrbMace,
+  Kris, CurvedDagger,
+  WarHammer,
+  Shortbow, Longbow,
+  Crossbow,
+  ThrowingKnife, ThrowingStar, Boomerang, SteelBoomerang,
+  OakStaff, Cane, ArcaneStaff, RubyStaff, EmeraldStaff, CrystalWand,
 ];
 
-export const WEAPON_REGISTRY: Record<string, Weapon> = Object.fromEntries(ALL_WEAPONS.map(w => [w.id, w]));
+export const WEAPON_REGISTRY: Record<string, Weapon> =
+  Object.fromEntries(WEAPONS.map((W) => { const w = new W(); return [w.id, w]; }));
 
 export type SwordId     = "short-sword" | "broadsword" | "flamberge" | "ornate-sword" | "crimson-blade" | "frost-blade" | "gold-blade" | "mystic-blade" | "wood-sword" | "sabre" | "gilded-sword" | "stiletto" | "serpent-blade" | "teal-blade" | "crystal-blade" | "inferno-blade" | "shadow-blade" | "lightning-blade";
 export type AxeId       = "battle-axe" | "hatchet" | "moon-axe" | "double-axe" | "war-axe" | "dark-axe";
@@ -109,6 +114,7 @@ export type StaffId     = "oak-staff" | "cane" | "arcane-staff" | "ruby-staff" |
 export type WeaponId = SwordId | AxeId | SpearId | RapierId | MaceId | DaggerId | HammerId | BowId | CrossbowId | ThrownId | StaffId;
 
 export { Weapon } from "./base";
+export type { WeaponClass } from "./base";
 export { Sword }    from "./swords/base";
 export { Axe }      from "./axes/base";
 export { Spear }    from "./spears/base";
@@ -123,7 +129,7 @@ export { Staff }    from "./staves/base";
 export { isStripFx } from "./base";
 export { fxHurtboxAt, swingDurationMs } from "./hurtbox";
 export { FX_HURTBOX_FRAMES, FX_FRAME_MS } from "./fxHurtboxes.generated";
-export type { AttackFXType, WeaponCategory, RangedStyle, HitRegion, RectHitRegion, CircleHitRegion, GetHurtbox, WeaponOpts, StripFXType } from "./base";
+export type { AttackFXType, WeaponCategory, RangedStyle, HitRegion, RectHitRegion, CircleHitRegion, GetHurtbox, StripFXType } from "./base";
 export type { FxFrameBounds } from "./fxHurtboxes.generated";
 export {
   WeaponInstance,

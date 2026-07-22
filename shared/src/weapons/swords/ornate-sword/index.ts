@@ -1,6 +1,5 @@
 import { Sword } from "../base";
-
-export default new Sword({
-  id: "ornate-sword",
-  name: "Ornate Sword",
-});
+export class OrnateSword extends Sword {
+  readonly id = "ornate-sword";
+  readonly name = "Ornate Sword";
+}

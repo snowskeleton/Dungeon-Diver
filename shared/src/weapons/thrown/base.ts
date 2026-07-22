@@ -1,21 +1,14 @@
-import { Weapon, WeaponCategory, AttackFXType, GetHurtbox, Override } from "../base";
+import { Weapon, WeaponCategory, AttackFXType, RangedStyle } from "../base";
 
-// Thrown weapons are ranged: attacking spawns a projectile (the weapon leaves
-// the hand). No melee hitbox, and rangedStyle "thrown" means the client shows no
-// in-hand sprite — the flying projectile is the whole visual. Each thrown weapon
-// points its ammoId at a matching projectile whose art is the same sprite.
-const noMelee: GetHurtbox = () => null;
-
-const DEFAULTS = {
-  category: "thrown" as WeaponCategory,
-  fxType: "long-slash" as AttackFXType, // unused for ranged; type requires a value
-  damage: 0,
-  attackCooldownMs: 250,
-  attackForce: 0,
-  iconAngle: 0,
-  rangedStyle: "thrown" as const,
-};
-
-export class Thrown extends Weapon {
-  constructor(o: Override) { super({ ...DEFAULTS, ...o }); }
+// Thrown weapons are ranged: attacking spawns a projectile (the weapon leaves the hand). rangedStyle "thrown" means no in-hand sprite. Each thrown weapon sets its own ammoId.
+// Category base — the defaults every thrown inherits; a concrete
+// weapon overrides only what makes it distinct.
+export abstract class Thrown extends Weapon {
+  get category(): WeaponCategory { return "thrown"; }
+  get fxType(): AttackFXType { return "long-slash"; }
+  get damage() { return 0; }
+  get attackCooldownMs() { return 250; }
+  get attackForce() { return 0; }
+  get iconAngle() { return 0; }
+  get rangedStyle(): RangedStyle { return "thrown"; }
 }

@@ -1,9 +1,7 @@
 import { Dagger } from "../base";
-
-export default new Dagger({
-  id: "curved-dagger",
-  name: "Curved Dagger",
-  damage: 17,
-  attackCooldownMs: 280,
-
-});
+export class CurvedDagger extends Dagger {
+  readonly id = "curved-dagger";
+  readonly name = "Curved Dagger";
+  get damage() { return 17; }
+  get attackCooldownMs() { return 280; }
+}

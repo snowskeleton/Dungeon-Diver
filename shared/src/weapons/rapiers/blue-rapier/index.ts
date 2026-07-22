@@ -1,6 +1,5 @@
 import { Rapier } from "../base";
-
-export default new Rapier({
-  id: "blue-rapier",
-  name: "Blue Rapier",
-});
+export class BlueRapier extends Rapier {
+  readonly id = "blue-rapier";
+  readonly name = "Blue Rapier";
+}

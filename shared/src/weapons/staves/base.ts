@@ -1,28 +1,15 @@
-import { Weapon, WeaponCategory, AttackFXType, GetHurtbox, Override } from "../base";
+import { Weapon, WeaponCategory, AttackFXType, RangedStyle } from "../base";
 
-// Ranged: no melee hitbox. Attacking conjures the staff's bolt projectile.
-const noMelee: GetHurtbox = () => null;
-
-// Staves are the Mage's ranged weapon: each one fires a bolt whose element is
-// baked into that staff (see ammo/bolts). Like bows, a staff controls only the
-// FIRE RATE (attackCooldownMs) and WHICH ammo — the bolt carries the damage,
-// speed, knockback and pierce, so balance lives in ammo/bolts, not here.
-//
-// `fxType` is unused for ranged weapons (rangedStyle takes precedence in the
-// client's Entity.configureWeaponVisuals), but the type requires a value; "nova"
-// is kept because the AOE nova is the staff's planned active ability — the
-// AoeSpec + aoeWeaponSpell + NovaFX path all remain wired for it.
-const DEFAULTS = {
-  category: "staff" as WeaponCategory,
-  fxType: "nova" as AttackFXType,
-  damage: 0,
-  attackCooldownMs: 600,
-  attackForce: 0,
-  iconAngle: 0,
-  ammoId: "magic-bolt",
-  rangedStyle: "cast" as const,
-};
-
-export class Staff extends Weapon {
-  constructor(o: Override) { super({ ...DEFAULTS, ...o }); }
+// Staves are the Mage's ranged weapon: each fires a bolt whose element is baked into that staff (see ammo/bolts). A staff controls fire rate + which ammo; the bolt carries damage/speed/knockback/pierce, so balance lives in ammo/bolts. fxType is unused for ranged (rangedStyle wins client-side) but the type needs a value; "nova" stays because the AOE nova is the staff's planned active ability.
+// Category base — the defaults every staff inherits; a concrete
+// weapon overrides only what makes it distinct.
+export abstract class Staff extends Weapon {
+  get category(): WeaponCategory { return "staff"; }
+  get fxType(): AttackFXType { return "nova"; }
+  get damage() { return 0; }
+  get attackCooldownMs() { return 600; }
+  get attackForce() { return 0; }
+  get iconAngle() { return 0; }
+  get ammoId(): string { return "magic-bolt"; }
+  get rangedStyle(): RangedStyle { return "cast"; }
 }

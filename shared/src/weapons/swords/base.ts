@@ -1,16 +1,13 @@
-import { Weapon, WeaponCategory, AttackFXType, Override } from "../base";
+import { Weapon, WeaponCategory, AttackFXType } from "../base";
 
-const DEFAULTS = {
-  category: "sword" as WeaponCategory,
-  fxType: "slash" as AttackFXType,
-  damage: 20,
-  attackCooldownMs: 500,
-  attackForce: 7,
-  // Slash sweeps in an arc — tilt -45° so the blade sits diagonally mid-swing
-  // rather than fully extended toward the target.
-  iconAngle: -45,
-};
-
-export class Sword extends Weapon {
-  constructor(o: Override) { super({ ...DEFAULTS, ...o }); }
+// Slash sweeps in an arc — tilt -45° so the blade sits diagonally mid-swing.
+// Category base — the defaults every sword inherits; a concrete
+// weapon overrides only what makes it distinct.
+export abstract class Sword extends Weapon {
+  get category(): WeaponCategory { return "sword"; }
+  get fxType(): AttackFXType { return "slash"; }
+  get damage() { return 20; }
+  get attackCooldownMs() { return 500; }
+  get attackForce() { return 7; }
+  get iconAngle() { return -45; }
 }

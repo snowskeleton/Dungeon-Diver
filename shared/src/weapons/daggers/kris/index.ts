@@ -1,6 +1,5 @@
 import { Dagger } from "../base";
-
-export default new Dagger({
-  id: "kris",
-  name: "Kris",
-});
+export class Kris extends Dagger {
+  readonly id = "kris";
+  readonly name = "Kris";
+}

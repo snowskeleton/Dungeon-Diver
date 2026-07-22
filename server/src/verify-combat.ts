@@ -4,7 +4,7 @@
 // the exact gather+resolve step GameRoom.tick runs, and asserts damage,
 // knockback, team-filtering, weapon instancing, and the upgrade fold all behave.
 // Run: npx ts-node --transpile-only src/verify-combat.ts
-import { TILE, Layer, SERVER_TICK_MS, WEAPON_REGISTRY, AMMO_REGISTRY, PLAYER_ATTACK_AFFECTS, ENEMY_ATTACK_AFFECTS, PLAYER_PROJECTILE_AFFECTS, ENEMY_PROJECTILE_AFFECTS, Staff, WeaponInstance, WeaponMod, viewFromSlot , ENTITY_RADIUS, ENEMY_HURT_BOUNDS} from "shared";
+import { TILE, Layer, SERVER_TICK_MS, WEAPON_REGISTRY, AMMO_REGISTRY, PLAYER_ATTACK_AFFECTS, ENEMY_ATTACK_AFFECTS, PLAYER_PROJECTILE_AFFECTS, ENEMY_PROJECTILE_AFFECTS, Staff, WeaponId, WeaponInstance, WeaponMod, viewFromSlot , ENTITY_RADIUS, ENEMY_HURT_BOUNDS} from "shared";
 import { weaponSpell } from "./spells/weaponSpell";
 import { PhysicsWorld } from "./physics/PhysicsWorld";
 import { Player, slotStateFor } from "./entities/Player";
@@ -308,12 +308,15 @@ function resolveStep(
 //    ability. No shipping weapon carries an AoeSpec (staves shoot bolts), so this
 //    guards weaponSpell's AOE branch against rotting before the ability lands. ──
 {
-  const novaStaff = new Staff({
-    id: "test-nova-staff",
-    name: "Nova Staff (test)",
-    aoe: { radius: 76, windUpMs: 260, blastMs: 130 },
-  });
-  const spell = weaponSpell(new WeaponInstance(novaStaff, "test-nova"));
+  // A concrete one-off staff carrying an AoeSpec — no shipping staff has one, so
+  // this local subclass exercises weaponSpell's AOE branch. (`id` is cast because
+  // the test id isn't a real WeaponId.)
+  class NovaTestStaff extends Staff {
+    readonly id = "test-nova-staff" as WeaponId;
+    readonly name = "Nova Staff (test)";
+    get aoe() { return { radius: 76, windUpMs: 260, blastMs: 130 }; }
+  }
+  const spell = weaponSpell(new WeaponInstance(new NovaTestStaff(), "test-nova"));
   check("AOE: still builds a wind-up + blast from an AoeSpec",
     spell.windUpMs === 260 && spell.activeMs === 130,
     `windUp=${spell.windUpMs} active=${spell.activeMs}`);

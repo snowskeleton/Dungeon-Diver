@@ -1,8 +1,6 @@
 import { Rapier } from "../base";
-
-export default new Rapier({
-  id: "teal-rapier",
-  name: "Teal Rapier",
-  attackCooldownMs: 300,
-
-});
+export class TealRapier extends Rapier {
+  readonly id = "teal-rapier";
+  readonly name = "Teal Rapier";
+  get attackCooldownMs() { return 300; }
+}

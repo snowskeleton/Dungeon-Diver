@@ -1,8 +1,6 @@
 import { Mace } from "../base";
-
-export default new Mace({
-  id: "orb-mace",
-  name: "Orb Mace",
-  damage: 30,
-
-});
+export class OrbMace extends Mace {
+  readonly id = "orb-mace";
+  readonly name = "Orb Mace";
+  get damage() { return 30; }
+}

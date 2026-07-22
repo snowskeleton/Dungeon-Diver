@@ -1,6 +1,5 @@
 import { Hammer } from "../base";
-
-export default new Hammer({
-  id: "war-hammer",
-  name: "War Hammer",
-});
+export class WarHammer extends Hammer {
+  readonly id = "war-hammer";
+  readonly name = "War Hammer";
+}
