@@ -18,9 +18,6 @@ export interface OfferChoiceView {
   description: string;
   upgradeId: string;
   weapon: WeaponSlotView;
-  /** Party-wide draft key; a card whose identity is in the consumed set has been
-   *  taken by a teammate and is shown greyed + unpickable. */
-  identity: string;
 }
 
 // The gold framing is the point: a reward pedestal should not look like the
@@ -55,7 +52,7 @@ export class OfferPicker {
    *  meaning. */
   show(
     choices: OfferChoiceView[],
-    consumed: Set<string>,
+    consumed: Set<number>,
     onPick: (index: number) => void,
   ) {
     if (this.menu) return;
@@ -69,9 +66,9 @@ export class OfferPicker {
 
     const cards = el("div", { className: "m-cards" });
     choices.forEach((choice, i) => {
-      // A card a teammate already drafted is dead — greyed and unclickable. The
-      // server re-checks anyway, so this only saves a doomed round-trip.
-      const taken = consumed.has(choice.identity);
+      // A card a teammate already took is dead — greyed and unclickable. The server
+      // re-checks anyway, so this only saves a doomed round-trip.
+      const taken = consumed.has(i);
       const card = el("div", {
         className: `m-card offer-card ${choice.kind}${taken ? " taken" : ""}`,
         onClick: taken ? undefined : () => {

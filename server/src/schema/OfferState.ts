@@ -1,25 +1,16 @@
-import { Schema, ArraySchema, MapSchema, type } from "@colyseus/schema";
-import {
-  WeaponMod,
-  OfferStateView,
-  OfferChoiceStateView,
-  PlayerOfferStateView,
-} from "shared";
+import { Schema, ArraySchema, type } from "@colyseus/schema";
+import { WeaponMod, OfferStateView, OfferChoiceStateView } from "shared";
 import { WeaponSlotState } from "./WeaponSlotState";
 
-// A per-player 1-of-3 reward waiting on a pedestal — the shrine boon and the boss
-// drop. Every player in the party gets their OWN three cards (rolled at
-// LootDirector.rollOffer), and the party's picks are a DRAFT: once anyone claims a
-// given item it is consumed party-wide and greyed out of everyone else's remaining
-// options, so the whole party can't all grab the single strongest reward.
+// A shared 1-of-3 reward waiting on a pedestal — the shrine boon and the boss drop.
+// The whole party sees the SAME three cards, and the picks are mutually exclusive:
+// the first player takes one, that card greys out for everyone else, the next player
+// takes one of the remaining two, and so on. Each player may claim at most one, and
+// once all three are spent there is nothing left (a 4th player in a full party gets
+// no pick — the pedestal reads as exhausted).
 //
-// Weapon options are drawn distinct across the party, so each player always keeps at
-// least their own exclusive weapon card — that's what guarantees no player can be
-// left with nothing to pick (only upgrade cards, drawn from a smaller pool, may
-// repeat across players and be contested).
-//
-// Like a shop this pauses the room while the picker is open, but the claim is
-// per-player: one player picking doesn't consume the pedestal for the others.
+// Like a shop the room pauses while the picker is open, but unlike a shop a single
+// claim doesn't consume the whole pedestal — only that one card.
 
 /** One of the three things a player may pick. `kind` decides which of the two
  *  payload halves is meaningful — an exhaustive switch, not a lookup. */
@@ -32,11 +23,6 @@ export class OfferChoiceState extends Schema implements OfferChoiceStateView {
   /** kind === "weapon": the rolled weapon, already resolved so the card can show
    *  the exact stats the player will receive (modifiers included). */
   @type(WeaponSlotState) weapon = new WeaponSlotState();
-  /** The party-wide draft key for this choice ("weapon:<id>" / "upgrade:<id>").
-   *  When a player claims a choice this string lands in OfferState.consumed, and the
-   *  same choice on any other player's card greys out. Synced so the client can grey
-   *  a card without knowing how the identity is composed. */
-  @type("string") identity: string = "";
 
   /**
    * SERVER-ONLY — deliberately not decorated with `@type`, so it never syncs.
@@ -55,24 +41,19 @@ export class OfferChoiceState extends Schema implements OfferChoiceStateView {
   mods: WeaponMod[] = [];
 }
 
-/** One player's slice of a pedestal: their three cards and whether they've taken
- *  one yet. Keyed by session id in OfferState.players. */
-export class PlayerOfferState extends Schema implements PlayerOfferStateView {
-  /** True once this player has taken one of their cards — their pedestal ghosts out
-   *  and further picks from this player are refused, which is also what makes a
-   *  duplicated message harmless. */
-  @type("boolean") claimed: boolean = false;
-  @type([OfferChoiceState]) choices = new ArraySchema<OfferChoiceState>();
-}
-
-/** A pedestal's worth of per-player drafts, keyed in GameState.offers by room id. */
+/** A pedestal's shared 1-of-3, keyed in GameState.offers by room id. */
 export class OfferState extends Schema implements OfferStateView {
   @type("string") roomId: string = "";
   @type("number") x: number = 0;
   @type("number") y: number = 0;
-  /** One draft per player, keyed by session id. */
-  @type({ map: PlayerOfferState }) players = new MapSchema<PlayerOfferState>();
-  /** Identity strings already claimed by someone in the party. A choice whose
-   *  `identity` is in here is spent and cannot be picked again by anyone. */
-  @type(["string"]) consumed = new ArraySchema<string>();
+  /** The three cards, shown identically to every player. */
+  @type([OfferChoiceState]) choices = new ArraySchema<OfferChoiceState>();
+  /** Indices of the cards already taken. A card whose index is in here is spent and
+   *  greys out for everyone; the pedestal is exhausted once this covers every card.
+   *  This is the whole concurrency story — a racing or duplicated message just finds
+   *  the index already present and is a no-op. */
+  @type(["number"]) consumed = new ArraySchema<number>();
+  /** Session ids that have already taken a card. Each player may claim at most one,
+   *  so a second pick from the same player is refused even if cards remain. */
+  @type(["string"]) claimedBy = new ArraySchema<string>();
 }

@@ -34,13 +34,13 @@ export class LocalPlayer extends Entity implements DebugDrawable {
   private menuOpen = false;
   private invMenu = new InventoryMenu();
   private offerPicker = new OfferPicker();
-  // The reward pedestal this player is standing on, if their own draft is unclaimed.
-  // `consumed` is the party-wide set of already-drafted items, so the picker can grey
-  // out cards a teammate beat this player to.
+  // The reward pedestal this player is standing on, if this player still has a pick
+  // left and at least one card is unclaimed. `consumed` is the set of card indices a
+  // teammate already took, so the picker greys them out.
   nearbyOffer: {
     roomId: string;
     choices: OfferChoiceView[];
-    consumed: Set<string>;
+    consumed: Set<number>;
   } | null = null;
   // Per-instance uids of the weapons last seen — a newly-appearing uid triggers
   // the acquire flourish. Populated on the first sync (which carries the starting
@@ -249,9 +249,12 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     let best: LocalPlayer["nearbyOffer"] = null;
     let bestDist = SHOP_BUY_RADIUS * SHOP_BUY_RADIUS;
     offers.forEach((offer: OfferStateView, roomId: string) => {
-      // This player's own slice of the pedestal — the draft is per-player now.
-      const draft = offer.players.get(this.room.sessionId);
-      if (!draft || draft.claimed) return;
+      // Nothing to offer this player if they've already taken their one pick, or
+      // every card is spent (a 4th player after the party drained the set).
+      const consumed = new Set(Array.from(offer.consumed) as number[]);
+      const claimedBy = Array.from(offer.claimedBy) as string[];
+      if (claimedBy.includes(this.room.sessionId)) return;
+      if (consumed.size >= offer.choices.length) return;
       const dx = this.sprite.x - offer.x;
       const dy = this.sprite.y - offer.y;
       const d = dx * dx + dy * dy;
@@ -259,8 +262,8 @@ export class LocalPlayer extends Entity implements DebugDrawable {
         bestDist = d;
         best = {
           roomId,
-          choices: Array.from(draft.choices) as OfferChoiceView[],
-          consumed: new Set(Array.from(offer.consumed) as string[]),
+          choices: Array.from(offer.choices) as OfferChoiceView[],
+          consumed,
         };
       }
     });

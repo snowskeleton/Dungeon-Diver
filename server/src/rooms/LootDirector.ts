@@ -5,11 +5,7 @@ import {
 } from "shared";
 import { GameState } from "../schema/GameState";
 import { ShopState, ShopItemState } from "../schema/ShopState";
-import {
-  OfferState,
-  OfferChoiceState,
-  PlayerOfferState,
-} from "../schema/OfferState";
+import { OfferState, OfferChoiceState } from "../schema/OfferState";
 import { ChestState } from "../schema/ChestState";
 import { Player, resolveTemplate, slotStateFor } from "../entities/Player";
 import { upgradeById, upgradePool, rollWeaponMod } from "../upgrades";
@@ -35,9 +31,6 @@ const BROWN_CHEST_MODS = 1;
 const GOLD_CHEST_MODS = 2;
 
 const ALL_WEAPON_IDS = Object.keys(WEAPON_REGISTRY) as WeaponId[];
-
-/** One floor-legal upgrade instance — the element type `upgradePool` deals out. */
-type UpgradePoolItem = ReturnType<typeof upgradePool>[number];
 
 /** Everything reward-shaped: shops, shrine/boss offers, and chests — placement at
  *  floor generation, and the validate-then-grant half of the three player-facing
@@ -175,27 +168,27 @@ export class LootDirector {
     item.purchased = true;
   }
 
-  // Claim a card from a reward pedestal (shrine boon / boss drop). Every player has
-  // their OWN draft on the pedestal, so the pick is resolved against the sender's
-  // slice (keyed by session id), not a single shared `claimed`. Two things make it
-  // safe against a racing or duplicated message: the per-player `claimed` flag
-  // refuses a second grant to the same player, and the party-wide `consumed` set
-  // refuses any card whose item another player already took — the two claims are
-  // processed one after the other on the single-threaded room, so the second sees
-  // the first's identity already in `consumed`. Proximity is re-validated here; the
-  // client's prompt is only a hint.
+  // Claim one of the pedestal's three shared cards (shrine boon / boss drop). The
+  // whole party sees the same three, and picks are mutually exclusive: this player
+  // may take one, and only a card no teammate has already taken. Two guards make it
+  // safe against a racing or duplicated message, both processed one-after-another on
+  // the single-threaded room: `claimedBy` refuses a second pick from the same player,
+  // and `consumed` refuses a card another player already took (the second claimant
+  // finds the index already present). Proximity is re-validated here; the client's
+  // prompt is only a hint.
   offerPick(
     sessionId: string,
     player: Player,
     msg: { roomId: string; choiceIndex: number },
   ): void {
     const offer = this.state.offers.get(msg?.roomId);
-    const draft = offer?.players.get(sessionId);
-    const choice = draft?.choices[msg?.choiceIndex];
-    if (!offer || !draft || !choice || draft.claimed) return;
+    const index = msg?.choiceIndex;
+    const choice = offer?.choices[index];
+    if (!offer || !choice) return;
     if (!isNear(player, offer.x, offer.y)) return;
-    // Someone in the party already drafted this exact item — it's spent.
-    if (offer.consumed.includes(choice.identity)) return;
+    // Already spent your one pick, or someone beat you to this card.
+    if (offer.claimedBy.includes(sessionId)) return;
+    if (offer.consumed.includes(index)) return;
 
     // Exhaustive on `kind` — a new choice kind is a compile error here, not a
     // silently-ignored pedestal.
@@ -216,8 +209,8 @@ export class LootDirector {
         break;
       }
     }
-    draft.claimed = true;
-    offer.consumed.push(choice.identity);
+    offer.consumed.push(index);
+    offer.claimedBy.push(sessionId);
   }
 
   // Open a chest. Same shape as offerPick minus the choice — `opened` is the
@@ -240,63 +233,44 @@ export class LootDirector {
 
   // ---- rolling -------------------------------------------------------------
 
-  // Build a pedestal's worth of per-player 1-of-3 drafts. A shrine leans on upgrades
-  // (permanent, build-defining); a boss drop leans on a rolled weapon, so beating a
-  // boss feels like loot rather than another stat bump. Both draw upgrades from the
-  // floor-legal pool.
-  //
-  // The party drafts against each other: no two players are offered the same weapon
-  // (weapons are drawn distinct across the whole party from the 50+ ids), and
-  // upgrades are dealt distinct across the party while the pool lasts, only repeating
-  // once it's exhausted — a small floor-1 pool with a full party. Because every
-  // player keeps at least one exclusive weapon card, a player can never be left with
-  // nothing pickable no matter what the rest of the party claims first.
+  // Build a shared 1-of-3. A shrine leans on upgrades (permanent, build-defining); a
+  // boss drop leans on a rolled weapon, so beating a boss feels like loot rather than
+  // another stat bump. Both draw upgrades from the floor-legal pool. Every player in
+  // the party sees this same set and drafts one card each (see offerPick).
   private rollOffer(roomId: string, x: number, y: number, tier: "shrine" | "boss"): OfferState {
     const offer = new OfferState();
     offer.roomId = roomId;
     offer.x = x;
     offer.y = y;
 
-    // The party as it stands right now. Shrines roll at floor start and boss/challenge
-    // drops mid-run — the room is locked once the run begins, so this roster is fixed.
-    const sessionIds = [...this.state.players.keys()];
-    const weaponsPer = tier === "boss" ? 2 : 1;
-    const upgradesPer = OFFER_CHOICES - weaponsPer;
+    // Each choice carries its own rolled modifiers, so shuffling can't desync the
+    // card from the reward — there is nothing to keep aligned.
+    const choices: OfferChoiceState[] = [];
+    const weaponCount = tier === "boss" ? 2 : 1;
+    for (let i = 0; i < weaponCount; i++) choices.push(this.rollWeaponChoice());
 
-    // Distinct weapon ids for the whole party, so a weapon card is exclusive to the
-    // one player who holds it — that exclusivity is the anti-softlock guarantee.
-    const weaponIds = this.rollShopWeapons(weaponsPer * sessionIds.length);
-    const upgrades = this.upgradeDealer();
-
-    let wi = 0;
-    for (const sessionId of sessionIds) {
-      const draft = new PlayerOfferState();
-      const choices: OfferChoiceState[] = [];
-      for (let i = 0; i < weaponsPer; i++) {
-        choices.push(this.weaponChoiceFor(weaponIds[wi++]));
-      }
-      for (const upgrade of upgrades(upgradesPer)) {
-        const choice = new OfferChoiceState();
-        choice.kind = "upgrade";
-        choice.upgradeId = upgrade.id;
-        choice.name = upgrade.name;
-        choice.description = upgrade.description;
-        choice.identity = `upgrade:${upgrade.id}`;
-        choices.push(choice);
-      }
-      shuffle(choices);
-      for (const choice of choices) draft.choices.push(choice);
-      offer.players.set(sessionId, draft);
+    const pool = upgradePool(this.state.floor);
+    shuffle(pool);
+    for (const upgrade of pool.slice(0, OFFER_CHOICES - choices.length)) {
+      const choice = new OfferChoiceState();
+      choice.kind = "upgrade";
+      choice.upgradeId = upgrade.id;
+      choice.name = upgrade.name;
+      choice.description = upgrade.description;
+      choices.push(choice);
     }
+    shuffle(choices);
+
+    for (const choice of choices) offer.choices.push(choice);
     return offer;
   }
 
-  // A weapon card for a given id, carrying one rolled modifier. The preview instance
-  // synced to the card and the weapon handed to Player.addWeapon on pick are built
-  // from the SAME mods array (held on the choice), so the card cannot show stats the
-  // reward won't have.
-  private weaponChoiceFor(weaponId: WeaponId): OfferChoiceState {
-    const template = WEAPON_REGISTRY[weaponId];
+  // A random weapon carrying one rolled modifier. The preview instance synced to
+  // the card and the weapon handed to Player.addWeapon on pick are built from the
+  // SAME mods array (held on the choice), so the card cannot show stats the reward
+  // won't have.
+  private rollWeaponChoice(): OfferChoiceState {
+    const template = WEAPON_REGISTRY[this.rollShopWeapons(1)[0]];
     const mods = [rollWeaponMod(this.state.floor)];
     const preview = new WeaponInstance(template, "preview", mods);
     const choice = new OfferChoiceState();
@@ -305,39 +279,7 @@ export class LootDirector {
     choice.description = mods.map((m) => m.label).join(", ");
     choice.weapon = slotStateFor(preview);
     choice.mods = mods;
-    choice.identity = `weapon:${template.id}`;
     return choice;
-  }
-
-  // A dealer that hands out upgrades distinct across the party while the floor pool
-  // lasts, then repeats (still distinct within each player's own hand). Each call
-  // returns `n` upgrades for one player.
-  private upgradeDealer(): (n: number) => UpgradePoolItem[] {
-    const pool = upgradePool(this.state.floor);
-    const unused = [...pool];
-    shuffle(unused);
-    return (n: number) => {
-      const hand: typeof pool = [];
-      const taken = new Set<string>();
-      while (hand.length < n) {
-        // Prefer a party-fresh upgrade this player doesn't already hold.
-        let idx = unused.findIndex((u) => !taken.has(u.id));
-        if (idx >= 0) {
-          const [pick] = unused.splice(idx, 1);
-          taken.add(pick.id);
-          hand.push(pick);
-          continue;
-        }
-        // Pool exhausted party-wide — fall back to any pool upgrade not already in
-        // this player's hand, so a hand still has no internal duplicates.
-        const fresh = pool.filter((u) => !taken.has(u.id));
-        if (fresh.length === 0) break;
-        const pick = fresh[Math.floor(Math.random() * fresh.length)];
-        taken.add(pick.id);
-        hand.push(pick);
-      }
-      return hand;
-    };
   }
 
   // Pick N distinct weapon ids uniformly (partial Fisher–Yates from the front).
