@@ -4,6 +4,8 @@
 // plain config object — adding a knob means adding one property to that object and
 // one entry to its field list. Nothing in this file knows what a dungeon is.
 
+import { addStyle, button, el, menuPanel } from "./menuDom";
+
 export interface Choice {
   value: string;
   label: string;
@@ -34,56 +36,17 @@ export interface PanelResult<T> {
   values: T;
 }
 
+// A settings row is a two-column grid — a labelled control with its help text
+// under the label — which no other panel here wants. The controls themselves
+// wear menuDom's `.m-input` / `.m-chip`.
 const CSS = `
-  #field-panel-overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.78);
-    display: flex; align-items: center; justify-content: center;
-    z-index: 1000; font-family: monospace;
-  }
-  #field-panel-modal {
-    background: #1a1a2e; border: 2px solid #4a4a6a; border-radius: 8px;
-    padding: 20px; width: 520px; max-width: 92vw; max-height: 88vh; overflow-y: auto;
-    color: #e0e0ff;
-  }
-  #field-panel-modal h2 { margin: 0 0 14px; font-size: 16px; color: #aaaaff; letter-spacing: 1px; }
-  .fp-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
-  .fp-preset {
-    padding: 4px 10px; font-size: 11px; font-family: monospace; cursor: pointer;
-    background: #2a2a4a; border: 1px solid #4a4a6a; border-radius: 12px; color: #aaaacc;
-  }
-  .fp-preset:hover { border-color: #8888ff; color: #fff; }
   .fp-row {
     display: grid; grid-template-columns: 190px 1fr; gap: 12px;
     align-items: center; padding: 7px 0; border-bottom: 1px solid #2a2a4a;
   }
   .fp-label { font-size: 12px; color: #ccccee; }
   .fp-help { display: block; font-size: 10px; color: #777799; margin-top: 2px; line-height: 1.3; }
-  .fp-row input[type="number"], .fp-row select {
-    background: #12121f; border: 1px solid #4a4a6a; border-radius: 4px; color: #e0e0ff;
-    font-family: monospace; font-size: 12px; padding: 4px 6px; width: 100%;
-  }
-  .fp-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: #6666dd; }
-  .fp-multi { display: flex; flex-wrap: wrap; gap: 5px; }
-  .fp-chip {
-    padding: 4px 10px; font-size: 11px; font-family: monospace; cursor: pointer;
-    background: #2a2a4a; border: 1px solid #4a4a6a; border-radius: 4px; color: #aaaacc;
-  }
-  .fp-chip.on { background: #4a4aaa; border-color: #8888ff; color: #fff; }
-  #field-panel-footer { display: flex; justify-content: flex-end; margin-top: 18px; gap: 8px; }
-  .fp-btn {
-    padding: 6px 16px; font-size: 12px; font-family: monospace; cursor: pointer;
-    border-radius: 4px; border: 1px solid #4a4a6a; background: #2a2a4a; color: #aaaacc;
-  }
-  .fp-btn.primary { background: #4a4aaa; color: #fff; border-color: #8888ff; }
 `;
-
-function ensureStyles() {
-  if (document.getElementById("fp-style")) return;
-  const style = document.createElement("style");
-  style.id = "fp-style";
-  style.textContent = CSS;
-  document.head.appendChild(style);
-}
 
 export function showFieldPanel<T extends object>(opts: {
   title: string;
@@ -92,87 +55,51 @@ export function showFieldPanel<T extends object>(opts: {
   buttons: PanelButton[];
   presets?: Preset<T>[];
 }): Promise<PanelResult<T>> {
-  ensureStyles();
-
   return new Promise((resolve) => {
     const draft: T = structuredClone(opts.initial);
 
-    const overlay = document.createElement("div");
-    overlay.id = "field-panel-overlay";
-    document.body.appendChild(overlay);
-
-    const modal = document.createElement("div");
-    modal.id = "field-panel-modal";
-    overlay.appendChild(modal);
-
-    const finish = (button: string) => {
-      overlay.remove();
-      window.removeEventListener("keydown", onKey);
-      resolve({ button, values: draft });
+    const finish = (id: string) => {
+      menu.destroy();
+      resolve({ button: id, values: draft });
     };
-    const onKey = (e: KeyboardEvent) => {
-      // The panel sits over a Phaser scene that also listens for keys.
-      e.stopPropagation();
-      if (e.key === "Escape") finish("cancel");
-    };
-    window.addEventListener("keydown", onKey);
+    // `swallowKeys`: the panel sits over a Phaser scene that also listens for
+    // keys, and it is full of text fields.
+    const menu = menuPanel({
+      onEscape: () => finish("cancel"),
+      swallowKeys: true,
+    });
+    addStyle("fp-style", CSS);
 
-    const title = document.createElement("h2");
-    title.textContent = opts.title;
-    modal.appendChild(title);
-
-    const body = document.createElement("div");
-
+    const body = el("div", { className: "m-scroll" });
     const renderFields = () => {
-      body.innerHTML = "";
-      for (const field of opts.fields) {
-        const row = document.createElement("div");
-        row.className = "fp-row";
-
-        const label = document.createElement("div");
-        label.className = "fp-label";
-        label.textContent = field.label;
-        if (field.help) {
-          const help = document.createElement("span");
-          help.className = "fp-help";
-          help.textContent = field.help;
-          label.appendChild(help);
-        }
-        row.appendChild(label);
-        row.appendChild(renderControl(draft, field));
-        body.appendChild(row);
-      }
+      body.replaceChildren(...opts.fields.map((field) => {
+        const label = el("div", { className: "fp-label", text: field.label });
+        if (field.help) label.appendChild(el("span", { className: "fp-help", text: field.help }));
+        return el("div", { className: "fp-row" }, [label, renderControl(draft, field)]);
+      }));
     };
+    renderFields();
 
     if (opts.presets?.length) {
-      const presetRow = document.createElement("div");
-      presetRow.className = "fp-presets";
-      for (const preset of opts.presets) {
-        const chip = document.createElement("button");
-        chip.className = "fp-preset";
-        chip.textContent = preset.label;
-        chip.addEventListener("click", () => {
-          Object.assign(draft, structuredClone(preset.values));
-          renderFields();
-        });
-        presetRow.appendChild(chip);
-      }
-      modal.appendChild(presetRow);
+      menu.panel.appendChild(el("div", { className: "m-chips" }, opts.presets.map((preset) =>
+        el("button", {
+          className: "m-chip round",
+          text: preset.label,
+          onClick: () => {
+            Object.assign(draft, structuredClone(preset.values));
+            renderFields();
+          },
+        }),
+      )));
     }
 
-    renderFields();
-    modal.appendChild(body);
-
-    const footer = document.createElement("div");
-    footer.id = "field-panel-footer";
-    for (const btn of opts.buttons) {
-      const el = document.createElement("button");
-      el.className = "fp-btn" + (btn.primary ? " primary" : "");
-      el.textContent = btn.label;
-      el.addEventListener("click", () => finish(btn.id));
-      footer.appendChild(el);
-    }
-    modal.appendChild(footer);
+    menu.panel.prepend(el("h2", { className: "m-title", text: opts.title }));
+    menu.panel.append(
+      body,
+      el("div", { className: "m-actions end" }, opts.buttons.map((btn) =>
+        button(btn.label, () => finish(btn.id), btn.primary ? "primary" : ""),
+      )),
+    );
   });
 }
 
@@ -182,14 +109,14 @@ function renderControl<T extends object>(draft: T, field: FieldSpec<T>): HTMLEle
 
   switch (field.kind) {
     case "toggle": {
-      const input = document.createElement("input");
+      const input = el("input", { className: "m-input" });
       input.type = "checkbox";
       input.checked = get() as boolean;
       input.addEventListener("change", () => set(input.checked));
       return input;
     }
     case "number": {
-      const input = document.createElement("input");
+      const input = el("input", { className: "m-input fill" });
       input.type = "number";
       input.value = String(get());
       if (field.min !== undefined) input.min = String(field.min);
@@ -205,11 +132,10 @@ function renderControl<T extends object>(draft: T, field: FieldSpec<T>): HTMLEle
       return input;
     }
     case "select": {
-      const select = document.createElement("select");
+      const select = el("select", { className: "m-input fill" });
       for (const choice of field.options) {
-        const option = document.createElement("option");
+        const option = el("option", { text: choice.label });
         option.value = choice.value;
-        option.textContent = choice.label;
         option.selected = choice.value === get();
         select.appendChild(option);
       }
@@ -217,23 +143,21 @@ function renderControl<T extends object>(draft: T, field: FieldSpec<T>): HTMLEle
       return select;
     }
     case "multiselect": {
-      const wrap = document.createElement("div");
-      wrap.className = "fp-multi";
-      for (const choice of field.options) {
-        const chip = document.createElement("button");
-        const isOn = () => (get() as string[]).includes(choice.value);
-        chip.className = "fp-chip" + (isOn() ? " on" : "");
-        chip.textContent = choice.label;
+      const isOn = (value: string) => (get() as string[]).includes(value);
+      return el("div", { className: "m-chips" }, field.options.map((choice) => {
+        const chip = el("button", {
+          className: `m-chip${isOn(choice.value) ? " on" : ""}`,
+          text: choice.label,
+        });
         chip.addEventListener("click", () => {
           const next = new Set(get() as string[]);
           if (next.has(choice.value)) next.delete(choice.value);
           else next.add(choice.value);
           set([...next]);
-          chip.classList.toggle("on", isOn());
+          chip.classList.toggle("on", isOn(choice.value));
         });
-        wrap.appendChild(chip);
-      }
-      return wrap;
+        return chip;
+      }));
     }
   }
 }

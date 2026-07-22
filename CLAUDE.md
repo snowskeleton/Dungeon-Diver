@@ -168,7 +168,7 @@ client/src/
   ui/WeaponPicker.ts        ← join-time weapon chooser (DOM overlay)
   debug/debugFields.ts      ← DEBUG_FIELDS + DEBUG_PRESETS: the Debug menu as data. Add a knob here (and to shared DebugConfig); the panel renders itself
   options/gameOptions.ts    ← OPTION_FIELDS + localStorage-backed GameOptions (camera zoom, hitbox overlay, controls hint)
-  ui/menuDom.ts             ← the shared stylesheet + builders for the full-screen DOM menus (browser, lobby, pause). The older pickers predate it and still carry their own copies
+  ui/menuDom.ts             ← the ONE stylesheet + builders (`el`/`button`/`menuPanel`/`selectOne`/`addStyle`) behind every full-screen DOM overlay — browser, lobby, pause, both pickers, inventory, offer, confirm, FieldPanel. A panel's own file adds ONLY what makes it different (portrait cropping, weapon tabs, the confirm dialog's red frame), via `addStyle`
   ui/LobbyPanel.ts          ← the lobby's DOM view: roster, ready badges, host's Start button
   ui/RoomBrowserPanel.ts    ← the browser's DOM view: room list, code box, host form
   ui/PauseMenu.ts           ← D7's resumable pause menu (Resume / Inventory / Options / Abandon run)

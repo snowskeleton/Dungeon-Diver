@@ -59,7 +59,7 @@ open their next run to a friend without any of this changing.
 | `client/src/scenes/LobbyScene.ts` | Roster, loadout changes, ready, start |
 | `client/src/ui/LobbyPanel.ts`, `ui/RoomBrowserPanel.ts` | Their DOM views |
 | `client/src/ui/PauseMenu.ts` | D7's resumable pause menu |
-| `client/src/ui/menuDom.ts` | The shared stylesheet + builders for the menu DOM |
+| `client/src/ui/menuDom.ts` | The shared stylesheet + builders for the menu DOM — every overlay in the game now, not just these three (see below) |
 | `client/src/options/profile.ts` | Name + last-used loadout, remembered between sessions |
 
 ## Room codes
@@ -92,6 +92,33 @@ it finds and joins nothing.
 
 `Party.members[0]` is the world observer — the same "first local player's room
 sees everything" rule as before.
+
+## One stylesheet, six panels later
+
+`menuDom.ts` arrived with the lobby and at first dressed only its own three
+screens, while six older overlays — the character and weapon pickers, the
+inventory, the offer picker, the confirm dialog, `FieldPanel` — each carried a
+near-identical private copy of the same overlay/modal/button CSS. They are all on
+it now.
+
+The rule that keeps it that way: **a panel's own file styles only what makes that
+panel different.** Three things genuinely did — the character portraits are one
+frame cropped out of a walk sheet, the weapon picker pages its content with tabs,
+and the confirm dialog is red because it is the one overlay that asks you to
+destroy something. Everything else (overlay, panel, row, tile, card, chip, badge,
+input, button) is a class in `menuDom`, injected once through `addStyle`.
+
+Two things to know if you add a panel:
+
+- **`.m-tile.bare` is declared before the hover/selected rules on purpose.**
+  Equal-specificity CSS resolves by source order, so a `bare` tile written after
+  `.m-tile.selected` silently eats its highlight — which it did, and the weapon
+  picker showed no selection at all until the order was fixed.
+- **Escape is not always the panel's to handle.** `menuPanel({ onEscape })` grabs
+  the key on the window in capture, so a panel that opts in takes it away from
+  whoever else wants it. The inventory and offer pickers deliberately pass no
+  handler: over the world, Escape belongs to `GameScene`, which peels overlays in
+  a defined order and unpauses through the player's own connection.
 
 ## Gotchas worth knowing
 

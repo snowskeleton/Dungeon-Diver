@@ -30,7 +30,7 @@ export class PauseMenu {
 
   show(handlers: PauseMenuHandlers, opts: { roomCode: string; floor: number; partySize: number }) {
     if (this.menu) return;
-    const menu = menuPanel({ narrow: true, onEscape: () => handlers.onResume() });
+    const menu = menuPanel({ variant: "narrow", onEscape: () => handlers.onResume() });
     this.menu = menu;
 
     const party = opts.partySize === 1 ? "solo" : `${opts.partySize} players`;
@@ -52,7 +52,7 @@ export class PauseMenu {
    *  menu is reached mid-fight, and a mouse target beats remembering an index. */
   private item(label: string, onClick: () => void, variant: "" | "primary" | "danger" = ""): HTMLElement {
     const btn = button(label, onClick, variant);
-    btn.style.width = "100%";
+    btn.classList.add("full");
     return btn;
   }
 
