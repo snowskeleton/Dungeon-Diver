@@ -4,6 +4,7 @@ import {
   ENEMY_BASE_COUNT, ENEMY_FLOOR_BONUS_INTERVAL, ENEMY_PLAYER_SCALE,
   DungeonResult, DungeonOptions, RoomData, RoomType,
   DebugConfig, roomInteriorRect,
+  partyHpMultiplier,
 } from "shared";
 import { GameState } from "../schema/GameState";
 import { Enemy, EnemyClass } from "../entities/Enemy";
@@ -138,6 +139,10 @@ export class SpawnDirector {
   private addEnemy<C extends EnemyClass>(Cls: C, x: number, y: number): InstanceType<C> {
     const id = `enemy_${this.enemyCounter++}`;
     const enemy = new Cls(this.physics, x, y) as InstanceType<C>;
+    // Tougher enemies (and bosses, and boss-summoned adds — all mint here) the
+    // bigger the party. Party size is fixed once the run starts (the room locks),
+    // so reading it at spawn is authoritative for the enemy's whole life.
+    enemy.scaleMaxHp(partyHpMultiplier(this.players.size));
     this.enemies.set(id, enemy);
     this.state.enemies.set(id, enemy.state);
     this.floorManager.assignEnemy(id, x, y);

@@ -133,3 +133,12 @@ export const FLYING_CRUISE_HEIGHT = 44;
 export const ENEMY_BASE_COUNT = 3;
 export const ENEMY_FLOOR_BONUS_INTERVAL = 2; // +1 enemy per this many floors
 export const ENEMY_PLAYER_SCALE = 0.25;      // +25% per extra player beyond 1
+
+// Enemy (and boss) max-HP multiplier by party size: 1 + ENEMY_HP_PLAYER_SCALE ×
+// (partySize − 1). So solo ×1.0, duo ×1.5, trio ×2.0, four-player ×2.5. Applied
+// once at spawn in SpawnDirector — the run is locked once started, so party size
+// is fixed and no live re-scaling is needed.
+export const ENEMY_HP_PLAYER_SCALE = 0.5;
+export function partyHpMultiplier(partySize: number): number {
+  return 1 + ENEMY_HP_PLAYER_SCALE * (Math.max(1, partySize) - 1);
+}
