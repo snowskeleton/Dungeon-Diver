@@ -1,4 +1,5 @@
 import { InputMessage } from "shared";
+import { BindableAction, bindingsVersion, loadBindings } from "../options/keybindings";
 
 // Discrete (non-movement) intents, reported as the CURRENT held state of each
 // control. LocalPlayer edge-detects these into one-shot actions, so sources stay
@@ -19,64 +20,42 @@ export interface InputSource {
 const NO_ACTIONS: InputActions = { prevSlot: false, nextSlot: false, toggleMenu: false, interact: false };
 
 export class KeyboardInputSource implements InputSource {
-  private keys: {
-    up: Phaser.Input.Keyboard.Key;
-    down: Phaser.Input.Keyboard.Key;
-    left: Phaser.Input.Keyboard.Key;
-    right: Phaser.Input.Keyboard.Key;
-    attack: Phaser.Input.Keyboard.Key;
-    prevSlot: Phaser.Input.Keyboard.Key;
-    nextSlot: Phaser.Input.Keyboard.Key;
-    menu: Phaser.Input.Keyboard.Key;
-    interact: Phaser.Input.Keyboard.Key;
-  };
+  // Up to two Phaser Keys per action (Key 1 / Key 2); either being down fires
+  // it, and an unbound (0) slot contributes no Key. The key set is rebuilt
+  // whenever the saved bindings change (tracked by version), so a rebind from
+  // the pause menu applies to the run in progress on the very next frame.
+  private keys: Partial<Record<BindableAction, Phaser.Input.Keyboard.Key[]>> = {};
+  private builtVersion = -1;
 
-  constructor(
-    keyboard: Phaser.Input.Keyboard.KeyboardPlugin,
-    scheme: "wasd" | "arrows",
-  ) {
-    const K = Phaser.Input.Keyboard.KeyCodes;
-    if (scheme === "wasd") {
-      this.keys = {
-        up:     keyboard.addKey(K.W),
-        down:   keyboard.addKey(K.S),
-        left:   keyboard.addKey(K.A),
-        right:  keyboard.addKey(K.D),
-        attack: keyboard.addKey(K.SPACE),
-        prevSlot: keyboard.addKey(K.Q),
-        nextSlot: keyboard.addKey(K.E),
-        menu:   keyboard.addKey(K.I),
-        interact: keyboard.addKey(K.F),
-      };
-    } else {
-      this.keys = {
-        up:     keyboard.addKey(K.UP),
-        down:   keyboard.addKey(K.DOWN),
-        left:   keyboard.addKey(K.LEFT),
-        right:  keyboard.addKey(K.RIGHT),
-        attack: keyboard.addKey(K.ENTER),
-        prevSlot: keyboard.addKey(K.OPEN_BRACKET),
-        nextSlot: keyboard.addKey(K.CLOSED_BRACKET),
-        menu:   keyboard.addKey(K.BACK_SLASH),
-        interact: keyboard.addKey(K.PERIOD),
-      };
+  constructor(private keyboard: Phaser.Input.Keyboard.KeyboardPlugin) {}
+
+  private rebuild() {
+    const bindings = loadBindings();
+    for (const action of Object.keys(bindings) as BindableAction[]) {
+      this.keys[action] = bindings[action]
+        .filter((code) => code)
+        .map((code) => this.keyboard.addKey(code));
     }
+    this.builtVersion = bindingsVersion();
+  }
+
+  private down(action: BindableAction): boolean {
+    if (this.builtVersion !== bindingsVersion()) this.rebuild();
+    return this.keys[action]?.some((key) => key.isDown) ?? false;
   }
 
   read(): InputMessage {
-    const dx =
-      (this.keys.right.isDown ? 1 : 0) - (this.keys.left.isDown ? 1 : 0);
-    const dy =
-      (this.keys.down.isDown ? 1 : 0) - (this.keys.up.isDown ? 1 : 0);
-    return { dx, dy, attack: this.keys.attack.isDown };
+    const dx = (this.down("right") ? 1 : 0) - (this.down("left") ? 1 : 0);
+    const dy = (this.down("down") ? 1 : 0) - (this.down("up") ? 1 : 0);
+    return { dx, dy, attack: this.down("attack") };
   }
 
   readActions(): InputActions {
     return {
-      prevSlot: this.keys.prevSlot.isDown,
-      nextSlot: this.keys.nextSlot.isDown,
-      toggleMenu: this.keys.menu.isDown,
-      interact: this.keys.interact.isDown,
+      prevSlot: this.down("prevSlot"),
+      nextSlot: this.down("nextSlot"),
+      toggleMenu: this.down("menu"),
+      interact: this.down("interact"),
     };
   }
 }

@@ -12,7 +12,8 @@ import { KeyboardInputSource, GamepadInputSource, InputSource } from "./InputSou
  * exists to draw them, everyone has been connected for as long as it took the
  * host to press Start.
  *
- * Input devices are assigned by seat order: P1 WASD, P2 arrows, P3/P4 gamepads.
+ * Input devices are assigned by seat order: seat 0 is the keyboard, every seat
+ * after it is a gamepad. (A second keyboard seat returns with controller support.)
  */
 export class LocalPlayerManager {
   private scene: Phaser.Scene;
@@ -45,9 +46,10 @@ export class LocalPlayerManager {
   }
 
   private inputSourceFor(index: number): InputSource {
-    if (index === 0) return new KeyboardInputSource(this.scene.input.keyboard!, "wasd");
-    if (index === 1) return new KeyboardInputSource(this.scene.input.keyboard!, "arrows");
-    return new GamepadInputSource(this.scene, index - 2);
+    // Seat 0 is the keyboard; every seat after it is a gamepad. The old arrow-
+    // cluster keyboard seat is gone until controller support returns it.
+    if (index === 0) return new KeyboardInputSource(this.scene.input.keyboard!);
+    return new GamepadInputSource(this.scene, index - 1);
   }
 
   update() {

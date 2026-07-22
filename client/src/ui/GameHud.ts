@@ -3,6 +3,7 @@ import { WEAPON_REGISTRY, WeaponId } from "shared";
 import { UiLayer } from "./UiLayer";
 import { LocalPlayer } from "../entities/LocalPlayer";
 import { weaponStatLines, viewFromTemplate } from "./weaponStats";
+import { promptKeyLabel } from "../options/keybindings";
 
 /**
  * The always-on screen furniture: party HP, the floor line, the PAUSED overlay,
@@ -82,10 +83,19 @@ export class GameHud {
       // Was anchored to the bottom of the MAP, so it sat wherever the last tile
       // row happened to be rather than on screen. It's a HUD line — pin it to the
       // bottom of the viewport like the rest of the readouts.
+      // Built from the live bindings so a rebind is reflected here too.
+      const move = ["up", "left", "down", "right"].map((a) => promptKeyLabel(a as never)).join("");
+      const hint = [
+        `Move ${move}`,
+        `${promptKeyLabel("attack")}: attack`,
+        `${promptKeyLabel("prevSlot")}/${promptKeyLabel("nextSlot")}: switch weapon`,
+        `${promptKeyLabel("menu")}: inventory`,
+        `${promptKeyLabel("interact")}: interact`,
+        "Esc: pause menu",
+      ].join("  |  ");
       ui.add(
         scene.add
-          .text(8, scene.scale.height - 20,
-            "WASD+Space  |  P2: Arrows+Enter  |  Q/E: switch weapon  |  I: inventory  |  F: interact  |  Esc: pause menu", {
+          .text(8, scene.scale.height - 20, hint, {
             fontSize: "11px", color: "#888888",
           })
           .setDepth(10),

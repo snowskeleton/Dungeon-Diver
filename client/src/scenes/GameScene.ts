@@ -34,6 +34,7 @@ import { Party } from "../net/Party";
 import { PauseMenu } from "../ui/PauseMenu";
 import { GameOptions, OPTION_FIELDS, loadOptions, saveOptions } from "../options/gameOptions";
 import { showFieldPanel } from "../ui/FieldPanel";
+import { showKeybindMenu } from "../ui/KeybindMenu";
 
 /** What LobbyScene hands over: a party that is already in the room, and the
  *  debug knobs the floor was built with (null unless this client hosted a debug
@@ -420,18 +421,30 @@ export class GameScene extends Phaser.Scene {
   private async openOptionsFromPause() {
     this.dialogOpen = true;
     try {
-      const result = await showFieldPanel<GameOptions>({
-        title: "Options",
-        fields: OPTION_FIELDS,
-        initial: loadOptions(),
-        buttons: [
-          { id: "cancel", label: "Back" },
-          { id: "save", label: "Save", primary: true },
-        ],
-      });
-      if (result.button === "save") {
-        saveOptions(result.values);
-        this.cameras.main.setZoom(result.values.cameraZoom);
+      let initial = loadOptions();
+      for (;;) {
+        const result = await showFieldPanel<GameOptions>({
+          title: "Options",
+          fields: OPTION_FIELDS,
+          initial,
+          buttons: [
+            { id: "keys", label: "Key Bindings" },
+            { id: "cancel", label: "Back" },
+            { id: "save", label: "Save", primary: true },
+          ],
+        });
+        // Carry in-progress option edits across the round-trip to the rebind
+        // screen (it has its own save), then reopen Options where we left off.
+        if (result.button === "keys") {
+          initial = result.values;
+          await showKeybindMenu();
+          continue;
+        }
+        if (result.button === "save") {
+          saveOptions(result.values);
+          this.cameras.main.setZoom(result.values.cameraZoom);
+        }
+        break;
       }
     } finally {
       this.dialogOpen = false;

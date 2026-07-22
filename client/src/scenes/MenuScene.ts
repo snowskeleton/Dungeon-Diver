@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { DebugConfig } from "shared";
 import { Party, JoinError } from "../net/Party";
 import { showFieldPanel } from "../ui/FieldPanel";
+import { showKeybindMenu } from "../ui/KeybindMenu";
 import { DEBUG_FIELDS, DEBUG_PRESETS, loadDebugConfig, saveDebugConfig } from "../debug/debugFields";
 import { GameOptions, OPTION_FIELDS, loadOptions, saveOptions } from "../options/gameOptions";
 import { loadProfile, profileLoadout } from "../options/profile";
@@ -190,16 +191,28 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private async openOptions() {
-    const result = await showFieldPanel<GameOptions>({
-      title: "Options",
-      fields: OPTION_FIELDS,
-      initial: loadOptions(),
-      buttons: [
-        { id: "cancel", label: "Back" },
-        { id: "save", label: "Save", primary: true },
-      ],
-    });
-    if (result.button === "save") saveOptions(result.values);
+    let initial = loadOptions();
+    for (;;) {
+      const result = await showFieldPanel<GameOptions>({
+        title: "Options",
+        fields: OPTION_FIELDS,
+        initial,
+        buttons: [
+          { id: "keys", label: "Key Bindings" },
+          { id: "cancel", label: "Back" },
+          { id: "save", label: "Save", primary: true },
+        ],
+      });
+      // Carry in-progress option edits across the round-trip to the rebind
+      // screen (it saves its own bindings), then reopen Options where we were.
+      if (result.button === "keys") {
+        initial = result.values;
+        await showKeybindMenu();
+        continue;
+      }
+      if (result.button === "save") saveOptions(result.values);
+      break;
+    }
   }
 
   private async openDebug() {
