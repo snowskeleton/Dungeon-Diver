@@ -7,6 +7,7 @@ import {
   RoomType, DebugConfig,
   GameStateView, PlayerStateView, EnemyStateView, ProjectileStateView,
   ShopStateView, ShopItemStateView, OfferStateView, ChestStateView,
+  PlayerOfferStateView,
 } from "shared";
 import { DarknessOverlay } from "../map/DarknessOverlay";
 import { BarrierOverlays } from "../map/BarrierOverlays";
@@ -548,9 +549,19 @@ export class GameScene extends Phaser.Scene {
     // play rather than only at floor start.
     state.offers.onAdd((offer: OfferStateView, roomId: string) => {
       const view = new OfferPedestalEntity(this, offer.x, offer.y);
-      view.setClaimed(offer.claimed);
       this.offerPedestals.set(roomId, view);
-      offer.onChange(() => view.setClaimed(offer.claimed));
+      // The draft is per-player, so the pedestal ghosts for this screen only once
+      // every local seat has taken their own pick.
+      const refresh = () => {
+        const ids = Array.from(this.localSessionIds);
+        const allClaimed = ids.length > 0 && ids.every((id) => offer.players.get(id)?.claimed);
+        view.setClaimed(allClaimed);
+      };
+      offer.players.onAdd((draft: PlayerOfferStateView) => {
+        draft.onChange(refresh);
+        refresh();
+      });
+      refresh();
     });
 
     state.offers.onRemove((_: OfferStateView, roomId: string) => {

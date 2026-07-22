@@ -18,6 +18,9 @@ export interface OfferChoiceView {
   description: string;
   upgradeId: string;
   weapon: WeaponSlotView;
+  /** Party-wide draft key; a card whose identity is in the consumed set has been
+   *  taken by a teammate and is shown greyed + unpickable. */
+  identity: string;
 }
 
 // The gold framing is the point: a reward pedestal should not look like the
@@ -32,6 +35,11 @@ const CSS = `
   .offer-card.weapon .offer-kind { background: #ffe066; }
   .offer-desc { font-size: 11px; color: #ffe066; }
   .offer-icon { width: 40px; height: 40px; align-self: center; }
+  .offer-card.taken { opacity: 0.35; cursor: not-allowed; filter: grayscale(1); }
+  .offer-card.taken:hover { border-color: inherit; }
+  .offer-taken-tag {
+    font-size: 9px; letter-spacing: 1px; color: #ffb0b0; align-self: flex-start;
+  }
 `;
 
 export class OfferPicker {
@@ -45,7 +53,11 @@ export class OfferPicker {
    *  to the server and unpauses. There is deliberately no cancel button — walking
    *  away isn't possible mid-pause, and the choice is free, so refusing it has no
    *  meaning. */
-  show(choices: OfferChoiceView[], onPick: (index: number) => void) {
+  show(
+    choices: OfferChoiceView[],
+    consumed: Set<string>,
+    onPick: (index: number) => void,
+  ) {
     if (this.menu) return;
     // Escape belongs to GameScene here, same as the inventory menu.
     const menu = menuPanel({
@@ -57,9 +69,12 @@ export class OfferPicker {
 
     const cards = el("div", { className: "m-cards" });
     choices.forEach((choice, i) => {
+      // A card a teammate already drafted is dead — greyed and unclickable. The
+      // server re-checks anyway, so this only saves a doomed round-trip.
+      const taken = consumed.has(choice.identity);
       const card = el("div", {
-        className: `m-card offer-card ${choice.kind}`,
-        onClick: () => {
+        className: `m-card offer-card ${choice.kind}${taken ? " taken" : ""}`,
+        onClick: taken ? undefined : () => {
           this.hide();
           onPick(i);
         },
@@ -70,6 +85,7 @@ export class OfferPicker {
         }),
       ]);
       card.append(...this.cardBody(choice));
+      if (taken) card.appendChild(el("span", { className: "offer-taken-tag", text: "TAKEN" }));
       cards.appendChild(card);
     });
 

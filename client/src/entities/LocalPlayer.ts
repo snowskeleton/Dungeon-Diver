@@ -34,8 +34,14 @@ export class LocalPlayer extends Entity implements DebugDrawable {
   private menuOpen = false;
   private invMenu = new InventoryMenu();
   private offerPicker = new OfferPicker();
-  // The reward pedestal this player is standing on, if it's still unclaimed.
-  nearbyOffer: { roomId: string; choices: OfferChoiceView[] } | null = null;
+  // The reward pedestal this player is standing on, if their own draft is unclaimed.
+  // `consumed` is the party-wide set of already-drafted items, so the picker can grey
+  // out cards a teammate beat this player to.
+  nearbyOffer: {
+    roomId: string;
+    choices: OfferChoiceView[];
+    consumed: Set<string>;
+  } | null = null;
   // Per-instance uids of the weapons last seen — a newly-appearing uid triggers
   // the acquire flourish. Populated on the first sync (which carries the starting
   // weapon), with `sawFirstSync` suppressing the flourish for that batch.
@@ -243,13 +249,19 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     let best: LocalPlayer["nearbyOffer"] = null;
     let bestDist = SHOP_BUY_RADIUS * SHOP_BUY_RADIUS;
     offers.forEach((offer: OfferStateView, roomId: string) => {
-      if (offer.claimed) return;
+      // This player's own slice of the pedestal — the draft is per-player now.
+      const draft = offer.players.get(this.room.sessionId);
+      if (!draft || draft.claimed) return;
       const dx = this.sprite.x - offer.x;
       const dy = this.sprite.y - offer.y;
       const d = dx * dx + dy * dy;
       if (d <= bestDist) {
         bestDist = d;
-        best = { roomId, choices: Array.from(offer.choices) as OfferChoiceView[] };
+        best = {
+          roomId,
+          choices: Array.from(draft.choices) as OfferChoiceView[],
+          consumed: new Set(Array.from(offer.consumed) as string[]),
+        };
       }
     });
     this.nearbyOffer = best;
@@ -280,9 +292,9 @@ export class LocalPlayer extends Entity implements DebugDrawable {
   // refuses a second claim, so a stale click can't double-grant.
   private openOfferPicker() {
     if (this.offerPicker.isOpen || !this.nearbyOffer) return;
-    const { roomId, choices } = this.nearbyOffer;
+    const { roomId, choices, consumed } = this.nearbyOffer;
     this.setMenuPaused(true);
-    this.offerPicker.show(choices, (index) => {
+    this.offerPicker.show(choices, consumed, (index) => {
       this.room.send("offerPick", { roomId, choiceIndex: index });
       this.setMenuPaused(false);
     });

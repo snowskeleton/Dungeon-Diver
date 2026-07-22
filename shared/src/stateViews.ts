@@ -138,14 +138,26 @@ export interface OfferChoiceStateView extends SyncedSchema {
   /** Resolved stats for the card. The WeaponMods that produced them stay
    *  server-side — see OfferChoiceState.mods. */
   readonly weapon: WeaponSlotView;
+  /** Party-wide draft key; greyed out on every other card once it's in
+   *  OfferState.consumed. */
+  readonly identity: string;
+}
+
+/** One player's slice of a pedestal: their three cards and whether they've taken
+ *  one. */
+export interface PlayerOfferStateView extends SyncedSchema {
+  readonly claimed: boolean;
+  readonly choices: SyncedList<OfferChoiceStateView>;
 }
 
 export interface OfferStateView extends SyncedSchema {
   readonly roomId: string;
   readonly x: number;
   readonly y: number;
-  readonly claimed: boolean;
-  readonly choices: SyncedList<OfferChoiceStateView>;
+  /** One draft per player, keyed by session id. */
+  readonly players: SyncedMap<PlayerOfferStateView>;
+  /** Identity strings already claimed by someone in the party. */
+  readonly consumed: SyncedList<string>;
 }
 
 /** Note what is NOT here: `weaponId` and `mods`. A chest's contents are
