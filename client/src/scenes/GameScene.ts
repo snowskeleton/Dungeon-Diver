@@ -610,11 +610,14 @@ export class GameScene extends Phaser.Scene {
     this.challengeBanner.update(this.observerRoom?.state.challenges?.get(roomId));
     // Darkness is decided entirely from the locally generated room type.
     this.darkness.update(this.roomTypes.get(roomId) === "dark", x, y, bx, by);
+    const obs = this.observerRoom?.state;
     this.hud.update({
       players: this.localManager.getAll(),
       floor: this.currentFloor,
       debug: this.debug != null,
-      paused: this.observerRoom?.state.paused ?? false,
+      paused: obs?.paused ?? false,
+      playersOnStairs: obs?.playersOnStairs ?? 0,
+      stairsPartySize: obs?.stairsPartySize ?? 0,
     });
   }
 
