@@ -2,11 +2,15 @@ import { Schema, ArraySchema, type } from "@colyseus/schema";
 import { WeaponMod, OfferStateView, OfferChoiceStateView } from "shared";
 import { WeaponSlotState } from "./WeaponSlotState";
 
-// A 1-of-3 reward waiting on a pedestal — the shrine boon and the boss drop.
+// A shared 1-of-3 reward waiting on a pedestal — the shrine boon and the boss drop.
+// The whole party sees the SAME three cards, and the picks are mutually exclusive:
+// the first player takes one, that card greys out for everyone else, the next player
+// takes one of the remaining two, and so on. Each player may claim at most one, and
+// once all three are spent there is nothing left (a 4th player in a full party gets
+// no pick — the pedestal reads as exhausted).
 //
-// Unlike a shop, an offer is a single irreversible modal choice, so the room
-// pauses while the picker is open (see GameRoom's offer_open handler) and the
-// first player to claim it consumes it.
+// Like a shop the room pauses while the picker is open, but unlike a shop a single
+// claim doesn't consume the whole pedestal — only that one card.
 
 /** One of the three things a player may pick. `kind` decides which of the two
  *  payload halves is meaningful — an exhaustive switch, not a lookup. */
@@ -37,13 +41,19 @@ export class OfferChoiceState extends Schema implements OfferChoiceStateView {
   mods: WeaponMod[] = [];
 }
 
-/** A pedestal's worth of choices, keyed in GameState.offers by room id. */
+/** A pedestal's shared 1-of-3, keyed in GameState.offers by room id. */
 export class OfferState extends Schema implements OfferStateView {
   @type("string") roomId: string = "";
   @type("number") x: number = 0;
   @type("number") y: number = 0;
-  /** True once someone has taken it — the pedestal ghosts out and further picks
-   *  are refused, which is also what makes a duplicated message harmless. */
-  @type("boolean") claimed: boolean = false;
+  /** The three cards, shown identically to every player. */
   @type([OfferChoiceState]) choices = new ArraySchema<OfferChoiceState>();
+  /** Indices of the cards already taken. A card whose index is in here is spent and
+   *  greys out for everyone; the pedestal is exhausted once this covers every card.
+   *  This is the whole concurrency story — a racing or duplicated message just finds
+   *  the index already present and is a no-op. */
+  @type(["number"]) consumed = new ArraySchema<number>();
+  /** Session ids that have already taken a card. Each player may claim at most one,
+   *  so a second pick from the same player is refused even if cards remain. */
+  @type(["string"]) claimedBy = new ArraySchema<string>();
 }

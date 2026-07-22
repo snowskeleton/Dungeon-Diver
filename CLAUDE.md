@@ -122,7 +122,7 @@ server/src/
   schema/EntityState.ts     ← Colyseus schema base (x, y, health, speedMultiplier)
   schema/PlayerState.ts     ← extends EntityState (facing, isAttacking, attackSeq, characterClass, characterType, weaponId=active, weapons[]=WeaponSlotState, activeWeaponIndex, maxHp, upgrades[])
   schema/WeaponSlotState.ts ← one wielded weapon on the wire: RESOLVED stats + modLabels, never the modifier objects (see docs/upgrades.md for why)
-  schema/OfferState.ts      ← a reward pedestal's 1-of-3 (shrine boon / boss drop). OfferChoiceState.mods is an UNDECORATED field — server-only, never synced
+  schema/OfferState.ts      ← a reward pedestal's SHARED 1-of-3 (shrine boon / boss drop): the whole party sees the same `choices`, and picks are mutually exclusive — `consumed` holds the indices already taken (greyed for everyone) and `claimedBy` the session ids that have spent their one pick, so at most 3 items leave (one per player until the set empties). OfferChoiceState.mods is an UNDECORATED field — server-only, never synced
   schema/ChestState.ts      ← a chest room's chest. No choice and no cost: interact and the weapon is yours. weaponId/mods are UNDECORATED (server-only) both because mods are behaviour AND because syncing them would spoil the surprise
   schema/EnemyState.ts      ← extends EntityState (aiState, targetId, facing, isDying, stunned, enemyType, telegraph/channeling/abilityId for bosses, airHeight for flyers)
   schema/ProjectileState.ts ← extends EntityState (angle, ammoId, ownerSessionId)

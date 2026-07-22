@@ -548,9 +548,14 @@ export class GameScene extends Phaser.Scene {
     // play rather than only at floor start.
     state.offers.onAdd((offer: OfferStateView, roomId: string) => {
       const view = new OfferPedestalEntity(this, offer.x, offer.y);
-      view.setClaimed(offer.claimed);
       this.offerPedestals.set(roomId, view);
-      offer.onChange(() => view.setClaimed(offer.claimed));
+      // The pedestal is shared: it ghosts only once every card has been drafted, not
+      // when a single player picks (the rest of the party may still have picks).
+      const refresh = () => view.setClaimed(offer.consumed.length >= offer.choices.length);
+      // A push to the consumed list is what marks a card taken; listen to the list,
+      // since a child-collection mutation doesn't fire the parent schema's onChange.
+      (offer.consumed as unknown as { onAdd(cb: () => void): void }).onAdd(refresh);
+      refresh();
     });
 
     state.offers.onRemove((_: OfferStateView, roomId: string) => {

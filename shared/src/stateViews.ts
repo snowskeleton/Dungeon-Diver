@@ -144,8 +144,12 @@ export interface OfferStateView extends SyncedSchema {
   readonly roomId: string;
   readonly x: number;
   readonly y: number;
-  readonly claimed: boolean;
+  /** The three cards, shared by the whole party. */
   readonly choices: SyncedList<OfferChoiceStateView>;
+  /** Indices of the cards already taken — greyed out for everyone. */
+  readonly consumed: SyncedList<number>;
+  /** Session ids that have already claimed a card (at most one each). */
+  readonly claimedBy: SyncedList<string>;
 }
 
 /** Note what is NOT here: `weaponId` and `mods`. A chest's contents are

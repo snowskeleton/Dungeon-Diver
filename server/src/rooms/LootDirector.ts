@@ -168,16 +168,27 @@ export class LootDirector {
     item.purchased = true;
   }
 
-  // Claim a reward pedestal (shrine boon / boss drop). Unlike a shop this is
-  // free, irreversible, and first-come — `claimed` is the whole concurrency
-  // story, so a duplicated or racing message is harmless rather than a
-  // double-grant. Proximity is re-validated here; the client's prompt is only a
-  // hint.
-  offerPick(player: Player, msg: { roomId: string; choiceIndex: number }): void {
+  // Claim one of the pedestal's three shared cards (shrine boon / boss drop). The
+  // whole party sees the same three, and picks are mutually exclusive: this player
+  // may take one, and only a card no teammate has already taken. Two guards make it
+  // safe against a racing or duplicated message, both processed one-after-another on
+  // the single-threaded room: `claimedBy` refuses a second pick from the same player,
+  // and `consumed` refuses a card another player already took (the second claimant
+  // finds the index already present). Proximity is re-validated here; the client's
+  // prompt is only a hint.
+  offerPick(
+    sessionId: string,
+    player: Player,
+    msg: { roomId: string; choiceIndex: number },
+  ): void {
     const offer = this.state.offers.get(msg?.roomId);
-    const choice = offer?.choices[msg?.choiceIndex];
-    if (!offer || !choice || offer.claimed) return;
+    const index = msg?.choiceIndex;
+    const choice = offer?.choices[index];
+    if (!offer || !choice) return;
     if (!isNear(player, offer.x, offer.y)) return;
+    // Already spent your one pick, or someone beat you to this card.
+    if (offer.claimedBy.includes(sessionId)) return;
+    if (offer.consumed.includes(index)) return;
 
     // Exhaustive on `kind` — a new choice kind is a compile error here, not a
     // silently-ignored pedestal.
@@ -198,7 +209,8 @@ export class LootDirector {
         break;
       }
     }
-    offer.claimed = true;
+    offer.consumed.push(index);
+    offer.claimedBy.push(sessionId);
   }
 
   // Open a chest. Same shape as offerPick minus the choice — `opened` is the
@@ -221,9 +233,10 @@ export class LootDirector {
 
   // ---- rolling -------------------------------------------------------------
 
-  // Build a 1-of-3. A shrine leans on upgrades (permanent, build-defining); a boss
-  // drop leans on a rolled weapon, so beating a boss feels like loot rather than
-  // another stat bump. Both draw upgrades from the floor-legal pool.
+  // Build a shared 1-of-3. A shrine leans on upgrades (permanent, build-defining); a
+  // boss drop leans on a rolled weapon, so beating a boss feels like loot rather than
+  // another stat bump. Both draw upgrades from the floor-legal pool. Every player in
+  // the party sees this same set and drafts one card each (see offerPick).
   private rollOffer(roomId: string, x: number, y: number, tier: "shrine" | "boss"): OfferState {
     const offer = new OfferState();
     offer.roomId = roomId;

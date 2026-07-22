@@ -101,7 +101,7 @@ export class GameRoom extends Room<GameState> {
 
     this.onMessage("offerPick", (client, msg: { roomId: string; choiceIndex: number }) => {
       const player = this.players.get(client.sessionId);
-      if (player) this.loot.offerPick(player, msg);
+      if (player) this.loot.offerPick(client.sessionId, player, msg);
     });
 
     this.onMessage("chestOpen", (client, msg: { roomId: string }) => {
