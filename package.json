@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "concurrently \"npm run dev --workspace=server\" \"npm run dev --workspace=client\"",
     "build": "npm run build --workspace=shared && npm run build --workspace=server && npm run build --workspace=client",
+    "balance": "TS_NODE_COMPILER_OPTIONS='{\"module\":\"commonjs\"}' ts-node tools/enemy-balance/server.ts",
     "assets:build": "node assets/sync-to-client.js",
     "assets:hurtboxes": "node assets/generate-fx-hurtboxes.js && npx ts-node --compiler-options '{\"module\":\"commonjs\",\"esModuleInterop\":true,\"skipLibCheck\":true}' assets/generate-enemy-hurtboxes.ts"
   },
