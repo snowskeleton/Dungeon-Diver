@@ -96,7 +96,10 @@ class HeldBowVisual implements WeaponVisual {
     y: number,
     facing: Facing,
   ) {
-    this.bowSprite = createBowSprite(scene, weaponId);
+    // The crossbow is one-handed: hold it in the right hand, not centred like a
+    // two-handed bow draw.
+    const handHeld = WEAPON_REGISTRY[weaponId]?.category === "crossbow";
+    this.bowSprite = createBowSprite(scene, weaponId, handHeld);
     // Held in hand from the moment it's equipped (like the staff), so it doesn't
     // blink out between shots on the slower bows.
     showHeldBow(this.bowSprite, x, y, facing);

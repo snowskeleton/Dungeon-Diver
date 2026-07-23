@@ -34,6 +34,21 @@ const FACING_OFFSET: Record<Facing, { x: number; y: number }> = {
   up:    { x: 0, y: -BOW_REACH },
 };
 
+// A one-handed ranged weapon (the crossbow) isn't cradled two-handed on the body
+// centre-line like a drawn bow — it's shouldered in the RIGHT hand and pointed
+// forward. This is the same perpendicular hand offset the melee icons use (see
+// AttackFXSprites.HELD_HAND_OFFSET): the right hand reads on the viewer's left
+// when the character faces toward us (down) and on the right when they face away
+// (up). Added on TOP of FACING_OFFSET so the weapon still sits out in front and
+// keeps aiming along `facing`.
+const HAND_LATERAL = 7;
+const HAND_OFFSET: Record<Facing, { x: number; y: number }> = {
+  right: { x: 0, y: HAND_LATERAL },
+  left:  { x: 0, y: -HAND_LATERAL },
+  down:  { x: -HAND_LATERAL, y: 0 },
+  up:    { x: HAND_LATERAL, y: 0 },
+};
+
 /** Full anim key for a weapon's draw clip. */
 export function bowDrawKey(weaponId: string): string {
   return `bowdraw-${weaponId}`;
@@ -56,19 +71,26 @@ export function defineBowAnimation(scene: Phaser.Scene, weaponId: string) {
   });
 }
 
-export function createBowSprite(scene: Phaser.Scene, weaponId: string): Phaser.GameObjects.Sprite {
+export function createBowSprite(
+  scene: Phaser.Scene,
+  weaponId: string,
+  handHeld = false,
+): Phaser.GameObjects.Sprite {
   const sprite = scene.add.sprite(0, 0, weaponId, 0);
   sprite.setOrigin(0.5, 0.5);
   sprite.setDepth(2.6);
   sprite.setDisplaySize(BOW_DISPLAY_SIZE, BOW_DISPLAY_SIZE);
   sprite.setVisible(false);
+  // A crossbow rides in the right hand rather than on the body centre-line.
+  sprite.setData("handHeld", handHeld);
   return sprite;
 }
 
 function place(sprite: Phaser.GameObjects.Sprite, px: number, py: number, facing: Facing) {
   const off = FACING_OFFSET[facing];
-  sprite.x = px + off.x;
-  sprite.y = py + off.y;
+  const hand = sprite.getData("handHeld") ? HAND_OFFSET[facing] : { x: 0, y: 0 };
+  sprite.x = px + off.x + hand.x;
+  sprite.y = py + off.y + hand.y;
   sprite.setAngle(FACING_DEG[facing] + BOW_ANGLE_OFFSET);
 }
 

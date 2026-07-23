@@ -222,13 +222,21 @@ export abstract class Entity {
 
     const dx = this.state.x - fromX;
     const dy = this.state.y - fromY;
-    const dist = Math.hypot(dx, dy);
-    if (dist === 0) return;
+    if (dx === 0 && dy === 0) return;
+
+    // Snap the push to a single cardinal axis — the one nearest the true
+    // source→target direction — rather than shoving at an arbitrary diagonal.
+    // A diagonal knock slides an enemy sideways out of the shooter's line of
+    // fire, which reads as evasive; a pure up/down/left/right push keeps them on
+    // axis so a held stream of shots keeps connecting. Ties (perfect diagonal)
+    // fall to the horizontal.
+    const ux = Math.abs(dx) >= Math.abs(dy) ? Math.sign(dx) : 0;
+    const uy = ux === 0 ? Math.sign(dy) : 0;
 
     const push = effective * KNOCKBACK_SCALE;
     // Geometric series: total displacement = v0*dt / (1 − decay) = push.
     const v0 = (push * (1 - KNOCKBACK_DECAY)) / (SERVER_TICK_MS / 1000);
-    this.addKnockback((dx / dist) * v0, (dy / dist) * v0);
+    this.addKnockback(ux * v0, uy * v0);
 
     // Stun resilience (playtest B7). While the immunity window is open the body
     // still gets shoved — knockback feel is preserved — but its control tick is

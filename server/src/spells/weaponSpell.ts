@@ -21,6 +21,12 @@ import { Spell, SpellOpts, SpellEffect, Caster, AttackStats } from "./Spell";
  * spell that was built before it existed. Reading through to the instance on every
  * access is what makes that work.
  */
+// How far ahead of the shooter a projectile is born, so its swept-ellipse tail
+// clears the shooter's own body (see rangedWeaponSpell). Roughly the entity
+// radius plus a margin — far enough to free the player's tile, near enough that
+// a point-blank shot still overlaps an enemy pressed against them.
+const MUZZLE_OFFSET = 18;
+
 class WeaponSpell extends Spell {
   constructor(
     protected readonly inst: WeaponInstance,
@@ -153,10 +159,19 @@ function rangedWeaponSpell(inst: WeaponInstance): Spell {
     effect: {
       onActivate: (caster, aim) => {
         const angle = Math.atan2(aim.y - caster.y, aim.x - caster.x);
+        // Spawn AHEAD of the shooter, not at their centre. The projectile's hit
+        // shape is a swept ellipse whose tail sits at the spawn point, so a shot
+        // born at caster.x/y drags a hitbox across the shooter's own body — every
+        // enemy merely *touching* the player got clipped on the spawn tick,
+        // regardless of aim (most obvious firing up while a mob crowds you from
+        // below). Offsetting past the body radius keeps point-blank shots landing
+        // while freeing the shooter's own tile.
+        const mx = caster.x + Math.cos(angle) * MUZZLE_OFFSET;
+        const my = caster.y + Math.sin(angle) * MUZZLE_OFFSET;
         // The shot's damage is resolved HERE, at the muzzle, and carried on the
         // projectile — a projectile in flight has no link back to the bow that
         // fired it or the player who drew it, so the scaling has to ride along.
-        caster.spawnProjectile(inst.ammoId!, caster.x, caster.y, angle, {
+        caster.spawnProjectile(inst.ammoId!, mx, my, angle, {
           attack: rangedAttack(caster, inst),
         });
       },
