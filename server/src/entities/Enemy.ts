@@ -1,4 +1,4 @@
-import { AiState, SERVER_TICK_MS, EnemyType, EnemyFacingMode, ENEMY_BODY_PROFILE, ENEMY_ATTACK_AFFECTS , ENEMY_HURT_BOUNDS, PLAYER_HURT_BOUNDS, HurtBounds } from "shared";
+import { AiState, SERVER_TICK_MS, EnemyType, EnemyFacingMode, ENEMY_BODY_PROFILE, ENEMY_ATTACK_AFFECTS , ENEMY_HURT_BOUNDS, PLAYER_HURT_BOUNDS, HurtBounds, ENEMY_SPAWN_EMERGE_MS } from "shared";
 import { EnemyState } from "../schema/EnemyState";
 import { PlayerState } from "../schema/PlayerState";
 import { Entity } from "./Entity";
@@ -63,6 +63,12 @@ export abstract class Enemy extends Entity {
   // Defaults to TRUE so an enemy built directly against a bare PhysicsWorld (unit
   // tests) or summoned mid-fight is active immediately, no FloorManager required.
   private _spawned = true;
+  // Counts down while the enemy is EMERGING — revealed and visible in its dust puff
+  // but not yet acting. reveal() sets it; GameRoom holds the enemy still and off its
+  // AI until it hits 0, and contactHitSource stays silent meanwhile. A summon or a
+  // test-built enemy (both revealed via the _spawned default, never reveal()) leaves
+  // this at 0, so it acts immediately — matching how they skip the deferred pass.
+  private emergeRemainingMs = 0;
   protected patrolOriginX: number;
   protected patrolOriginY: number;
   private patrolAngle: number = Math.random() * Math.PI * 2;
@@ -70,7 +76,7 @@ export abstract class Enemy extends Entity {
 
   // ── Stats (override per enemy) ──────────────────────────────────────────────
   protected get maxHp(): number { return 60; }
-  protected get speed(): number { return 70; }
+  protected get speed(): number { return 50; }
   protected get aggroRadius(): number { return 160; }
   // Center-to-center; must exceed 2×ENTITY_RADIUS (10px) or attacks never land.
   protected get attackRadius(): number { return 14; }
@@ -129,9 +135,27 @@ export abstract class Enemy extends Entity {
 
   /** Reveal this enemy. SpawnDirector calls it when a player first enters the home
    *  room, then adds the enemy to the synced state so the client shows it (with a
-   *  smoke puff on the state add). Idempotent. */
+   *  smoke puff on the state add). The enemy then EMERGES over ENEMY_SPAWN_EMERGE_MS
+   *  — visible in the puff but stationary and harmless — before it starts acting.
+   *  Idempotent on _spawned, but only the first reveal arms the emerge timer. */
   reveal(): void {
+    if (this._spawned) return;
     this._spawned = true;
+    this.emergeRemainingMs = ENEMY_SPAWN_EMERGE_MS;
+  }
+
+  /** True while the enemy is still rising out of its spawn puff. GameRoom holds it
+   *  in place and skips its AI + contact damage until this clears — see advanceEmerge. */
+  get emerging(): boolean {
+    return this.emergeRemainingMs > 0;
+  }
+
+  /** Tick the emerge timer down. GameRoom calls this (instead of the AI tick) each
+   *  tick the enemy is still emerging, so the hold works even for bosses and other
+   *  subclasses that override tick(). Keeps a flyer at its cruise height meanwhile. */
+  advanceEmerge(dtMs: number): void {
+    this.emergeRemainingMs -= dtMs;
+    this.applyFlightBaseline();
   }
 
   /** Scale this enemy's health pool by a multiplier decided at spawn time (party-
@@ -204,7 +228,7 @@ export abstract class Enemy extends Entity {
   // eruption lands on exactly one player per cooldown. Bosses deal no passive
   // contact damage and override this to null.
   contactHitSource(id: string): HitSource | null {
-    if (this.state.isDying || this.state.stunned || this.attackCooldown > 0 || this.attackDamage <= 0) {
+    if (this.emerging || this.state.isDying || this.state.stunned || this.attackCooldown > 0 || this.attackDamage <= 0) {
       return null;
     }
     let claimed = false;
