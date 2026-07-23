@@ -22,6 +22,12 @@ npm run assets:build      # = node assets/sync-to-client.js
 
 Both require `sharp`, which is **not** a project dependency: `npm install --no-save sharp` first.
 
+## The dungeon tileset (`assets/dungeon-tiles.png`)
+
+An 8-frame horizontal strip of 32×32 cells; `client/src/map/TileRenderer.ts` (`TILE_TO_FRAME`) maps each `TILE` id to a frame index. Frame 0 is unused/transparent padding. Frames 1–4, 6, 7 (floor/wall/fire/slime/boss-floor/trap) are still flat programmer-art placeholders pending the real-texture overhaul.
+
+Frame 5 (`TILE.STAIRS`) is the first real texture: a top-down recessed stairwell pulled from the **blue/gray set** (the first, leftmost set) of `Super Overhead Adventure 2/Environments/Dungeon.png`. It's the descending-pit tile at source `left:64, top:16, 48×48`, downscaled to 32×32 (`lanczos3`) and composited over frame 5. To re-pull or swap it, extract from that source and composite at `left:160` of the strip, then run `npm run assets:build`. When the overhaul continues, bring the rest of that same blue/gray set's floor/wall tiles over the remaining placeholder frames.
+
 ## Sprite-sheet grid alignment (bit us once)
 
 Don't assume a sprite sheet's icons sit on a clean `N`-px grid starting at `(0,0)`. Detect the true frame boundaries first by scanning for content bands — rows/columns of all-transparent pixels between icons:
