@@ -1,13 +1,16 @@
 import Phaser from "phaser";
 import { promptKeyLabel } from "../options/keybindings";
 
-// A small world-space "press F" hint that floats above an interactable object
+// A small world-space "press <key>" hint that floats above an interactable object
 // (shop pedestal, reward pedestal, chest, …) whenever a local player is within
 // interaction range. One reusable component so every interactable shares the same
 // affordance instead of each growing bespoke prompt code.
 //
-// The key label is read from the live keybindings via promptKeyLabel, so a rebind
-// (which the interact action supports) is reflected the next time the prompt shows.
+// The key shown is NEVER hardcoded: setVerb() resolves it from the live Interact
+// binding via promptKeyLabel("interact"), which reads loadBindings() (updated in
+// place by the rebind menu's saveBindings). show() re-runs setVerb every call and
+// GameScene calls it each frame the prompt is up, so rebinding Interact changes the
+// displayed key on the next frame — with the shipped default bind it reads "F".
 
 const DEPTH = 6; // above pedestal price/`?` labels (depth 3)
 const OFFSET_Y = -22; // how far above the object's anchor the pill sits
