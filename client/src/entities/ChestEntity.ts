@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { InteractPrompt } from "./InteractPrompt";
 
 // In-world view of a treasure chest. Same "not an Entity — no HP bar, no
 // server-driven movement, just reflects its state" shape as ShopItemEntity and
@@ -53,6 +54,7 @@ function chestOpenKey(gold: boolean): string {
 export class ChestEntity {
   private objects: Phaser.GameObjects.GameObject[] = [];
   private sprite: Phaser.GameObjects.Sprite;
+  private prompt: InteractPrompt;
   private opened = false;
   readonly x: number;
   readonly y: number;
@@ -68,10 +70,18 @@ export class ChestEntity {
       .setDisplaySize(SIZE, SIZE).setDepth(2.2);
     this.objects.push(this.sprite);
 
+    this.prompt = new InteractPrompt(scene, x, y - 4, "open");
+
     // A chest that was already open when this view appeared (a late joiner, or
     // walking back into a looted room) skips straight to the resting open frame —
     // replaying the burst would read as someone opening it just now.
     if (opened) this.showOpened();
+  }
+
+  /** Show/hide the "press F to open" hint. An opened chest never prompts. */
+  setPromptShown(shown: boolean) {
+    if (shown && !this.opened) this.prompt.show("open");
+    else this.prompt.hide();
   }
 
   /** Drive the open animation from the synced `opened` flag. Idempotent: the
@@ -79,6 +89,7 @@ export class ChestEntity {
   setOpened(opened: boolean) {
     if (!opened || this.opened) return;
     this.opened = true;
+    this.prompt.hide();
     this.sprite.play(chestOpenKey(this.gold));
   }
 
@@ -88,6 +99,7 @@ export class ChestEntity {
   }
 
   destroy() {
+    this.prompt.destroy();
     this.objects.forEach((o) => o.destroy());
     this.objects = [];
   }

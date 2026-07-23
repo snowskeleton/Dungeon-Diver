@@ -689,6 +689,26 @@ export class GameScene extends Phaser.Scene {
       playersOnStairs: obs?.playersOnStairs ?? 0,
       stairsPartySize: obs?.stairsPartySize ?? 0,
     });
+
+    this.updateInteractPrompts();
+  }
+
+  /** Show a "press F" hint over every interactable a local player is standing on.
+   *  The proximity is already computed per-player in LocalPlayer (the same fields
+   *  that gate the interact action), so this just projects those onto the world
+   *  views — no second range check that could disagree with the server's. */
+  private updateInteractPrompts() {
+    const nearShop = new Set<string>();
+    const nearOffer = new Set<string>();
+    const nearChest = new Set<string>();
+    for (const p of this.localManager.getAll()) {
+      if (p.nearbyShopItem) nearShop.add(`${p.nearbyShopItem.roomId}:${p.nearbyShopItem.itemIndex}`);
+      if (p.nearbyOffer) nearOffer.add(p.nearbyOffer.roomId);
+      if (p.nearbyChest) nearChest.add(p.nearbyChest.roomId);
+    }
+    this.shopItems.forEach((view, key) => view.setPromptShown(nearShop.has(key)));
+    this.offerPedestals.forEach((view, roomId) => view.setPromptShown(nearOffer.has(roomId)));
+    this.chests.forEach((view, roomId) => view.setPromptShown(nearChest.has(roomId)));
   }
 
 }

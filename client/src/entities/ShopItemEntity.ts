@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { WEAPON_REGISTRY, WeaponId } from "shared";
+import { InteractPrompt } from "./InteractPrompt";
 
 // In-world view of one shop pedestal: a pedestal base, the weapon icon hovering
 // above it, and an HP-cost label. Lightweight (not an Entity — no HP bar / no
@@ -9,6 +10,7 @@ const ICON = 22;
 export class ShopItemEntity {
   private objects: Phaser.GameObjects.GameObject[] = [];
   private icon: Phaser.GameObjects.Image | Phaser.GameObjects.Sprite;
+  private prompt: InteractPrompt;
   readonly x: number;
   readonly y: number;
 
@@ -29,6 +31,14 @@ export class ShopItemEntity {
       fontSize: "10px", color: "#ff8888", backgroundColor: "#000000aa",
     }).setOrigin(0.5, 0).setDepth(3).setPadding(3, 1);
     this.objects.push(label);
+
+    this.prompt = new InteractPrompt(scene, x, y - 6, "buy");
+  }
+
+  /** Show/hide the "press F to buy" hint (driven by local-player proximity). */
+  setPromptShown(shown: boolean) {
+    if (shown) this.prompt.show("buy");
+    else this.prompt.hide();
   }
 
   // Reflect the shared-pool purchased state: dim the pedestal to a ghost once
@@ -38,6 +48,7 @@ export class ShopItemEntity {
   }
 
   destroy() {
+    this.prompt.destroy();
     this.objects.forEach((o) => o.destroy());
     this.objects = [];
   }
