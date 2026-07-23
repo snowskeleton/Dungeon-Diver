@@ -4,24 +4,18 @@ import { FieldSpec } from "../ui/FieldPanel";
 // pattern as the debug menu: add a property + a field entry and it renders.
 
 export interface GameOptions {
-  cameraZoom: number;
   showHitboxes: boolean;
   showControlsHint: boolean;
   showMinimap: boolean;
 }
 
 export const DEFAULT_OPTIONS: GameOptions = {
-  cameraZoom: 2,
   showHitboxes: false,
   showControlsHint: true,
   showMinimap: true,
 };
 
 export const OPTION_FIELDS: FieldSpec<GameOptions>[] = [
-  {
-    kind: "number", key: "cameraZoom", label: "Camera zoom", min: 1, max: 4, step: 0.5,
-    help: "The room-locked camera's zoom factor",
-  },
   {
     kind: "toggle", key: "showHitboxes", label: "Hitbox overlay",
     help: "Start with the H overlay already on",

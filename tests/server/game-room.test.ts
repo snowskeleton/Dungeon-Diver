@@ -662,8 +662,20 @@ describe("traps", () => {
 });
 
 describe("death and respawn", () => {
-  it("puts a dead player back at a spawn point, at full health", async () => {
+  it("leaves a dead player dead by default — the shipping game is permadeath", async () => {
     const h = await startedRoom(1, { debug: debug({ enemiesPerRoom: 0 }) });
+    const p = guts(h).players.get("s0")!;
+    p.state.health = 0;
+
+    h.tick(2);
+
+    expect(p.state.health).toBe(0);
+    expect(p.isDead).toBe(true);
+    h.dispose();
+  });
+
+  it("puts a dead player back at a spawn point at full health under the debug respawn flag", async () => {
+    const h = await startedRoom(1, { debug: debug({ enemiesPerRoom: 0, respawnOnDeath: true }) });
     const p = guts(h).players.get("s0")!;
     p.teleport(2000, 2000);
     p.state.health = 0;

@@ -4,7 +4,7 @@ import {
   TILE_SIZE, ROOM_W, ROOM_H, generateDungeon, roomCellAt, MAP_SEED,
   FloorChangeMessage, BarrierStateMessage,
   WEAPON_REGISTRY, AMMO_REGISTRY, DungeonOptions, DungeonResult, toDungeonOptions,
-  RoomType, DebugConfig,
+  RoomType, DebugConfig, DEFAULT_DEBUG_CONFIG,
   GameStateView, PlayerStateView, EnemyStateView, ProjectileStateView,
   ShopStateView, ShopItemStateView, OfferStateView, ChestStateView,
 } from "shared";
@@ -116,6 +116,12 @@ export class GameScene extends Phaser.Scene {
 
   // Phaser reuses the scene instance across scene.start(), so every field the
   // previous run mutated has to be reset here rather than at construction.
+  /** The camera zoom for this run. Players always get the default 2×; a debug
+   *  floor can override it via the Debug menu's Camera zoom knob. */
+  private cameraZoom(): number {
+    return this.debug?.cameraZoom ?? DEFAULT_DEBUG_CONFIG.cameraZoom;
+  }
+
   init(data: GameSceneData) {
     this.party = data.party;
     this.debug = data.debug;
@@ -358,7 +364,7 @@ export class GameScene extends Phaser.Scene {
     const totalW = dungeon.cols * TILE_SIZE;
     const totalH = dungeon.rows * TILE_SIZE;
     this.cameras.main.setBounds(0, 0, totalW, totalH);
-    this.cameras.main.setZoom(loadOptions().cameraZoom);
+    this.cameras.main.setZoom(this.cameraZoom());
   }
 
   /** Redraw every barrier overlay from the server's snapshot. Absolute, not a
@@ -453,7 +459,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** Options, mid-run. Only the settings that can be re-read live are applied
-   *  here — the camera zoom is, the hitbox overlay's starting state isn't. */
+   *  here — the minimap toggle is, the hitbox overlay's starting state isn't.
+   *  (Camera zoom is no longer a player option; it's a debug-only knob.) */
   private async openOptionsFromPause() {
     this.dialogOpen = true;
     try {
@@ -478,7 +485,6 @@ export class GameScene extends Phaser.Scene {
         }
         if (result.button === "save") {
           saveOptions(result.values);
-          this.cameras.main.setZoom(result.values.cameraZoom);
           this.minimap.setVisible(result.values.showMinimap);
         }
         break;

@@ -711,10 +711,14 @@ export class GameRoom extends Room<GameState> {
       }
     }
 
-    // 10. Dead players respawn.
-    const dead: Player[] = [];
-    this.players.forEach((player) => { if (player.isDead) dead.push(player); });
-    if (dead.length > 0) this.respawnAll(dead);
+    // 10. Dead players respawn — but only under the debug respawn flag. The
+    //     shipping game is permadeath (the design intent); respawn survives as a
+    //     test affordance behind the Debug menu.
+    if (this.debug?.respawnOnDeath) {
+      const dead: Player[] = [];
+      this.players.forEach((player) => { if (player.isDead) dead.push(player); });
+      if (dead.length > 0) this.respawnAll(dead);
+    }
 
     // 11. Softlock guard: unlock rooms that locked behind a player who is no longer
     //     inside (death respawn above, or disconnect). Runs after step 10 so dead

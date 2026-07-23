@@ -72,6 +72,14 @@ export const DEBUG_FIELDS: FieldSpec<DebugConfig>[] = [
     kind: "multiselect", key: "startingUpgrades", label: "Starting upgrades", options: UPGRADE_CHOICES,
     help: "Granted to every player on join, for testing stat folding",
   },
+  {
+    kind: "toggle", key: "respawnOnDeath", label: "Respawn on death",
+    help: "Off = permadeath (the shipping rule). On = dead players respawn at the floor spawn.",
+  },
+  {
+    kind: "number", key: "cameraZoom", label: "Camera zoom", min: 1, max: 4, step: 0.5,
+    help: "The room-locked camera's zoom factor (players always get 2×)",
+  },
 ];
 
 // One-click setups. Each overwrites the whole draft, so spell out every field

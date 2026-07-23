@@ -3,7 +3,7 @@ import Phaser from "phaser";
 // The HUD's camera.
 //
 // `setScrollFactor(0)` does NOT exempt an object from the camera's zoom — it only
-// stops it scrolling. The world camera runs at 2× (gameOptions.cameraZoom), which
+// stops it scrolling. The world camera runs at 2× (DebugConfig.cameraZoom), which
 // scales every object it draws about the viewport centre, so a HUD element at
 // (8, 8) was being pushed far off-screen. It only became visible when the player
 // walked to the edge of the map and the camera's scroll happened to bring the
