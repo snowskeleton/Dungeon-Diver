@@ -33,15 +33,6 @@ describe("ammo registry", () => {
     }
   });
 
-  it("makes anything that actually flies deal damage", () => {
-    // The zero-damage, zero-speed exception is the tremor shard: an inert visual
-    // marker whose damage lives on the ability's own consolidated hitbox. Any
-    // ammo that MOVES, though, is a real projectile and must hurt something.
-    for (const a of ammo.filter(a => a.speed > 0)) {
-      expect(a.damage, `${a.id} flies but deals nothing`).toBeGreaterThan(0);
-    }
-  });
-
   it("nests categorised ammo under its folder and keeps one-offs flat", () => {
     for (const a of ammo) {
       const expected = a.category

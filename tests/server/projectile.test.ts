@@ -7,6 +7,7 @@ import {
   PLAYER_PROJECTILE_AFFECTS,
   Ammo,
   AmmoId,
+  AMMO_CLASSES,
 } from "shared";
 import { Projectile } from "../../server/src/entities/Projectile";
 import { PhysicsWorld } from "../../server/src/physics/PhysicsWorld";
@@ -215,6 +216,21 @@ describe("the attack a shot carries", () => {
     const attack = p.hitSource().attack;
     expect(attack.damage).toBe(7);
     expect(attack.knockback).toBe(3);
+  });
+
+  it("delivers exactly its ammo's damage and knockback, for EVERY ammo", () => {
+    // The whole registry, with no carve-outs. Sweeping it this way is what makes
+    // the tremor shard honest rather than special-cased: it declares damage 0
+    // because it is an inert telegraph marker whose damage lives on the ability's
+    // own consolidated hitbox, and the rule "a shot delivers what its ammo says"
+    // holds for it exactly as it does for an arrow.
+    for (const A of AMMO_CLASSES) {
+      const cfg = new A();
+      const p = shoot(flatWorld(), cfg);
+      const attack = p.hitSource().attack;
+      expect(attack.damage, `${cfg.id} damage`).toBe(cfg.damage);
+      expect(attack.knockback, `${cfg.id} knockback`).toBe(cfg.knockback);
+    }
   });
 
   it("carries a pre-resolved attack from the muzzle when given one", () => {

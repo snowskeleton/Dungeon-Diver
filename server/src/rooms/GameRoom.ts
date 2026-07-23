@@ -9,7 +9,7 @@ import {
   CreateRoomOptions, JoinRoomOptions, RoomMetadata,
   SetNameMessage, SetLoadoutMessage, SetReadyMessage,
   MAX_ROOM_NAME_LEN, MAX_PLAYER_NAME_LEN,
-  CharacterClass, CharacterType, WeaponId,
+  WeaponId, resolveCharacterClass, resolveCharacterType,
 } from "shared";
 import { allocateRoomCode } from "./roomCodes";
 import { GameState } from "../schema/GameState";
@@ -222,12 +222,15 @@ export class GameRoom extends Room<GameState> {
     this.state.players.set(sessionId, next.state);
   }
 
-  /** The one place a Player is constructed. Ids arriving from a client are
-   *  validated, never cast: an unknown weapon id would otherwise leave the
-   *  player holding nothing at all. */
+  /** The one place a Player is constructed. Every id arriving from a client is
+   *  resolved through a validator, never cast: an unknown weapon id would leave
+   *  the player holding nothing at all, and an unknown CLASS is worse — the
+   *  config lookup returns undefined and the Player constructor throws, taking
+   *  the whole join down with it. Both ids reach here from two directions, the
+   *  join options and the `setLoadout` lobby message. */
   private buildPlayer(x: number, y: number, options?: JoinRoomOptions): Player {
-    const characterClass = (options?.characterClass ?? "knight") as CharacterClass;
-    const characterType = (options?.characterType ?? "guy") as CharacterType;
+    const characterClass = resolveCharacterClass(options?.characterClass);
+    const characterType = resolveCharacterType(options?.characterType);
     const weaponId = resolveTemplate(options?.weaponId)?.id as WeaponId | undefined;
     const player = new Player(this.physics, x, y, characterClass, characterType, weaponId);
     // Debug-only: pre-grant upgrades so stat folding can be exercised (and balanced)

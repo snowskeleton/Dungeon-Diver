@@ -6,6 +6,8 @@ import {
   TILE_SIZE,
   SERVER_TICK_MS,
   WEAPON_REGISTRY,
+  CHARACTER_REGISTRY,
+  CHARACTER_TYPES,
   RoomMetadata,
   isRoomCode,
   MAX_ROOM_NAME_LEN,
@@ -125,12 +127,12 @@ describe("the lobby", () => {
 
   it("gives a joining player a spawn point, a name, and a character", async () => {
     const h = await createRoom();
-    h.join("s0", { playerName: "Snow", characterClass: "mage", characterType: "girl", weaponId: "longbow" });
+    h.join("s0", { playerName: "Snow", characterClass: "mage", characterType: "gal", weaponId: "longbow" });
     const p = h.state.players.get("s0")!;
 
     expect(p.name).toBe("Snow");
     expect(p.characterClass).toBe("mage");
-    expect(p.characterType).toBe("girl");
+    expect(p.characterType).toBe("gal");
     expect(p.weaponId).toBe("longbow");
     h.dispose();
   });
@@ -145,19 +147,42 @@ describe("the lobby", () => {
     h.dispose();
   });
 
-  it("BUG: an unknown characterClass at join crashes onJoin", async () => {
-    // GameRoom.buildPlayer validates the weapon id through resolveTemplate but
-    // CASTS characterClass straight from the join options:
-    //     (options?.characterClass ?? "knight") as CharacterClass
-    // so an id the CHARACTER_REGISTRY doesn't have yields an undefined config and
-    // the Player constructor throws on `this.charConfig.maxHp`. The comment
-    // directly above that code says ids from a client are "validated, never
-    // cast" — the weapon id is; the class is not.
-    //
-    // Pinned as-is rather than asserted away. When it's fixed, this should
-    // become "falls back to the knight".
+  it("falls back to the knight for an unknown characterClass", async () => {
+    // This used to throw: the class id was CAST rather than resolved, so an
+    // unknown one produced an undefined CharacterConfig and the Player
+    // constructor died on `charConfig.maxHp` — taking the whole join with it.
     const h = await createRoom();
-    expect(() => h.join("s0", { characterClass: "wizard" })).toThrow(/maxHp/);
+
+    expect(() => h.join("s0", { characterClass: "wizard" })).not.toThrow();
+
+    const p = h.state.players.get("s0")!;
+    expect(p.characterClass).toBe("knight");
+    expect(p.maxHp).toBe(CHARACTER_REGISTRY.knight.maxHp);
+    h.dispose();
+  });
+
+  it("falls back to the default skin for an unknown characterType", async () => {
+    const h = await createRoom();
+    h.join("s0", { characterType: "not-a-skin" });
+    expect(CHARACTER_TYPES).toContain(h.state.players.get("s0")!.characterType);
+    h.dispose();
+  });
+
+  it("refuses a junk class through setLoadout too, not just at join", async () => {
+    // The same path is reachable from the lobby, so the guard has to cover both.
+    const h = await createRoom();
+    const c = h.join("s0", { characterClass: "mage" });
+
+    expect(() => h.send(c, "setLoadout", {
+      characterClass: "necromancer",
+      characterType: "eldritch-horror",
+      weaponId: "not-a-weapon",
+    })).not.toThrow();
+
+    const p = h.state.players.get("s0")!;
+    expect(p.characterClass).toBe("knight");
+    expect(CHARACTER_TYPES).toContain(p.characterType);
+    expect(WEAPON_REGISTRY[p.weaponId]).toBeDefined();
     h.dispose();
   });
 

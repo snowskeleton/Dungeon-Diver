@@ -386,3 +386,53 @@ describe("showcase floors", () => {
     expect(f.enemies.size).toBe(1);
   });
 });
+
+describe("the party's own spawn points", () => {
+  it("never leaves a player out of bounds, even where two share a tile", () => {
+    // This is the assertion that matters about duplicate spawn points. The ring
+    // in buildPlayerSpawns runs dry in a maze start room and stacks one pair
+    // (see tests/shared/dungeon.test.ts) — so check what that actually COSTS:
+    // spawn the real party at the real spawns and let the solver settle them.
+    for (let seed = 1; seed <= 60; seed++) {
+      const d = generateDungeon(seed);
+      const physics = new PhysicsWorld(d.mapData, d.cols, d.rows);
+      const party = d.playerSpawns.map(s => new Player(physics, s.x, s.y));
+
+      for (let t = 0; t < 60; t++) {
+        for (const p of party) p.commitVelocity();
+        physics.step();
+        for (const p of party) p.syncFromBody();
+      }
+
+      for (const p of party) {
+        const tile = d.mapData[Math.floor(p.state.y / TILE_SIZE)]?.[Math.floor(p.state.x / TILE_SIZE)] as TileId | undefined;
+        expect(tile, `seed ${seed}: player left the map`).toBeDefined();
+        expect(TILE_PROPS[tile!].walkable, `seed ${seed}: player settled inside a wall`).toBe(true);
+      }
+    }
+  });
+
+  it("separates a stacked pair by a few pixels rather than flinging one away", () => {
+    // Seed 6's start room is a maze corridor, so two of its four spawns are the
+    // same tile. Matter resolves the overlap gently; nobody is teleported.
+    const d = generateDungeon(6);
+    const physics = new PhysicsWorld(d.mapData, d.cols, d.rows);
+    const party = d.playerSpawns.map(s => new Player(physics, s.x, s.y));
+    const start = party.map(p => ({ x: p.state.x, y: p.state.y }));
+    expect(new Set(start.map(s => `${s.x},${s.y}`)).size).toBe(3); // the stacked pair
+
+    for (let t = 0; t < 60; t++) {
+      for (const p of party) p.commitVelocity();
+      physics.step();
+      for (const p of party) p.syncFromBody();
+    }
+
+    for (let i = 0; i < party.length; i++) {
+      const moved = Math.hypot(party[i].state.x - start[i].x, party[i].state.y - start[i].y);
+      expect(moved).toBeLessThan(TILE_SIZE); // nudged, not launched
+    }
+    // ...and they really did come apart.
+    const ends = party.map(p => `${p.state.x.toFixed(1)},${p.state.y.toFixed(1)}`);
+    expect(new Set(ends).size).toBe(4);
+  });
+});

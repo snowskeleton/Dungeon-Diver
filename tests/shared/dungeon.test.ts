@@ -252,10 +252,15 @@ describe("playability", () => {
 
   it("still never stacks more than two players, even in a maze start room", () => {
     // KNOWN GAP, pinned rather than asserted away: the spawn ring only inspects
-    // the eight tiles around the spawn, and a maze corridor can offer just three
-    // open ones — so the fourth slot falls back onto an occupied tile. It happens
-    // on maze start rooms only, and never stacks more than one pair, but it IS
-    // the B2 condition the ring exists to prevent. Widen the ring to fix.
+    // the eight tiles around the spawn, and a maze corridor can offer as few as
+    // three open ones — so the fourth slot falls back onto an occupied tile. It
+    // happens on maze start rooms only (10 of these 60 seeds), and never stacks
+    // more than one pair.
+    //
+    // The consequence is COSMETIC, which is why this is a gap and not a bug:
+    // measured over all ten affected seeds, matter separates the pair by ~4.7px
+    // within a tick or two and nobody ends up out of bounds — see the physics
+    // assertion below, which is the part that actually matters.
     for (const seed of SEEDS) {
       const d = generateDungeon(seed);
       const distinct = new Set(d.playerSpawns.map(s => `${s.x},${s.y}`)).size;
