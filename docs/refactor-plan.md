@@ -10,10 +10,9 @@ next feature. This is not a bug list — the game works.
 - Read CLAUDE.md's engineering-approach note first. MIT style: no lookup tables
   for behaviour, no stringly-keyed dispatch, compiler-checked everywhere possible.
 - Work one item at a time, each as its own commit.
-- Before touching anything on the server combat path, capture the golden baseline:
-  `npx ts-node server/src/verify-boss.ts > /tmp/boss-before.txt`
-  and after the change confirm `npx ts-node server/src/verify-boss.ts | diff /tmp/boss-before.txt -`
-  is byte-identical. Also run `verify-combat.ts` and `verify-rooms.ts` after every
+- Before touching anything on the server combat path, run `npm test`; it must stay
+  green after the change. (This replaced a golden byte-identical `verify-boss.ts`
+  baseline, which pinned HP/damage totals and broke on every balance pass. Run after every
   server change.
 - These are *refactors*: observable behaviour must not change unless an item
   explicitly says otherwise. If a change would alter a seeded dungeon layout,
@@ -96,7 +95,7 @@ Two things to fix while in there:
 consume rng draws in *exactly* the same order, or every seed's map changes and
 client/server desync becomes possible mid-migration. Verification: before the
 change, dump `JSON.stringify(generateDungeon(s).mapData)` for seeds 1–200 to a
-file (a 10-line throwaway script); after, diff. Also run `verify-rooms.ts`.
+file (a 10-line throwaway script); after, diff. Also run `npm test`.
 
 ### 3. Type the client's view of the schema (kill the `any` states)
 
@@ -211,7 +210,7 @@ two private methods `raise(conn, side)` / `drop(conn, side): boolean` that own
 the physics-id naming and the active-flag bookkeeping. Each public method
 becomes a readable loop of `drop(...)` calls. External behaviour and the
 returned connection-id arrays must be unchanged (the client keys overlays on
-them). Verify with `verify-rooms.ts` plus a manual wave-room run (barriers are
+them). Verify with `tests/server/challenges.test.ts` plus a manual wave-room run (barriers are
 the subtlest interaction with challenges).
 
 ### 10. Remove the enemy-tick cast and narrow what enemies see
@@ -232,7 +231,7 @@ and change `tick(players: Map<string, TargetInfo>, ...)` /
 structurally, so GameRoom changes only its type annotation. This is the seam
 future AI (e.g. "prefer the weakest player" would add `health` to TargetInfo —
 deliberately, visibly) grows through, instead of reaching deeper into the
-schema. Golden-baseline check applies (`verify-boss.ts` byte-identical).
+schema. `npm test` must stay green (see `tests/server/bosses.test.ts`).
 
 ### 11. `rollShopWeapons` should return `WeaponId[]`
 

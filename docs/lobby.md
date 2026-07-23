@@ -145,12 +145,11 @@ Two things to know if you add a panel:
 
 ## Verifying
 
-`server/src/verify-lobby.ts` drives the rules above against a **running** server
-with real `colyseus.js` clients — unlike the other `verify-*` harnesses, it needs
-`npm run dev` up:
+`tests/server/game-room.test.ts` drives the rules above against a REAL `GameRoom`
+with Colyseus's transport stubbed — no running server needed:
 
 ```bash
-npx ts-node server/src/verify-lobby.ts
+npx vitest run tests/server/game-room.test.ts
 ```
 
 It covers: a fresh room opens in `lobby` with nothing spawned · a public lobby is

@@ -49,38 +49,55 @@ Both are defined in `.claude/launch.json` for the preview panel. The Colyseus se
 
 **Edit `shared/src/`, never `shared/dist/`.** The `shared` package's `package.json` sets `"main": "src/index.ts"`, so both the server (`ts-node-dev`) and the client (Vite alias) import the raw TypeScript source — nothing loads compiled output. `shared/dist/` is `.gitignore`d and only appears if you run `npm run build`; if it's present it's stale and editing it does nothing (a real gotcha — changing a `shared/dist/*.js` constant has zero effect). Note: `ts-node-dev` sometimes doesn't watch the symlinked `shared` workspace, so if a `shared/src` edit doesn't take, restart `npm run dev`. (A production `node dist/index.js` server run currently can't resolve `shared` at all since `main` is a `.ts` file — a deferred prod-build concern.)
 
-## Headless verification
+## Tests
 
-Four self-contained harnesses boot the real physics/entities/combat with no server or
-browser, and print a pass/fail line per assertion:
-
-```bash
-npx ts-node server/src/verify-combat.ts   # combat substrate, weapon instances, upgrades, the attack pipeline
-npx ts-node server/src/verify-boss.ts     # every boss's moveset
-npx ts-node server/src/verify-rooms.ts    # room variants against the real FloorManager
-npx ts-node server/src/verify-barriers.ts # one-way exit barriers + enemy room containment
-```
-
-One more needs a **running server** (`npm run dev`), because it drives real
-`colyseus.js` clients through matchmaking:
+**Vitest, at the repo root.** One suite covers `shared/` and `server/`; it boots the
+real physics, entities, combat, directors, and GameRoom itself with no server and no
+browser.
 
 ```bash
-npx ts-node server/src/verify-lobby.ts    # lobby phase, room codes, lobby-only joins
+npm test                 # the whole suite
+npm run test:watch       # watch mode
+npm run test:coverage    # + a v8 coverage report in coverage/
+npx vitest run tests/server/combat-resolver.test.ts   # one file
 ```
 
-**`verify-boss.ts` output is a golden regression baseline.** Anything touching the
-combat/spell/attack path must leave it *byte-identical* — that's the proof enemies and
-bosses were unaffected. Capture it before you start:
+Tests live in `tests/`, mirroring the source: `tests/shared/` (geometry, weapons/ammo
+registries, the dungeon generator, config), `tests/server/` (the combat resolver,
+entities, spells, projectiles, upgrades, loot, floor/barriers, challenges, spawning,
+bosses, and GameRoom end-to-end). Shared scaffolding is in `tests/helpers/`:
 
-```bash
-npx ts-node server/src/verify-boss.ts > /tmp/boss-before.txt
-# ...make the change...
-npx ts-node server/src/verify-boss.ts | diff /tmp/boss-before.txt -
-```
+- `helpers/world.ts` — a flat map, a real `PhysicsWorld`, and `arena()`, which runs the
+  **exact** gather-and-resolve step `GameRoom.tick` runs. Use it for anything about
+  damage; a test that resolves combat differently from the game proves nothing.
+- `helpers/gameRoom.ts` — `createRoom()` / `startedRoom()` drive a REAL `GameRoom` with
+  only Colyseus's transport stubbed (setState/lock/metadata/broadcast/onMessage), so
+  tick ordering, the lobby phase, floor advancement, and the message handlers are all
+  the shipping code.
 
-Other room-level behaviour (shops, reward pedestals, schema sync) also needs a running
-server and is still checked with ad-hoc headless `colyseus.js` clients — `verify-lobby.ts`
-is the pattern to copy if you make one of those permanent.
+### How to write one here
+
+**Assert behaviour and relationships, never balance numbers.** `10 damage removes 10 HP`
+and `15 damage through 7 armor lands as 8` survive a retune; `a broadsword deals 20`
+does not. Where a shipping value is unavoidable, derive it (`WEAPON_REGISTRY[...].damage`)
+rather than typing it. This replaced the old `verify-*.ts` scripts and their
+golden-output baseline, which pinned HP and damage totals and so failed on every
+balance pass without ever catching a real defect.
+
+Two deliberate exceptions, both contracts rather than tuning:
+
+- **The dungeon map checksum** (`tests/shared/dungeon.test.ts`). Client and server each
+  generate the floor from the same seed, so any change that consumes rng draws in a
+  different ORDER silently changes every seed's map and can desync a live game. A
+  deliberate generation change means re-running and pasting in the new value — and
+  knowing you changed every existing seed's layout.
+- **Tests named `BUG:`** pin known-broken behaviour as it actually is, with the cause in
+  a comment, so the gap is visible instead of quietly asserted away. Fixing one means
+  rewriting its test to assert the correct behaviour.
+
+Melee swings genuinely wind up (the FX strips' leading frames are empty), so
+"attack once and assert" never works — hold the attack across ticks, or use
+`swingUntilHit()` from `helpers/world.ts`.
 
 **After replacing any PNG in `assets/`, run `npm run assets:build`** or the client keeps loading the old copy. See [docs/assets.md](docs/assets.md).
 
@@ -222,7 +239,7 @@ To add a debug knob: add the property to `DebugConfig` (`shared/src/debug.ts`) w
 
 **Barriers are one-way, and that's a collision-filter trick, not geometry.** A room's `barrierParent` (blocking advance until the room is cleared) is a plain wall. Its `barrierChild` (blocking retreat once you're in) is **one-way**: latecomers walk in, nobody walks out — the rule the first playtest demanded, because a solid child barrier ejected any co-op partner who didn't cross the doorway in the same tick. Matter collision is symmetric, so "one-way" can't be a property of the body; instead the barrier sits on its own `Layer.BARRIER_EXIT` and **only a COMMITTED player's mask includes that bit** (`PhysicsWorld.setPlayerCommitted`, re-evaluated every tick from `FloorManager.isCommittedAt`). Commitment is tested on the room **interior**, which is inset a tile past the doorway the barrier occupies — that inset is load-bearing, since a player who gained the bit while overlapping the body would be squeezed out to an arbitrary side. Projectiles are not matter bodies and consult `physics.barrierAt()` instead, where both sides block: one-way applies to walking, not to arrows.
 
-**Nothing ticks in a room with no player in it.** `GameRoom.tick` computes `awakeRooms` once per tick (`FloorManager.occupiedRoomIds`) and skips dormant enemies for **both** AI and contact damage. A player standing in a passageway counts as present in both rooms it joins, so creatures you're walking toward are already awake instead of snapping to life in your face. Paired with it, every enemy is **confined to its home room** (`Enemy.confineTo`, set at the one `SpawnDirector.addEnemy` choke point): movement intent is clipped per-axis at the room's interior bounds, while knockback is deliberately *not* clipped — being blasted into a doorway is combat feel, and the enemy walks itself back in. Together these are why enemies no longer wander out of rooms or aggro across a floor nobody is watching. Both are inert in the headless harnesses (no FloorManager, so no bounds are ever set), which is why the golden `verify-boss` baseline was unaffected.
+**Nothing ticks in a room with no player in it.** `GameRoom.tick` computes `awakeRooms` once per tick (`FloorManager.occupiedRoomIds`) and skips dormant enemies for **both** AI and contact damage. A player standing in a passageway counts as present in both rooms it joins, so creatures you're walking toward are already awake instead of snapping to life in your face. Paired with it, every enemy is **confined to its home room** (`Enemy.confineTo`, set at the one `SpawnDirector.addEnemy` choke point): movement intent is clipped per-axis at the room's interior bounds, while knockback is deliberately *not* clipped — being blasted into a doorway is combat feel, and the enemy walks itself back in. Together these are why enemies no longer wander out of rooms or aggro across a floor nobody is watching. Both are inert wherever no FloorManager exists (no bounds are ever set), which is why unit tests that build an enemy against a bare `PhysicsWorld` see it wander freely.
 
 **Empty room finalization**: after `spawnFloorEnemies()`, `GameRoom` calls `floorManager.finalizeEmptyRooms()`, which marks all zero-enemy rooms as pre-cleared and removes their outgoing `barrierParent` barriers. Without this, the reward rooms (shop/shrine/chest) lock the player in forever (no enemies to kill = clear condition never fires). **`spawnBoss()` must run before `finalizeEmptyRooms()`** — it's called at the end of `spawnFloorEnemies()` for exactly that reason. Otherwise the boss room is pre-cleared and the boss never locks anyone in. Also, `FloorManager.checkPlayerEnteredRoom()` skips placing `barrierChild` for any room with no enemies — players can always retreat from empty rooms.
 

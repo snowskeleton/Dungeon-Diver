@@ -8,6 +8,10 @@
   ],
   "scripts": {
     "dev": "concurrently \"npm run dev --workspace=server\" \"npm run dev --workspace=client\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:types": "tsc --noEmit -p tests/tsconfig.json",
     "build": "npm run build --workspace=shared && npm run build --workspace=server && npm run build --workspace=client",
     "balance": "TS_NODE_COMPILER_OPTIONS='{\"module\":\"commonjs\"}' ts-node tools/enemy-balance/server.ts",
     "balance:weapons": "TS_NODE_COMPILER_OPTIONS='{\"module\":\"commonjs\"}' ts-node tools/weapon-balance/server.ts",
@@ -16,7 +20,9 @@
   },
   "devDependencies": {
     "@types/pngjs": "^6.0.5",
+    "@vitest/coverage-v8": "^4.1.10",
     "concurrently": "^8.2.2",
-    "pngjs": "^7.0.0"
+    "pngjs": "^7.0.0",
+    "vitest": "^4.1.10"
   }
 }

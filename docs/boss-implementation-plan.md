@@ -2,7 +2,7 @@
 
 ## Status (2026-07-11)
 
-Foundation landed and verified headlessly (`server/src/verify-boss.ts` — drives the
+Foundation landed and verified headlessly (`tests/server/bosses.test.ts` — drives the
 real PhysicsWorld + Boss + Projectile for all 8 bosses):
 
 - **Stage 0 — interaction layers: DONE.** `shared/src/layers.ts` (`Layer` enum,

@@ -109,9 +109,8 @@ export abstract class Enemy extends Entity {
   /** Scale this enemy's health pool by a multiplier decided at spawn time (party-
    *  size scaling — see SpawnDirector). Applied to BOTH max and current HP right
    *  after construction, while current === max, so the enemy simply spawns tougher.
-   *  Rounded to a whole HP. A multiplier of 1 (solo, or the headless harnesses that
-   *  never route through SpawnDirector) is an exact no-op, which is what keeps the
-   *  golden verify-boss baseline byte-identical. */
+   *  Rounded to a whole HP. A multiplier of 1 (solo, or any test that builds an
+   *  enemy directly rather than through SpawnDirector) is an exact no-op. */
   scaleMaxHp(multiplier: number): void {
     if (multiplier === 1) return;
     const scaled = Math.round(this.maxHp * multiplier);
@@ -121,8 +120,8 @@ export abstract class Enemy extends Entity {
 
   /** Confine this enemy to its home room's interior (playtest B6/B14). Set by
    *  SpawnDirector from the room it spawned in; unset for anything spawned
-   *  outside a room, and unset entirely in the headless harnesses — which is why
-   *  the golden verify-boss baseline is unaffected. */
+   *  outside a room, and unset for an enemy built directly against a
+   *  PhysicsWorld — which is why such an enemy wanders freely. */
   confineTo(rect: RoomBounds): void {
     this.homeBounds = rect;
   }

@@ -12,3 +12,6 @@ client/dist/
 # Misc
 .DS_Store
 *.log
+
+# Coverage reports (npm run test:coverage)
+coverage/

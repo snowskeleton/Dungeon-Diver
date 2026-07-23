@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "experimentalDecorators": true,
+    "skipLibCheck": true,
+    "types": ["vitest/globals", "node"],
+    "paths": { "shared": ["../shared/src/index.ts"] },
+    "baseUrl": "."
+  },
+  "include": ["**/*.ts", "../shared/src/**/*.ts", "../server/src/**/*.ts"]
+}

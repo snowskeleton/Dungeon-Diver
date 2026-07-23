@@ -223,22 +223,22 @@ client renders and computes nothing from.
 
 ## Verifying a change here
 
-`server/src/verify-combat.ts` covers instance folding, the stale-spell-cache
-regression, the pipeline, armor/lifesteal/maxHp, and the slot→view round-trip:
+`npm test` covers all of it. The files that matter for this system:
 
 ```bash
-npx ts-node server/src/verify-combat.ts
+npx vitest run tests/server/damage-math.test.ts       # armor, lifesteal, maxHp, the fold
+npx vitest run tests/server/upgrades.test.ts          # the upgrade set + weapon-mod rolls
+npx vitest run tests/shared/weapons.test.ts           # instance folding, the slot→view round-trip
+npx vitest run tests/server/attack-pipeline.test.ts   # the whole pipeline, end to end
+npx vitest run tests/server/bosses.test.ts            # every boss still telegraphs and connects
 ```
 
-**`server/src/verify-boss.ts` output must stay byte-identical** across any change to
-the pipeline — that's the proof enemies and bosses are unaffected. Capture it before
-you start:
+`tests/server/spells.test.ts` holds the stale-spell-cache regression (a modifier
+acquired AFTER a weapon's spell was cached must still apply).
 
-```bash
-npx ts-node server/src/verify-boss.ts > /tmp/boss-before.txt
-# ...make the change...
-npx ts-node server/src/verify-boss.ts | diff /tmp/boss-before.txt -
-```
+Assert **relationships**, not balance numbers — see CLAUDE.md § Tests. A test that
+says "a broadsword deals 20" fails on the next tuning pass without ever having
+caught a defect; one that says "15 damage through 7 armor lands as 8" doesn't.
 
 The reward-pedestal flow (spawning, proximity refusal, claim, double-claim no-op,
 boss drop) needs a **running server** and is currently exercised by ad-hoc headless
