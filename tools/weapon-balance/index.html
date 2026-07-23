@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Weapon &amp; Ammo Balance</title>
+<style>
+  :root {
+    --bg: #14171c;
+    --panel: #1c2129;
+    --line: #2c333d;
+    --text: #e6e9ee;
+    --muted: #7f8a99;
+    --accent: #b98cff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--line); display: flex; align-items: baseline; gap: 16px; position: sticky; top: 0; background: var(--bg); z-index: 5; }
+  header h1 { font-size: 15px; margin: 0; letter-spacing: .5px; }
+  header .legend { color: var(--muted); font-size: 11px; display: flex; gap: 14px; flex-wrap: wrap; }
+  .legend b { color: var(--text); font-weight: 600; }
+  .sw { display: inline-block; width: 11px; height: 11px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
+  #status { margin-left: auto; color: var(--muted); font-size: 11px; }
+  main { padding: 0 20px 60px; }
+  .sheet-title { font-size: 20px; letter-spacing: .5px; margin: 34px 0 4px; padding-top: 12px; border-top: 2px solid var(--line); }
+  .sheet-title:first-child { border-top: 0; padding-top: 0; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin: 22px 0 8px; }
+  table { border-collapse: separate; border-spacing: 0; width: 100%; }
+  th, td { padding: 0; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); text-align: right; white-space: nowrap; }
+  thead th { position: sticky; top: 51px; background: var(--panel); color: var(--muted); font-weight: 600; padding: 7px 9px; cursor: pointer; user-select: none; z-index: 3; }
+  thead th:hover { color: var(--text); }
+  th.name, td.name { text-align: left; position: sticky; left: 0; background: var(--panel); z-index: 2; padding: 6px 12px 6px 10px; border-right: 2px solid var(--line); }
+  td.name { background: var(--bg); }
+  td.name .cls { color: var(--muted); font-size: 11px; }
+  tbody tr:hover td.name { background: #222833; }
+  td.cell { position: relative; }
+  td.cell input { width: 100%; height: 100%; min-width: 66px; border: 0; background: transparent; color: inherit; font: inherit; text-align: right; padding: 6px 20px 6px 9px; outline: none; }
+  td.cell input:focus { box-shadow: inset 0 0 0 2px var(--accent); }
+  td.inherited input { color: var(--muted); font-style: italic; }
+  td.specific { font-weight: 600; }
+  td.specific::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--accent); opacity: .55; }
+  .reset { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); color: var(--muted); cursor: pointer; font-size: 11px; opacity: 0; padding: 2px 3px; }
+  td.cell:hover .reset { opacity: 1; }
+  .reset:hover { color: var(--text); }
+  tr.avg td { color: var(--muted); font-style: normal; border-bottom: none; }
+  tr.avg td.name { color: var(--muted); text-transform: uppercase; font-size: 11px; letter-spacing: 1px; }
+  tr.avg td.cell { padding: 5px 20px 5px 9px; }
+  .na { color: #4a5361; padding: 6px 20px 6px 9px; display: block; }
+</style>
+</head>
+<body>
+<header>
+  <h1>WEAPON&nbsp;&amp;&nbsp;AMMO&nbsp;BALANCE</h1>
+  <div class="legend">
+    <span><span class="sw" style="background:var(--accent)"></span><b>specific</b> (overridden here)</span>
+    <span><i style="color:var(--muted)">inherited</i> from base class</span>
+    <span><span class="sw" style="background:hsl(18 75% 45%)"></span>above avg</span>
+    <span><span class="sw" style="background:hsl(205 70% 45%)"></span>below avg</span>
+    <span>click a value to edit · ↺ resets to inherited</span>
+  </div>
+  <div id="status"></div>
+</header>
+<main id="main">loading…</main>
+
+<script>
+let MODEL = null;
+const sortKey = {}; // `${domain}/${group}` -> key
+const sortDir = {};
+
+function groupLabel(g) {
+  if (g === "base") return "Base defaults";
+  if (g === "one-off" || g === "other") return "One-offs";
+  const cap = g.charAt(0).toUpperCase() + g.slice(1);
+  return cap.endsWith("s") ? cap : cap + "s";
+}
+function setStatus(msg, err) {
+  const s = document.getElementById("status");
+  s.textContent = msg;
+  s.style.color = err ? "#ff8080" : "var(--muted)";
+}
+
+async function load() {
+  const r = await fetch("/api/model");
+  MODEL = await r.json();
+  render();
+}
+
+function cellColor(v, mean, maxDev) {
+  if (v === null || mean === null || maxDev === 0) return "transparent";
+  const t = Math.max(-1, Math.min(1, (v - mean) / maxDev));
+  const a = Math.abs(t);
+  return `hsla(${t >= 0 ? 18 : 205} 70% ${26 + a * 20}% / ${0.22 + a * 0.5})`;
+}
+function columnStats(rows, key) {
+  const vals = rows.map(r => r.stats[key].value).filter(v => v !== null);
+  if (!vals.length) return { mean: null, maxDev: 0 };
+  const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+  return { mean, maxDev: Math.max(...vals.map(v => Math.abs(v - mean)), 1e-9) };
+}
+function columnStatsFor(sheet, rows) {
+  const cols = {};
+  for (const s of sheet.stats) cols[s.key] = columnStats(rows, s.key);
+  return cols;
+}
+function blankCols(sheet) {
+  const cols = {};
+  for (const s of sheet.stats) cols[s.key] = { mean: null, maxDev: 0 };
+  return cols;
+}
+
+function render() {
+  document.title = MODEL.title;
+  const main = document.getElementById("main");
+  main.innerHTML = "";
+  for (const sheet of MODEL.sheets) {
+    const h = document.createElement("div");
+    h.className = "sheet-title";
+    h.textContent = sheet.title;
+    main.appendChild(h);
+    const groups = [];
+    for (const r of sheet.rows) if (!groups.includes(r.group)) groups.push(r.group);
+    for (const g of groups) {
+      const sortId = sheet.domain + "/" + g;
+      if (!(sortId in sortKey)) { sortKey[sortId] = "id"; sortDir[sortId] = 1; }
+      main.appendChild(renderTable(sheet, g, sheet.rows.filter(r => r.group === g), sortId));
+    }
+  }
+}
+
+function renderTable(sheet, group, rows, sortId) {
+  const isBase = group === "base";
+  const wrap = document.createElement("div");
+  const h = document.createElement("h2");
+  h.textContent = isBase
+    ? "Base defaults — edit a base class; everything inheriting reads these unless it overrides"
+    : `${groupLabel(group)} — averages/colors are within this group (${rows.length})`;
+  wrap.appendChild(h);
+
+  const cols = isBase ? blankCols(sheet) : columnStatsFor(sheet, rows);
+  const sk = sortKey[sortId], dir = sortDir[sortId];
+  rows = rows.slice().sort((a, b) => {
+    const av = sk === "id" ? a.id : a.stats[sk].value;
+    const bv = sk === "id" ? b.id : b.stats[sk].value;
+    if (av === bv) return 0;
+    if (av === null) return 1;
+    if (bv === null) return -1;
+    return (av > bv ? 1 : -1) * dir;
+  });
+
+  const table = document.createElement("table");
+  const thead = document.createElement("thead");
+  const htr = document.createElement("tr");
+  htr.appendChild(th("name", isBase ? "Class" : "Item", () => setSort(sortId, "id")));
+  for (const s of sheet.stats) {
+    const arrow = sk === s.key ? (dir > 0 ? " ↑" : " ↓") : "";
+    htr.appendChild(th("", s.label + (s.unit ? ` (${s.unit})` : "") + arrow, () => setSort(sortId, s.key)));
+  }
+  thead.appendChild(htr);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  for (const row of rows) tbody.appendChild(renderRow(sheet, row, cols, isBase));
+  if (!isBase) {
+    const atr = document.createElement("tr");
+    atr.className = "avg";
+    const an = document.createElement("td");
+    an.className = "name";
+    an.textContent = "average";
+    atr.appendChild(an);
+    for (const s of sheet.stats) {
+      const td = document.createElement("td");
+      td.className = "cell";
+      const m = cols[s.key].mean;
+      td.textContent = m === null ? "—" : (Math.round(m * 10) / 10);
+      atr.appendChild(td);
+    }
+    tbody.appendChild(atr);
+  }
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  return wrap;
+}
+
+function th(cls, text, onClick) {
+  const el = document.createElement("th");
+  if (cls) el.className = cls;
+  el.textContent = text;
+  el.onclick = onClick;
+  return el;
+}
+function setSort(sortId, key) {
+  if (sortKey[sortId] === key) sortDir[sortId] *= -1;
+  else { sortKey[sortId] = key; sortDir[sortId] = 1; }
+  render();
+}
+
+function renderRow(sheet, row, cols, isBase) {
+  const tr = document.createElement("tr");
+  const name = document.createElement("td");
+  name.className = "name";
+  name.innerHTML = isBase
+    ? `${row.className}<br><span class="cls">base class</span>`
+    : `${row.id}<br><span class="cls">${row.className}</span>`;
+  tr.appendChild(name);
+
+  for (const s of sheet.stats) {
+    const cell = row.stats[s.key];
+    const td = document.createElement("td");
+    td.className = "cell " + (cell.inherited ? "inherited" : "specific");
+    if (cell.value === null) {
+      const span = document.createElement("span");
+      span.className = "na";
+      span.textContent = "n/a";
+      td.appendChild(span);
+    } else {
+      td.style.background = cellColor(cell.value, cols[s.key].mean, cols[s.key].maxDev);
+      const input = document.createElement("input");
+      input.type = "number";
+      input.value = cell.value;
+      input.title = cell.inherited ? `inherited from ${cell.declaredIn}` : `defined on ${row.className}`;
+      input.onkeydown = (e) => { if (e.key === "Enter") input.blur(); };
+      input.onblur = () => {
+        const v = input.value.trim();
+        if (v === "" || Number(v) === cell.value) return;
+        commit({ domain: sheet.domain, key: row.key, stat: s.key, value: Number(v) });
+      };
+      td.appendChild(input);
+      if (!cell.inherited && cell.canReset) {
+        const rst = document.createElement("span");
+        rst.className = "reset";
+        rst.textContent = "↺";
+        rst.title = "reset to inherited default";
+        rst.onclick = () => commit({ domain: sheet.domain, key: row.key, stat: s.key, value: null });
+        td.appendChild(rst);
+      }
+    }
+    tr.appendChild(td);
+  }
+  return tr;
+}
+
+async function commit(edit) {
+  setStatus("saving …");
+  try {
+    const r = await fetch("/api/edit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(edit),
+    });
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.error || r.statusText);
+    MODEL = body;
+    render();
+    setStatus(`saved ${edit.domain}.${edit.stat} ${edit.value === null ? "reset" : "→ " + edit.value}`);
+  } catch (e) {
+    setStatus("error: " + e.message, true);
+  }
+}
+
+load().catch(e => setStatus("load failed: " + e.message, true));
+</script>
+</body>
+</html>
