@@ -68,14 +68,35 @@ describe("the rank-and-file pass", () => {
     expect(f.enemies.size).toBeGreaterThan(0);
   });
 
-  it("mirrors every enemy onto the synced state and the floor manager", () => {
+  it("registers every enemy with the floor manager but defers the synced state", () => {
     const f = floor();
     f.spawner.spawnFloorEnemies();
 
-    expect(f.state.enemies.size).toBe(f.enemies.size);
+    // Spawning is deferred: the creatures exist and are room-assigned, but none are
+    // on the wire until a player enters — so the synced map starts empty.
+    expect(f.enemies.size).toBeGreaterThan(0);
+    expect(f.state.enemies.size).toBe(0);
     for (const id of f.enemies.keys()) {
       expect(f.floorManager.getEnemyRoom(id), id).toBeDefined();
+      expect(f.enemies.get(id)!.spawned, id).toBe(false);
     }
+  });
+
+  it("reveals a room's whole batch onto the synced state when it is entered", () => {
+    const f = floor();
+    f.spawner.spawnFloorEnemies();
+
+    // Pick a room that actually got enemies and reveal it.
+    const roomId = f.floorManager.getEnemyRoom([...f.enemies.keys()][0])!;
+    const inRoom = [...f.enemies].filter(([id]) => f.floorManager.getEnemyRoom(id) === roomId);
+    f.spawner.spawnRoom(roomId);
+
+    for (const [id, e] of inRoom) {
+      expect(e.spawned, id).toBe(true);
+      expect(f.state.enemies.has(id), id).toBe(true);
+    }
+    // Enemies in other rooms are still hidden.
+    expect(f.state.enemies.size).toBe(inRoom.length);
   });
 
   it("leaves the start room clear, so nobody is jumped on load", () => {

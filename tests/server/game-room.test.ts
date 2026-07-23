@@ -313,11 +313,15 @@ describe("starting the run", () => {
   it("populates the floor only now, not at the first join", async () => {
     const h = await createRoom();
     const host = h.join("s0");
-    expect(h.state.enemies.size).toBe(0);
+    expect(guts(h).enemies.size).toBe(0);
 
     h.send(host, "startRun", {});
 
-    expect(h.state.enemies.size).toBeGreaterThan(0);
+    // The floor's creatures are minted at startRun (confined, party-scaled), but
+    // spawning is DEFERRED — they stay out of the synced state until a player walks
+    // into their room, so the server holds them while the client sees nothing yet.
+    expect(guts(h).enemies.size).toBeGreaterThan(0);
+    expect(h.state.enemies.size).toBe(0);
     h.dispose();
   });
 
@@ -443,8 +447,11 @@ describe("the tick", () => {
     const h = await startedRoom(1, { debug: debug({ enemiesPerRoom: 3, enemyTypes: ["goo-green"] }) });
     const g = guts(h);
     const p = g.players.get("s0")!;
-    // Park an enemy right in front of the player and swing.
+    // Walk the player into the enemy's room so its deferred batch spawns, then park
+    // it right in front of the player and swing.
     const enemy = [...g.enemies.values()][0];
+    p.teleport(enemy.state.x, enemy.state.y);
+    h.tick(1);
     enemy.teleport(p.state.x + 12, p.state.y);
     p.state.facing = "right";
     p.lastInput = { dx: 0, dy: 0, attack: true };
@@ -725,7 +732,8 @@ describe("room challenges on a live floor", () => {
 
     const st = h.state.challenges.get(waveRoom.id)!;
     expect(st).toBeDefined();
-    expect(st.text).toBe("Wave 1 / 3");
+    // enemiesPerRoom 1 → a horde of 1×3; the banner reads slain / total.
+    expect(st.text).toBe("Horde 0 / 3");
     expect(st.complete).toBe(false);
     h.dispose();
   });
@@ -885,7 +893,11 @@ describe("a whole floor, ticked hard", () => {
       expect(() => h.tick(200), roomType).not.toThrow();
       // And the world is still coherent.
       expect(h.state.players.size).toBe(4);
-      expect(g.enemies.size).toBe(h.state.enemies.size);
+      // With deferred spawning the synced map holds only the enemies that have been
+      // revealed; the rest wait unspawned. So state ⊆ server map, and every synced
+      // enemy corresponds to a revealed one.
+      const revealed = [...g.enemies.values()].filter(e => e.spawned).length;
+      expect(h.state.enemies.size).toBe(revealed);
       h.dispose();
     }
   });

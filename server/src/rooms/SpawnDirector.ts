@@ -32,6 +32,11 @@ export class SpawnDirector {
   private dungeon!: DungeonResult;
   private physics!: PhysicsWorld;
   private floorManager!: FloorManager;
+  // Deferred spawning: the floor pass constructs every enemy up front (so its room
+  // locks and party-scaling is fixed at start) but holds each unspawned, keyed by
+  // its home room. `spawnRoom` reveals a room's whole batch at once the first time
+  // a player walks in. Cleared per floor in setFloor.
+  private pendingByRoom = new Map<string, string[]>();
 
   constructor(
     private readonly state: GameState,
@@ -47,6 +52,23 @@ export class SpawnDirector {
     this.dungeon = dungeon;
     this.physics = physics;
     this.floorManager = floorManager;
+    this.pendingByRoom.clear();
+  }
+
+  /** Reveal every unspawned enemy homed to `roomId` — called by GameRoom the tick a
+   *  player is first inside (or in a passageway touching) the room. Adds each to the
+   *  synced state, which is what makes the client draw it and puff smoke over it. A
+   *  no-op for a room with nothing pending, so calling it every tick is cheap. */
+  spawnRoom(roomId: string): void {
+    const ids = this.pendingByRoom.get(roomId);
+    if (!ids || ids.length === 0) return;
+    this.pendingByRoom.delete(roomId);
+    for (const id of ids) {
+      const enemy = this.enemies.get(id);
+      if (!enemy) continue;
+      enemy.reveal();
+      this.state.enemies.set(id, enemy.state);
+    }
   }
 
   // ---- the floor pass ------------------------------------------------------
@@ -83,7 +105,9 @@ export class SpawnDirector {
         // Round-robin walks the listed creatures in order, wrapping to the start
         // when the quota outruns the list; with no list it's a random draw.
         const cls = roundRobin ? pool[filled++ % pool.length] : pool[Math.floor(Math.random() * pool.length)];
-        this.spawnEnemyInRoom(room.id, cls);
+        // Deferred: the enemy is built now (so the room locks and never pre-clears)
+        // but stays hidden until a player walks in.
+        this.spawnEnemyInRoom(room.id, cls, true);
       }
     }
   }
@@ -101,7 +125,9 @@ export class SpawnDirector {
     if (!pos) return;
 
     const BossClass = BOSSES[(this.state.floor - 1) % BOSSES.length];
-    const boss = this.addEnemy(BossClass, pos.x, pos.y);
+    // Deferred like the rabble: the boss materialises in a puff when a player first
+    // steps into the boss room, rather than sitting there from floor start.
+    const boss = this.addEnemy(BossClass, pos.x, pos.y, true);
     // Confine the boss to its room's interior — it moves by setPosition and would
     // otherwise dash straight through doorways/barriers (see Boss.setArena).
     boss.setArena(
@@ -112,12 +138,15 @@ export class SpawnDirector {
     );
   }
 
-  spawnEnemyInRoom(roomId: string, Cls: EnemyClass) {
+  /** Place one enemy at a random interior spot in a room. `deferred` holds it
+   *  unspawned until the room is entered (the floor pass); challenges call it
+   *  without, spawning immediately because a player is already in the room. */
+  spawnEnemyInRoom(roomId: string, Cls: EnemyClass, deferred = false) {
     const room = this.dungeon.rooms.find((r) => r.id === roomId);
     if (!room) return;
     const pos = this.randomPosInRoom(...this.roomInterior(room));
     if (!pos) return;
-    this.addEnemy(Cls, pos.x, pos.y);
+    this.addEnemy(Cls, pos.x, pos.y, deferred);
   }
 
   // Spawn a boss-summoned minion (the Tengu's Mirror Split). It joins its
@@ -135,8 +164,12 @@ export class SpawnDirector {
   }
 
   /** The one place an enemy comes into existence: mint an id, construct it, and
-   *  register it with the three things that track enemies. */
-  private addEnemy<C extends EnemyClass>(Cls: C, x: number, y: number): InstanceType<C> {
+   *  register it with the things that track enemies. When `deferred`, the enemy is
+   *  built and confined but held UNSPAWNED (out of the synced state) until a player
+   *  enters its home room — the floor pass uses this; summons/challenges don't. */
+  private addEnemy<C extends EnemyClass>(
+    Cls: C, x: number, y: number, deferred = false,
+  ): InstanceType<C> {
     const id = `enemy_${this.enemyCounter++}`;
     const enemy = new Cls(this.physics, x, y) as InstanceType<C>;
     // Tougher enemies (and bosses, and boss-summoned adds — all mint here) the
@@ -144,12 +177,23 @@ export class SpawnDirector {
     // so reading it at spawn is authoritative for the enemy's whole life.
     enemy.scaleMaxHp(partyHpMultiplier(this.players.size));
     this.enemies.set(id, enemy);
-    this.state.enemies.set(id, enemy.state);
     this.floorManager.assignEnemy(id, x, y);
     // Creatures stay in the room they spawned in (playtest B6/B14) — no wandering
     // out through a doorway, and no chasing a player into the next room.
     const home = this.floorManager.roomAt(x, y);
     if (home) enemy.confineTo(roomInteriorRect(home));
+
+    // Deferred spawn: hide it until its room is entered. Anything with no home room
+    // (a summon dropped outside a room, say) can't be keyed for reveal, so it spawns
+    // immediately rather than being stranded invisible.
+    if (deferred && home) {
+      enemy.markUnspawned();
+      const pending = this.pendingByRoom.get(home.id);
+      if (pending) pending.push(id);
+      else this.pendingByRoom.set(home.id, [id]);
+    } else {
+      this.state.enemies.set(id, enemy.state);
+    }
     return enemy;
   }
 

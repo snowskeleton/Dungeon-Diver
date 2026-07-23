@@ -94,21 +94,25 @@ describe("wave rooms", () => {
     expect(r.challenge.isComplete).toBe(false);
   });
 
-  it("runs exactly three waves, each larger than the last", () => {
+  it("feeds a fixed horde total, one replacement per kill, capped at the room size", () => {
     const r = waveRoom();
     r.floor.checkPlayerEnteredRoom(r.centre.x, r.centre.y);
 
-    const sizes: number[] = [];
-    for (let guard = 0; guard < 50; guard++) {
+    let killed = 0;
+    let maxAlive = r.living().length;
+    for (let guard = 0; guard < 100; guard++) {
       const alive = r.living();
       if (alive.length === 0) break;
-      sizes.push(alive.length);
-      for (const id of alive) r.kill(r.challenge, id);
+      maxAlive = Math.max(maxAlive, alive.length);
+      r.kill(r.challenge, alive[0]); // one at a time; a replacement refills behind it
+      killed++;
     }
 
-    expect(sizes).toHaveLength(3);
-    expect(sizes[1]).toBeGreaterThan(sizes[0]);
-    expect(sizes[2]).toBeGreaterThan(sizes[1]);
+    // Total = ENEMIES_PER_ROOM × the horde multiplier (3), and never more alive at
+    // once than a normal room holds.
+    expect(killed).toBe(ENEMIES_PER_ROOM * 3);
+    expect(maxAlive).toBeLessThanOrEqual(ENEMIES_PER_ROOM);
+    expect(r.challenge.isComplete).toBe(true);
   });
 
   it("opens the door exactly once, after the final wave", () => {
@@ -127,11 +131,13 @@ describe("wave rooms", () => {
     expect(r.challenge.isComplete).toBe(true);
   });
 
-  it("counts the waves on its banner", () => {
+  it("counts the horde down on its banner as it is slain", () => {
     const r = waveRoom();
-    expect(r.challenge.bannerText).toBe("Wave 1 / 3");
-    for (const id of r.living()) r.kill(r.challenge, id);
-    expect(r.challenge.bannerText).toBe("Wave 2 / 3");
+    // Before the first tick/kill the total isn't fixed yet.
+    expect(r.challenge.bannerText).toBe("Horde");
+    r.kill(r.challenge, r.living()[0]);
+    // total = ENEMIES_PER_ROOM × 3 = 6, one slain.
+    expect(r.challenge.bannerText).toBe("Horde 1 / 6");
   });
 
   it("grants no pedestal of its own — the reward is getting out", () => {

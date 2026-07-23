@@ -55,6 +55,14 @@ export abstract class Enemy extends Entity {
   // Set true the first tick after isDying so GameRoom runs the room-clear check
   // once per death.
   clearCheckDone = false;
+  // Deferred spawning: an enemy minted by the floor pass starts UNSPAWNED — it is
+  // constructed, confined, and registered with FloorManager (so its room locks and
+  // is never pre-cleared), but it is not in the synced state, does not tick, deals
+  // no contact damage, and cannot be hit. It reveals — with a puff of smoke on the
+  // client — the first time a player walks into its home room (SpawnDirector.spawnRoom).
+  // Defaults to TRUE so an enemy built directly against a bare PhysicsWorld (unit
+  // tests) or summoned mid-fight is active immediately, no FloorManager required.
+  private _spawned = true;
   protected patrolOriginX: number;
   protected patrolOriginY: number;
   private patrolAngle: number = Math.random() * Math.PI * 2;
@@ -104,6 +112,26 @@ export abstract class Enemy extends Entity {
 
   get isDying(): boolean {
     return this.state.isDying;
+  }
+
+  /** Whether this enemy has been revealed (see the _spawned note). GameRoom skips
+   *  the AI and contact-damage passes for an unspawned enemy, and it is not a
+   *  combat target (damageable is false), so it sits inert in its sealed room. */
+  get spawned(): boolean {
+    return this._spawned;
+  }
+
+  /** Mark this enemy as unspawned — called by SpawnDirector for the deferred floor
+   *  pass, right after construction and before it is handed out. */
+  markUnspawned(): void {
+    this._spawned = false;
+  }
+
+  /** Reveal this enemy. SpawnDirector calls it when a player first enters the home
+   *  room, then adds the enemy to the synced state so the client shows it (with a
+   *  smoke puff on the state add). Idempotent. */
+  reveal(): void {
+    this._spawned = true;
   }
 
   /** Scale this enemy's health pool by a multiplier decided at spawn time (party-
@@ -164,9 +192,10 @@ export abstract class Enemy extends Entity {
     return ENEMY_HURT_BOUNDS[this.typeId];
   }
 
-  /** A dying enemy plays its death animation but takes no further hits. */
+  /** A dying enemy plays its death animation but takes no further hits; an
+   *  unspawned one isn't in the world yet, so it can't be hit either. */
   override get damageable(): boolean {
-    return !this.state.isDying;
+    return !this.state.isDying && this._spawned;
   }
 
   // A contact/touch attack: while alive, un-stunned, and off cooldown, the enemy's

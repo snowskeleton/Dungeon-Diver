@@ -19,6 +19,7 @@ import { ProjectileEntity } from "../entities/ProjectileEntity";
 import { CLIENT_CHARACTER_VISUAL_REGISTRY } from "../characters";
 import { preloadAttackFX, defineAttackFXAnimations } from "../entities/AttackFXSprites";
 import { HitFX, preloadHitFX, defineHitFXAnimation } from "../entities/HitFX";
+import { SpawnFX, preloadSpawnFX, defineSpawnFXAnimation } from "../entities/SpawnFX";
 import { preloadBowSheet, defineBowAnimation } from "../entities/RangedWeaponFX";
 import { CLIENT_ENEMY_REGISTRY } from "../enemies";
 import { HitboxDebug } from "../debug/HitboxDebug";
@@ -95,6 +96,7 @@ export class GameScene extends Phaser.Scene {
   private currentMapGroup: Phaser.GameObjects.Group | null = null;
   private barriers!: BarrierOverlays;
   private hitFx!: HitFX;
+  private spawnFx!: SpawnFX;
   private currentSeed = MAP_SEED;
   private currentFloor = 1;
   private mapCols = 0;
@@ -151,6 +153,7 @@ export class GameScene extends Phaser.Scene {
     preloadTiles(this);
     preloadAttackFX(this);
     preloadHitFX(this);
+    preloadSpawnFX(this);
     preloadChest(this);
 
     // Preload each unique character spritesheet once
@@ -190,6 +193,7 @@ export class GameScene extends Phaser.Scene {
   async create() {
     defineAttackFXAnimations(this);
     defineHitFXAnimation(this);
+    defineSpawnFXAnimation(this);
     defineChestAnimations(this);
 
     // Define animations for each unique character spritesheet once
@@ -216,6 +220,7 @@ export class GameScene extends Phaser.Scene {
     this.ui = new UiLayer(this, this.scale.width, this.scale.height);
 
     this.hitFx = new HitFX(this);
+    this.spawnFx = new SpawnFX(this);
     this.barriers = new BarrierOverlays(this);
     // Built before rebuildMap so its first call can lay out the minimap. The
     // toggle is applied once options are loaded, just below.
@@ -544,6 +549,12 @@ export class GameScene extends Phaser.Scene {
       );
       this.enemies.set(id, e);
       enemyState.onChange(() => e.setTarget(enemyState));
+      // An enemy only enters the synced state when the server reveals it — the party
+      // walking into its room, or a boss summoning it — so a state add always marks a
+      // genuine spawn. Puff dust over it as it appears. (Colyseus fires onAdd for
+      // pre-existing entries when this callback registers, but at run start the map is
+      // empty since spawning is deferred, so no spurious puffs on join.)
+      this.spawnFx.play(enemyState.x, enemyState.y);
     });
 
     state.enemies.onRemove((_: EnemyStateView, id: string) => {
