@@ -2,6 +2,11 @@
 FROM node:20-slim AS build
 WORKDIR /app
 
+# node:20-slim ships npm 10, but package-lock.json is written by npm 11 and npm 10
+# rejects it ("Missing esbuild@0.28.1 from lock file" — it re-resolves vitest's
+# bundled vite differently). Match the npm that generated the lock.
+RUN npm install -g npm@11
+
 # Install the full workspace graph so `shared` resolves for both builds.
 COPY package.json package-lock.json ./
 COPY shared/package.json ./shared/
