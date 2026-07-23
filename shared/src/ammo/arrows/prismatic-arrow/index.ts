@@ -1,5 +1,5 @@
 import { Arrow } from "../base";
-
-export default new Arrow({
-  id: "prismatic-arrow", name: "Prismatic Arrow",
-});
+export class PrismaticArrow extends Arrow {
+  readonly id = "prismatic-arrow";
+  readonly name = "Prismatic Arrow";
+}

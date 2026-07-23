@@ -6,9 +6,13 @@
 // Folder layout mirrors weapons/: ammo that shares a behaviour bundle is grouped
 // under a category folder with its own base subclass (arrows/, boomerangs/);
 // one-offs (throwing-knife, throwing-star) sit flat at the top level. Each ammo
-// is <…>/<id>/index.ts (`export default new …({ ... })`) + <id>/<id>.png.
+// is <…>/<id>/index.ts (`export class … extends …`) + <id>/<id>.png.
 // sync-to-client.js copies shared/src/ammo/**/*.png into client/public/sprites/
 // ammo/ preserving that structure, so the derived spritePath resolves at runtime.
+
+// Type-only (erased at runtime) so there's no import cycle with index.ts, which
+// imports the concrete ammo classes and defines the AmmoId union.
+import type { AmmoId } from "./index";
 
 // Categories with a shared base subclass. One-offs pass no category and live flat.
 export type AmmoCategory = "arrows" | "boomerangs" | "bolts";
@@ -82,53 +86,45 @@ export interface AmmoConfig {
   ignoresWalls?: boolean;
 }
 
-/** Everything an ammo needs except the derived spritePath. */
-export type AmmoOpts = Omit<AmmoConfig, "spritePath">;
+// Ammo is object-oriented like Weapon and Enemy: an abstract base with getter
+// defaults → a category base (Arrow/Bolt/Boomerang) that sets the shared
+// behaviour bundle → a concrete ammo class that overrides only what differs. No
+// DEFAULTS-object merge and no id→config table; the stats are compiler-checked
+// getters. `implements AmmoConfig` keeps the read shape consumers already use.
+//
+// Every concrete ammo supplies `id` and `name`; a category base supplies
+// `category` and the family's stat defaults. The generic getters below are
+// functional placeholders so a brand-new ammo flies straight out of the box.
+export abstract class Ammo implements AmmoConfig {
+  /** Typed as AmmoId so a concrete class declaring `readonly id = "…"` is
+   *  compiler-checked against the union. (Type-only import — no runtime cycle.) */
+  abstract readonly id: AmmoId;
+  abstract readonly name: string;
 
-export class Ammo implements AmmoConfig {
-  readonly id: string;
-  readonly name: string;
-  readonly damage: number;
-  readonly speed: number;
-  readonly pierce: number;
-  readonly knockback: number;
-  readonly lifetimeMs: number;
-  readonly hitRadiusForward: number;
-  readonly hitRadiusSide: number;
-  readonly spriteAngle: number;
-  readonly spinDegPerSec: number;
-  readonly fixedAngle: boolean;
-  readonly returnsAtMs?: number;
-  readonly ignoresWalls: boolean;
-  readonly category?: AmmoCategory;
-  readonly spritePath: string;
-  readonly tint?: number;
+  get damage(): number { return 10; }
+  get speed(): number { return 300; }
+  get pierce(): number { return 1; }
+  get knockback(): number { return 5; }
+  get lifetimeMs(): number { return 1000; }
+  get hitRadiusForward(): number { return 10; }
+  get hitRadiusSide(): number { return 10; }
+  get spriteAngle(): number { return 0; }
+  get spinDegPerSec(): number { return 0; }
+  get fixedAngle(): boolean { return false; }
+  get ignoresWalls(): boolean { return false; }
+  get returnsAtMs(): number | undefined { return undefined; }
+  get tint(): number | undefined { return undefined; }
+  /** Set by a category base (Arrow/Bolt/Boomerang); undefined = a flat one-off. */
+  get category(): AmmoCategory | undefined { return undefined; }
 
-  constructor(o: AmmoOpts) {
-    this.id = o.id;
-    this.name = o.name;
-    this.damage = o.damage;
-    this.speed = o.speed;
-    this.pierce = o.pierce;
-    this.knockback = o.knockback;
-    this.lifetimeMs = o.lifetimeMs;
-    this.hitRadiusForward = o.hitRadiusForward;
-    this.hitRadiusSide = o.hitRadiusSide;
-    this.spriteAngle = o.spriteAngle;
-    this.spinDegPerSec = o.spinDegPerSec ?? 0;
-    this.fixedAngle = o.fixedAngle ?? false;
-    this.returnsAtMs = o.returnsAtMs;
-    this.ignoresWalls = o.ignoresWalls ?? false;
-    this.category = o.category;
-    this.tint = o.tint;
-    // Category ammo nests under its folder (arrows/, boomerangs/); one-offs are flat.
-    const dir = o.category ? `${o.category}/` : "";
-    this.spritePath = `/sprites/ammo/${dir}${o.id}/${o.id}.png`;
+  /** Client sprite path. Category ammo nests under its folder; one-offs are flat. */
+  get spritePath(): string {
+    const dir = this.category ? `${this.category}/` : "";
+    return `/sprites/ammo/${dir}${this.id}/${this.id}.png`;
   }
 }
 
-/** Partial override for category subclass constructors — only id/name/damage are
- *  required; everything else (speed, lifetime, behaviour) falls back to the
- *  category's DEFAULTS. (Ammo is still plain config — a constructor + DEFAULTS
- *  merge — whereas weapons are now getter-based classes.) */
-export type AmmoOverride = Partial<AmmoOpts> & Pick<AmmoOpts, "id" | "name">;
+/** A concrete ammo class: `new`-able with no args and carrying its id, so the
+ *  registry builds from a plain array of classes — the ammo analogue of
+ *  WeaponClass / EnemyClass. */
+export type AmmoClass = { new (): Ammo };

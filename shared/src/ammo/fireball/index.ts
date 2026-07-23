@@ -4,9 +4,15 @@ import { Ammo } from "../base";
 // so a player can read it and sidestep — bosses telegraph, then throw dodgeable
 // shots (see docs/bosses.md). The team it damages is decided at spawn time via
 // the projectile's `affects` mask, not here (see docs/layers.md).
-export default new Ammo({
-  id: "fireball", name: "Fireball",
-  damage: 12, speed: 170, pierce: 1, knockback: 2,
-  lifetimeMs: 3000, hitRadiusForward: 12, hitRadiusSide: 12,
-  spriteAngle: 0,
-});
+export class Fireball extends Ammo {
+  readonly id = "fireball";
+  readonly name = "Fireball";
+  get damage() { return 12; }
+  get speed() { return 170; }
+  get pierce() { return 1; }
+  get knockback() { return 2; }
+  get lifetimeMs() { return 3000; }
+  get hitRadiusForward() { return 12; }
+  get hitRadiusSide() { return 12; }
+  get spriteAngle() { return 0; }
+}

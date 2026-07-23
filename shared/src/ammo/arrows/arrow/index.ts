@@ -1,6 +1,7 @@
-import { Arrow } from "../base";
+import { Arrow as ArrowBase } from "../base";
 
-// speed (320) and all behaviour come from the Arrow defaults.
-export default new Arrow({
-  id: "arrow", name: "Arrow",
-});
+// All stats come from the Arrow defaults; the plain arrow overrides nothing.
+export class Arrow extends ArrowBase {
+  readonly id = "arrow";
+  readonly name = "Arrow";
+}

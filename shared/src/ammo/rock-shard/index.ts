@@ -11,16 +11,16 @@ import { Ammo } from "../base";
 // ammo; only the sprite, `speed: 0` (it stands where it erupts), and `fixedAngle`
 // (renders upright regardless of its spoke) matter. Lifetime is set per-spawn by
 // the ability so a whole staggered cast clears on one tick.
-export default new Ammo({
-  id: "rock-shard",
-  name: "Rock Shard",
-  damage: 0,
-  speed: 0,
-  pierce: 1,
-  knockback: 0,
-  lifetimeMs: 1200,
-  hitRadiusForward: 8,
-  hitRadiusSide: 8,
-  spriteAngle: 0,
-  fixedAngle: true,
-});
+export class RockShard extends Ammo {
+  readonly id = "rock-shard";
+  readonly name = "Rock Shard";
+  get damage() { return 0; }
+  get speed() { return 0; }
+  get pierce() { return 1; }
+  get knockback() { return 0; }
+  get lifetimeMs() { return 1200; }
+  get hitRadiusForward() { return 8; }
+  get hitRadiusSide() { return 8; }
+  get spriteAngle() { return 0; }
+  get fixedAngle() { return true; }
+}

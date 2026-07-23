@@ -1,6 +1,6 @@
 import { Arrow } from "../base";
-
-export default new Arrow({
-  id: "piercing-arrow", name: "Piercing Arrow",
-  pierce: 3,
-});
+export class PiercingArrow extends Arrow {
+  readonly id = "piercing-arrow";
+  readonly name = "Piercing Arrow";
+  get pierce() { return 3; }
+}

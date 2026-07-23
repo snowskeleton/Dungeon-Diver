@@ -1,8 +1,15 @@
 import { Ammo } from "../base";
 
-export default new Ammo({
-  id: "throwing-star", name: "Throwing Star",
-  damage: 11, speed: 320, pierce: 2, knockback: 2,
-  lifetimeMs: 900, hitRadiusForward: 10, hitRadiusSide: 10, spriteAngle: 0,
-  spinDegPerSec: 1200,
-});
+export class ThrowingStar extends Ammo {
+  readonly id = "throwing-star";
+  readonly name = "Throwing Star";
+  get damage() { return 11; }
+  get speed() { return 320; }
+  get pierce() { return 2; }
+  get knockback() { return 2; }
+  get lifetimeMs() { return 900; }
+  get hitRadiusForward() { return 10; }
+  get hitRadiusSide() { return 10; }
+  get spriteAngle() { return 0; }
+  get spinDegPerSec() { return 1200; }
+}
