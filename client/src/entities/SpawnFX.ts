@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { ENEMY_SPAWN_EMERGE_MS } from "shared";
 
 // The dust puff played wherever an enemy spawns into the world. Enemies are now
 // deferred — the server holds a room's enemies hidden until a player walks in, then
@@ -33,7 +34,9 @@ export function defineSpawnFXAnimation(scene: Phaser.Scene) {
     frames: scene.anims.generateFrameNumbers(KEY, {
       frames: Array.from({ length: FRAMES }, (_, i) => i),
     }),
-    frameRate: 30,
+    // Paced to span the server's emerge window, so the dust is still settling as
+    // the enemy finishes rising out of it and starts to move.
+    frameRate: FRAMES / (ENEMY_SPAWN_EMERGE_MS / 1000),
     repeat: 0,
   });
 }

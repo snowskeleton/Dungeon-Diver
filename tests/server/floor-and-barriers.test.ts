@@ -204,15 +204,15 @@ describe("room occupancy and dormancy", () => {
     expect(floor.occupiedRoomIds([childCentre])).toEqual(new Set([conn.childRoomId]));
   });
 
-  it("counts a player in a passageway as present in BOTH rooms it joins", () => {
-    // So creatures you are walking towards are already awake, rather than
-    // snapping to life once you are through the door.
+  it("does NOT count a player in a passageway as present in either room", () => {
+    // You must walk all the way through the doorway into the room's interior
+    // before its enemies reveal — standing in the doorway does not count.
     const { floor, conn } = setup();
     const gate = gateOf(conn);
     const occupied = floor.occupiedRoomIds([gate]);
 
-    expect(occupied.has(conn.parentRoomId)).toBe(true);
-    expect(occupied.has(conn.childRoomId)).toBe(true);
+    expect(occupied.has(conn.parentRoomId)).toBe(false);
+    expect(occupied.has(conn.childRoomId)).toBe(false);
   });
 
   it("reports nothing when the party is nowhere near a room", () => {

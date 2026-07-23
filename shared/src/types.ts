@@ -110,6 +110,11 @@ export const KNOCKBACK_STUN_MS_PER_UNIT = 60; // ms of stun per unit of overage
 export const KNOCKBACK_STUN_MAX_MS = 3000;    // cap so big hits don't stun-lock forever
 export const SERVER_TICK_MS = 50;   // 20 Hz
 export const MAX_CLIENTS = 4;
+// When a deferred enemy is revealed (a player walks into its room) it doesn't act
+// immediately: it emerges from its dust puff over this long, holding in place and
+// dealing no contact damage, then starts moving. Shared so the client can pace the
+// spawn smoke to the same window.
+export const ENEMY_SPAWN_EMERGE_MS = 1000;
 // Physics body geometry (simulated in server PhysicsWorld). Shared so the client
 // debug overlay can draw the exact collision circle the server uses: a circle of
 // ENTITY_RADIUS at the sprite's FEET (state.y + FOOT_OFFSET).

@@ -540,6 +540,8 @@ export class GameRoom extends Room<GameState> {
     this.enemies.forEach((enemy, id) => {
       if (enemy.isDying) return;
       if (!enemy.spawned) return;
+      // Freshly revealed: hold still in the spawn puff for a beat before acting.
+      if (enemy.emerging) { enemy.advanceEmerge(dtMs); return; }
 
       const enemyRoomId = this.floorManager.getEnemyRoom(id);
       const visiblePlayers = new Map<string, PlayerState>();

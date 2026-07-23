@@ -13,6 +13,7 @@ import {
   ROOM_H,
   partyHpMultiplier,
   ENEMY_HP_PLAYER_SCALE,
+  ENEMY_SPAWN_EMERGE_MS,
   roomInteriorContains,
 } from "shared";
 import { SpawnDirector } from "../../server/src/rooms/SpawnDirector";
@@ -97,6 +98,27 @@ describe("the rank-and-file pass", () => {
     }
     // Enemies in other rooms are still hidden.
     expect(f.state.enemies.size).toBe(inRoom.length);
+  });
+
+  it("makes a revealed enemy EMERGE — inert in its puff — before it can act", () => {
+    const f = floor();
+    const enemy = new GooGreen(f.physics, 300, 300);
+    enemy.markUnspawned();
+    enemy.reveal();
+
+    // Just revealed: visible but still rising, so no contact hazard yet.
+    expect(enemy.emerging).toBe(true);
+    expect(enemy.contactHitSource("e")).toBeNull();
+
+    // Hold it there for the whole emerge window...
+    let waited = 0;
+    while (enemy.emerging) {
+      enemy.advanceEmerge(50);
+      waited += 50;
+    }
+    // ...which is the shared spawn window, then it becomes a live hazard.
+    expect(waited).toBe(ENEMY_SPAWN_EMERGE_MS);
+    expect(enemy.contactHitSource("e")).not.toBeNull();
   });
 
   it("leaves the start room clear, so nobody is jumped on load", () => {

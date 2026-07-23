@@ -196,22 +196,15 @@ export class FloorManager {
 
   /** Which rooms have a player in or at them. GameRoom uses this to DEFER SPAWNING:
    *  a room's enemies are hidden until it appears here, then they all reveal at once
-   *  (SpawnDirector.spawnRoom). A player standing in a passageway counts as present
-   *  in BOTH rooms it joins, so the creatures you're walking towards puff into view
-   *  as you come through the doorway rather than snapping in once you're all the way
-   *  through. (It formerly drove room dormancy — freezing enemies in unwatched rooms
-   *  — which deferred spawning made unnecessary: an enemy you've never reached simply
-   *  does not exist yet.) */
+   *  (SpawnDirector.spawnRoom). A player counts as present only once they are inside a
+   *  room's INTERIOR (roomAt applies the 1-tile inset) — standing in the doorway
+   *  passageway does NOT count you as in the room you're walking towards, so enemies
+   *  don't reveal until you've stepped all the way through into the next room. */
   occupiedRoomIds(playerPositions: Array<{ x: number; y: number }>): Set<string> {
     const ids = new Set<string>();
     for (const p of playerPositions) {
       const room = this.roomAt(p.x, p.y);
       if (room) ids.add(room.id);
-      for (const conn of this.connections) {
-        if (!this.inPassageway(p.x, p.y, conn)) continue;
-        ids.add(conn.parentRoomId);
-        ids.add(conn.childRoomId);
-      }
     }
     return ids;
   }
