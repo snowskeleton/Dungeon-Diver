@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { InteractPrompt } from "./InteractPrompt";
 
 // In-world view of a reward pedestal (shrine boon / boss drop). Deliberately a
 // near-sibling of ShopItemEntity — same "not an Entity, no HP bar, just reflects
@@ -9,6 +10,7 @@ const GLOW = 0xffe066;
 export class OfferPedestalEntity {
   private objects: Phaser.GameObjects.GameObject[] = [];
   private glow: Phaser.GameObjects.Arc;
+  private prompt: InteractPrompt;
   readonly x: number;
   readonly y: number;
 
@@ -37,6 +39,14 @@ export class OfferPedestalEntity {
       fontSize: "11px", color: "#ffe066", backgroundColor: "#000000aa", fontStyle: "bold",
     }).setOrigin(0.5, 0).setDepth(3).setPadding(4, 1);
     this.objects.push(label);
+
+    this.prompt = new InteractPrompt(scene, x, y - 4, "take");
+  }
+
+  /** Show/hide the "press F to take" hint (driven by local-player proximity). */
+  setPromptShown(shown: boolean) {
+    if (shown) this.prompt.show("take");
+    else this.prompt.hide();
   }
 
   /** Ghost out once someone has taken it (first-come — see GameRoom offerPick). */
@@ -45,6 +55,7 @@ export class OfferPedestalEntity {
   }
 
   destroy() {
+    this.prompt.destroy();
     this.objects.forEach((o) => o.destroy());
     this.objects = [];
   }
