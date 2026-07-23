@@ -35,6 +35,17 @@ export interface DebugConfig {
    * are ignored. See server/src/upgrades.
    */
   startingUpgrades: string[];
+  /**
+   * Respawn dead players at the floor's spawn point instead of leaving them
+   * dead. The shipping game is permadeath; respawn is a test affordance, so it
+   * lives here and defaults off. Read by GameRoom's death check.
+   */
+  respawnOnDeath: boolean;
+  /**
+   * The room-locked camera's zoom factor. Players always get the default 2×;
+   * only the debug menu can change it. Read client-side by GameScene.
+   */
+  cameraZoom: number;
 }
 
 export const DEFAULT_DEBUG_CONFIG: DebugConfig = {
@@ -48,6 +59,8 @@ export const DEFAULT_DEBUG_CONFIG: DebugConfig = {
   enemyTypes: [],
   enemiesPerRoom: -1,
   startingUpgrades: [],
+  respawnOnDeath: false,
+  cameraZoom: 2,
 };
 
 export function toDungeonOptions(cfg: DebugConfig): DungeonOptions {
