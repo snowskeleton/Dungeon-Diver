@@ -1,51 +1,73 @@
 import { RoomChallenge, ChallengeContext } from "./RoomChallenge";
 
-/** Total waves, including the one the normal floor spawn already placed. */
-const WAVE_COUNT = 3;
+/** How many rooms-worth of enemies the whole horde is. `enemiesPerRoom()` sets both
+ *  the initial batch (already placed by the floor pass) and the concurrent cap, so a
+ *  ×3 horde is three normal rooms of enemies fed through a one-room-sized doorway. */
+const HORDE_MULTIPLIER = 3;
 
-/** A room that refills. Wave 1 is spawned by GameRoom's ordinary rank-and-file
- *  pass, so the room locks and reads exactly like a combat room on entry; each
- *  time the last enemy falls the next wave arrives instead of the door opening.
+/** A room of continuous attrition. The floor's ordinary rank-and-file pass places
+ *  the first batch, so the room locks and reads like a combat room on entry. From
+ *  there it is NOT discrete waves: a fixed total of enemies is fed in, and every
+ *  time one dies a fresh one takes its place — up to a concurrent cap — until the
+ *  reserve is spent and the last of them falls. So it plays as a timed/attrition
+ *  fight sized by the enemy TOTAL rather than by a wave count.
  *
- *  FloorManager needs no special case for this. Its clear rule is "every enemy in
- *  the room's set is dying", and `onEnemyDown` runs BEFORE that check — the fresh
- *  wave is already in the set by the time it evaluates, so the room simply stays
- *  locked. The last wave adds nothing and the room clears normally. */
+ *  FloorManager needs no special case, for the same reason the old wave room didn't:
+ *  its clear rule is "every enemy in the room's set is dying", and `onEnemyDown` runs
+ *  BEFORE that check — a just-spawned replacement is already in the set by the time it
+ *  evaluates, so the room stays locked until the reserve runs out. */
 export class WaveChallenge extends RoomChallenge {
-  private wave = 1;
-  // Set when the LAST wave is downed, not when the last wave is spawned — the
-  // banner and the tick-skip guard both key off this, and the player is still
-  // very much in a fight during wave 3.
+  private inited = false;
+  private total = 0;
+  private reserve = 0; // enemies not yet introduced
+  private slain = 0;
   private done = false;
 
   get bannerText(): string {
-    return `Wave ${this.wave} / ${WAVE_COUNT}`;
+    if (!this.inited) return "Horde";
+    return `Horde ${this.slain} / ${this.total}`;
   }
 
   get isComplete(): boolean {
     return this.done;
   }
 
+  /** Fix the horde size once, from the floor/party-scaled per-room count. Called
+   *  from both tick and onEnemyDown so the total is known before the party arrives
+   *  (the banner) and the moment the first enemy dies (the refill). */
+  private ensureInit(ctx: ChallengeContext): void {
+    if (this.inited) return;
+    const perRoom = ctx.enemiesPerRoom();
+    this.total = perRoom * HORDE_MULTIPLIER;
+    // The floor pass already placed one room's worth as the opening batch.
+    this.reserve = Math.max(0, this.total - perRoom);
+    this.inited = true;
+  }
+
+  tick(_dtMs: number, ctx: ChallengeContext): void {
+    if (this.done) return;
+    this.ensureInit(ctx);
+  }
+
   onEnemyDown(ctx: ChallengeContext): void {
     if (this.done) return;
-    // livingEnemyCount excludes anything already dying, and the caller flags the
-    // dying enemy before we run, so zero here means "that was the last of the wave".
-    if (ctx.livingEnemyCount(ctx.roomId) > 0) return;
+    this.ensureInit(ctx);
+    this.slain++;
 
-    if (this.wave >= WAVE_COUNT) {
-      this.done = true;
-      return;
-    }
-
-    this.wave++;
     const pool = ctx.enemyPool();
-    if (pool.length === 0) return;
-    // Each wave lands one heavier than the last, so the room escalates rather
-    // than repeating. Built off enemiesPerRoom() so floor scaling and the debug
-    // count knob both still apply.
-    const count = ctx.enemiesPerRoom() + (this.wave - 1);
-    for (let i = 0; i < count; i++) {
+    // livingEnemyCount excludes the enemy that just died (the caller flags it first).
+    let living = ctx.livingEnemyCount(ctx.roomId);
+    const cap = ctx.enemiesPerRoom();
+    // Refill up to the concurrent cap, drawing from the reserve, so the room stays
+    // full rather than thinning out as the fight goes on.
+    while (this.reserve > 0 && living < cap && pool.length > 0) {
       ctx.spawnEnemyInRoom(ctx.roomId, pool[Math.floor(Math.random() * pool.length)]);
+      this.reserve--;
+      living++;
     }
+
+    // The horde is beaten only when nothing is left to introduce AND the floor is
+    // clear of the living — that last kill is what opens the door.
+    if (this.reserve === 0 && living === 0) this.done = true;
   }
 }

@@ -194,11 +194,14 @@ export class FloorManager {
     return childUnlocked;
   }
 
-  /** Which rooms have a player in or at them. A room with nobody in it is
-   *  DORMANT: GameRoom skips its enemies entirely — no AI, no movement, no
-   *  contact damage (playtest B14). A player standing in a passageway counts as
-   *  present in BOTH rooms it joins, so the creatures you're walking towards are
-   *  already awake rather than snapping to life once you're through the door. */
+  /** Which rooms have a player in or at them. GameRoom uses this to DEFER SPAWNING:
+   *  a room's enemies are hidden until it appears here, then they all reveal at once
+   *  (SpawnDirector.spawnRoom). A player standing in a passageway counts as present
+   *  in BOTH rooms it joins, so the creatures you're walking towards puff into view
+   *  as you come through the doorway rather than snapping in once you're all the way
+   *  through. (It formerly drove room dormancy — freezing enemies in unwatched rooms
+   *  — which deferred spawning made unnecessary: an enemy you've never reached simply
+   *  does not exist yet.) */
   occupiedRoomIds(playerPositions: Array<{ x: number; y: number }>): Set<string> {
     const ids = new Set<string>();
     for (const p of playerPositions) {

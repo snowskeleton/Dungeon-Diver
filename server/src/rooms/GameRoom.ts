@@ -510,20 +510,19 @@ export class GameRoom extends Room<GameState> {
     // 1. Player inputs.
     this.players.forEach((player) => player.applyInput(player.lastInput, dtMs));
 
-    // 1a. Which rooms are awake this tick. An empty room simulates NOTHING —
-    //     see `dormant` below — so the floor is only ever as busy as the party
-    //     can see, and creatures can't drift out of a room nobody is watching.
+    // 1a. Deferred spawning. Each room's enemies were built at floor start but held
+    //     hidden; the first time a player is inside a room (or in a passageway
+    //     touching it) its whole batch is revealed at once — appearing in the synced
+    //     state, which is what puffs smoke over them on the client. This replaces the
+    //     old room-dormancy machinery: an enemy you have never reached simply does
+    //     not exist yet, so nothing needs to freeze it. Once revealed it ticks
+    //     normally, confined to its home room, so it still can't chase across the
+    //     floor (see Enemy.confineTo — a SEPARATE concern that stays).
     const playerPositions: Array<{ x: number; y: number }> = [];
     this.players.forEach((p) => playerPositions.push({ x: p.state.x, y: p.state.y }));
-    const awakeRooms = this.floorManager.occupiedRoomIds(playerPositions);
-    /** An enemy in a room with no player in it. Dormant enemies are skipped for
-     *  AI (step 2) AND for contact damage (step 3) — "nothing ticks" is the whole
-     *  point (playtest B14). Anything with no home room (spawned outside a room)
-     *  is never dormant, so nothing can be stranded frozen. */
-    const dormant = (id: string): boolean => {
-      const roomId = this.floorManager.getEnemyRoom(id);
-      return roomId !== undefined && !awakeRooms.has(roomId);
-    };
+    for (const roomId of this.floorManager.occupiedRoomIds(playerPositions)) {
+      this.spawner.spawnRoom(roomId);
+    }
 
     // 1b. One-way barriers (playtest B1/G1). A player inside a locked room is
     //     COMMITTED — their body starts colliding with that room's exit barrier —
@@ -540,7 +539,7 @@ export class GameRoom extends Room<GameState> {
     //    in rooms that don't touch the passageway the player is currently in.
     this.enemies.forEach((enemy, id) => {
       if (enemy.isDying) return;
-      if (dormant(id)) return;
+      if (!enemy.spawned) return;
 
       const enemyRoomId = this.floorManager.getEnemyRoom(id);
       const visiblePlayers = new Map<string, PlayerState>();
@@ -571,7 +570,7 @@ export class GameRoom extends Room<GameState> {
     };
     this.players.forEach((player, sid) => drain(sid, PLAYER_ATTACK_AFFECTS, player.drainEffects()));
     this.enemies.forEach((enemy, id) => {
-      if (dormant(id)) return;
+      if (!enemy.spawned) return;
       const contact = enemy.contactHitSource(id);
       if (contact) sources.push(contact);
       drain(id, ENEMY_ATTACK_AFFECTS, enemy.drainEffects());
@@ -678,7 +677,7 @@ export class GameRoom extends Room<GameState> {
 
     // 8. Tile effects.
     this.players.forEach((p) => p.applyTileEffects(dtMs));
-    this.enemies.forEach((e) => { if (!e.isDying) e.applyTileEffects(dtMs); });
+    this.enemies.forEach((e) => { if (!e.isDying && e.spawned) e.applyTileEffects(dtMs); });
 
     // 9. Stairs and trap detection.
     //    Stairs are a PARTY action: the floor only advances once every living

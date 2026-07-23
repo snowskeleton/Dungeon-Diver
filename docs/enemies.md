@@ -110,6 +110,20 @@ A boss is a `Boss` subclass — one per boss, in `server/src/entities/bosses/<Na
 
 Bosses deal **no passive contact damage** — every hit is a telegraphed Spell, so `Boss` overrides `contactHitSource()` to return null. A boss's collision body is still the standard `ENTITY_RADIUS` circle at its feet, so a 64px sprite has a small hitbox.
 
+## Deferred spawning (you get no say, but know it happens)
+
+An enemy is **constructed at floor start but not revealed until a player walks into its
+room.** `SpawnDirector.spawnFloorEnemies` builds every creature (confined, party-scaled,
+registered with FloorManager so the room locks) and holds it *unspawned* — out of the
+synced `state.enemies`, skipped for AI/contact, and un-hittable (`damageable` is false).
+`GameRoom.tick` reveals a room's whole batch at once the first time a player is in it or
+in a passageway touching it; the client puffs dust over each on `enemies.onAdd`
+(`client/src/entities/SpawnFX.ts`). A new enemy class needs to do **nothing** for this —
+it's handled entirely in `Enemy` (`_spawned`, `markUnspawned`/`reveal`) and
+`SpawnDirector`. `_spawned` defaults to true, so a directly-constructed enemy (a unit
+test, a boss summon) is live immediately. This is also why there is no longer any
+room-dormancy code: an enemy you haven't reached simply doesn't exist yet.
+
 ## Death, knockback & hitstun
 
 Handled in the `Entity` / `Enemy` base classes — no per-type work needed. Knockback + hitstun live on `Entity` so **players share them** (a boss shove or projectile pushes and briefly stuns the player too).
