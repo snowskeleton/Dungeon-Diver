@@ -15,6 +15,25 @@ const port = Number(process.env.PORT ?? 2567);
 const app = express();
 
 app.use(express.json());
+
+// CORS for the custom REST routes below (the room-code lookup, healthz). In
+// production the server serves the client from its own origin so this is a
+// no-op, but in local dev the client runs on Vite's port (5173) and dials the
+// server on 2567 — a cross-origin request the browser blocks unless we say so.
+// Colyseus already sets these headers on its own /matchmake routes, which is why
+// the public room LIST works cross-origin but join-by-code (this app's route)
+// did not. No cookies/credentials are involved, so `*` is the right origin.
+app.use((_req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type");
+  if (_req.method === "OPTIONS") {
+    res.sendStatus(204);
+    return;
+  }
+  next();
+});
+
 app.get("/healthz", (_req, res) => res.send("ok"));
 
 // Private rooms are unlisted by design, so a player holding a join code can't
