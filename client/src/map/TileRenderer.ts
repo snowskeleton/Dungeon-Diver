@@ -58,9 +58,12 @@ function tileHash(col: number, row: number): number {
   return h >>> 0;
 }
 
-/** Mostly plain stone, with a detailed variant roughly one tile in six. Enough
- *  to kill the grid, little enough that the details don't read as clutter. */
+/** Mostly the base tile, with a detailed variant roughly one tile in six. Enough
+ *  to kill the grid, little enough that the details don't read as clutter. A
+ *  theme with a single frame (the SOA2 paneled floors, which already tile into a
+ *  varied surface) just returns it. */
 function floorVariant(frames: readonly number[], col: number, row: number): number {
+  if (frames.length < 2) return frames[0];
   const h = tileHash(col, row);
   if (h % 6 !== 0) return frames[0];
   return frames[1 + ((h >>> 8) % (frames.length - 1))];

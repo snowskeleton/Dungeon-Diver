@@ -1,105 +1,86 @@
 #!/usr/bin/env node
-// Generates assets/dungeon-tiles.png and client/src/map/tilesetFrames.generated.ts.
+// Generates assets/dungeon-tiles.png and client/src/map/tilesetFrames.generated.ts
+// from the Super Overhead Adventure 2 dungeon tileset (the same art pack every
+// character, enemy and boss in this game came from).
 //
-// The tileset is CODE, not a hand-painted PNG. Every frame here is drawn
-// pixel-by-pixel from the palettes below, which buys three things a painted
-// sheet would not:
+// The tileset is still emitted by CODE — the renderer indexes a frame table that
+// must match the PNG, and one script emitting both is what guarantees they can't
+// drift (see the tileset note in CLAUDE.md). But the pixels are now SAMPLED from
+// real hand-drawn art rather than drawn procedurally:
 //
-//   1. The 47-tile wall blob is *complete* by construction. Autotiling needs a
-//      frame for every meaningful arrangement of a tile's eight neighbours;
-//      hand-authoring 47 mutually consistent frames is where tilesets rot.
-//      Here the canonical mask set is enumerated and each frame is drawn from
-//      its own mask, so a wall can never fall back to a wrong edge.
-//   2. The mask -> frame table ships with the art. The generator emits both,
-//      so TileRenderer cannot index a sheet that has moved under it.
-//   3. Re-theming is a palette edit, not a repaint.
+//   - WALLS  : one real brick tile, tiled, with autotile edge shading + rounded
+//              corners composited on so the 47-tile blob is still complete by
+//              construction. Walls are uniform dungeon stone; the FLOOR carries
+//              room identity (which sidesteps "who owns a wall between two rooms").
+//   - FLOORS : one real paneled-stone floor tile per room theme, picked to be a
+//              distinct colour (tan / teal / gold / lavender / green / red).
+//   - STAIRS, trap, boss passage, fire, slime, wall shadow and the door
+//     portcullis stay procedurally drawn — they are small, animated, or simply
+//     not present as clean tiles in this pack.
 //
-// Run: node assets/generate-dungeon-tiles.js   (then npm run assets:build)
+// The source sheet lives OUTSIDE the repo (like the SOA2 character import). The
+// committed PNG + generated table are what the game loads; you only need the
+// source to RE-RUN this. Override the path with SOA2_DUNGEON=... if yours differs.
+//
+// Run: npm run assets:tiles   (regenerates + syncs to the client)
 
-const fs = require("fs");
+const fs = require("path") && require("fs");
 const path = require("path");
 const { PNG } = require("../node_modules/pngjs");
 
 const TILE = 32;
+const SRC_TILE = 16; // native tile size in the source sheet
 const SHEET_COLS = 12;
 
+const SRC_PATH =
+  process.env.SOA2_DUNGEON ||
+  "/Users/snow/Downloads/Super Overhead Adventure 2/Environments/Dungeon.png";
 const OUT_PNG = path.join(__dirname, "dungeon-tiles.png");
 const OUT_TS = path.join(__dirname, "..", "client", "src", "map", "tilesetFrames.generated.ts");
 
-// ─── Palettes ────────────────────────────────────────────────────────────────
+if (!fs.existsSync(SRC_PATH)) {
+  console.error(`Source sheet not found: ${SRC_PATH}\nSet SOA2_DUNGEON=/path/to/Dungeon.png`);
+  process.exit(1);
+}
+const SRC = PNG.sync.read(fs.readFileSync(SRC_PATH));
 
-const WALL = {
-  outline: [0x12, 0x14, 0x1d],
-  body:    [0x3b, 0x41, 0x57],
-  seam:    [0x2c, 0x31, 0x43],
-  speck:   [0x46, 0x4d, 0x66],
-  top:     [0x5c, 0x65, 0x83],
-  lit:     [0x7e, 0x89, 0xac],
-  dark:    [0x23, 0x27, 0x35],
+/** Sample a source pixel (with alpha). Out-of-range reads as opaque black. */
+function srcPx(x, y) {
+  if (x < 0 || y < 0 || x >= SRC.width || y >= SRC.height) return [0, 0, 0, 255];
+  const i = (y * SRC.width + x) * 4;
+  return [SRC.data[i], SRC.data[i + 1], SRC.data[i + 2], SRC.data[i + 3]];
+}
+
+// ─── Source coordinates (16px tiles), verified by preview against the sheet ────
+
+/** The one brick every wall in the dungeon is built from. Tiles seamlessly. */
+const WALL_BRICK = { x: 2752, y: 0 };
+
+/** One paneled-stone floor tile per room theme. Room types collapse onto these
+ *  themes in TileRenderer's exhaustive switch — combat/wave/timed/dark all read
+ *  as `stone`, only the rooms that mean something else get their own colour. */
+const FLOOR_THEME_SRC = {
+  stone:  { x: 480,  y: 336 },
+  maze:   { x: 5600, y: 144 },
+  shop:   { x: 2016, y: 336 },
+  shrine: { x: 2016, y: 144 },
+  chest:  { x: 2528, y: 336 },
+  boss:   { x: 4576, y: 336 },
 };
+const THEME_NAMES = Object.keys(FLOOR_THEME_SRC);
 
-// One entry per FLOOR THEME. Room types collapse onto these in TileRenderer's
-// exhaustive switch — combat/wave/timed/dark all read as plain dungeon stone
-// because they ARE plain dungeon stone; only the rooms that mean something
-// different look different.
-const FLOOR_THEMES = {
-  stone: {
-    base:   [0x55, 0x5b, 0x6c],
-    seam:   [0x3f, 0x44, 0x53],
-    light:  [0x63, 0x6a, 0x7c],
-    dark:   [0x48, 0x4d, 0x5d],
-    accent: [0x71, 0x78, 0x8c],
-  },
-  // Warm dusty cobble. Deliberately far from `chest`'s moss green — the two
-  // were both greens and neighbouring rooms of the two types read as one room.
-  maze: {
-    base:   [0x63, 0x5a, 0x4c],
-    seam:   [0x4a, 0x42, 0x37],
-    light:  [0x74, 0x6a, 0x59],
-    dark:   [0x55, 0x4d, 0x41],
-    accent: [0x8a, 0x7c, 0x63],
-  },
-  shop: {
-    base:   [0x6d, 0x4c, 0x30],
-    seam:   [0x51, 0x37, 0x21],
-    light:  [0x7e, 0x5a, 0x3a],
-    dark:   [0x5d, 0x40, 0x28],
-    accent: [0x92, 0x6c, 0x45],
-  },
-  shrine: {
-    base:   [0x6f, 0x7b, 0x92],
-    seam:   [0x55, 0x60, 0x74],
-    light:  [0x84, 0x92, 0xad],
-    dark:   [0x60, 0x6b, 0x81],
-    accent: [0x9e, 0xad, 0xc8],
-  },
-  chest: {
-    base:   [0x47, 0x60, 0x4b],
-    seam:   [0x33, 0x48, 0x37],
-    light:  [0x54, 0x70, 0x58],
-    dark:   [0x3d, 0x54, 0x41],
-    accent: [0x6a, 0x8a, 0x5c],
-  },
-  boss: {
-    base:   [0x5b, 0x3c, 0x42],
-    seam:   [0x43, 0x2a, 0x30],
-    light:  [0x6c, 0x49, 0x4f],
-    dark:   [0x4d, 0x32, 0x38],
-    accent: [0xa8, 0x84, 0x3c],
-  },
-};
-
-const FLOOR_VARIANTS = 8;
-
-// ─── Tiny drawing surface ────────────────────────────────────────────────────
+// ─── 32px drawing surface ──────────────────────────────────────────────────────
 
 class Tile {
   constructor() {
     this.data = new Uint8Array(TILE * TILE * 4);
   }
+  idx(x, y) {
+    return (y * TILE + x) * 4;
+  }
   px(x, y, c, a = 255) {
     if (x < 0 || y < 0 || x >= TILE || y >= TILE) return;
-    const i = (y * TILE + x) * 4;
+    const i = this.idx(x, y);
     if (a >= 255) {
       this.data[i] = c[0];
       this.data[i + 1] = c[1];
@@ -107,7 +88,6 @@ class Tile {
       this.data[i + 3] = 255;
       return;
     }
-    // Source-over onto whatever is already there.
     const t = a / 255;
     const bg = this.data[i + 3] / 255;
     const out = t + bg * (1 - t);
@@ -117,10 +97,11 @@ class Tile {
     }
     this.data[i + 3] = Math.round(out * 255);
   }
+  clearPx(x, y) {
+    this.data[this.idx(x, y) + 3] = 0;
+  }
   rect(x, y, w, h, c, a = 255) {
-    for (let j = y; j < y + h; j++) {
-      for (let i = x; i < x + w; i++) this.px(i, j, c, a);
-    }
+    for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) this.px(i, j, c, a);
   }
   fill(c) {
     this.rect(0, 0, TILE, TILE, c);
@@ -131,10 +112,18 @@ class Tile {
   vline(x, y0, y1, c, a = 255) {
     for (let y = y0; y <= y1; y++) this.px(x, y, c, a);
   }
+  /** Blit a SRC_TILE-sized source tile scaled 2× to fill this 32px tile. */
+  blitSource(sx, sy) {
+    const scale = TILE / SRC_TILE;
+    for (let y = 0; y < TILE; y++) {
+      for (let x = 0; x < TILE; x++) {
+        const [r, g, b] = srcPx(sx + Math.floor(x / scale), sy + Math.floor(y / scale));
+        this.px(x, y, [r, g, b]);
+      }
+    }
+  }
 }
 
-/** Deterministic per-frame noise. Frames must be byte-identical run to run or
- *  the checked-in PNG churns on every regeneration. */
 function rng(seed) {
   let s = seed >>> 0;
   return () => {
@@ -145,13 +134,9 @@ function rng(seed) {
 
 // ─── The 47-tile wall blob ───────────────────────────────────────────────────
 //
-// Neighbour bits, clockwise from north:
-//   0 N   1 NE   2 E   3 SE   4 S   5 SW   6 W   7 NW
-//
-// A diagonal only changes how a tile is drawn when BOTH of its adjacent
-// cardinals are also wall — otherwise the corner is already an outer corner and
-// the diagonal is invisible. Clearing the irrelevant diagonals collapses 256
-// arrangements onto the canonical 47.
+// Neighbour bits, clockwise from north: 0 N 1 NE 2 E 3 SE 4 S 5 SW 6 W 7 NW.
+// A diagonal only matters when both its adjacent cardinals are wall; clearing
+// the rest collapses 256 arrangements onto the canonical 47.
 
 const N = 1, NE = 2, E = 4, SE = 8, S = 16, SW = 32, W = 64, NW = 128;
 
@@ -177,78 +162,64 @@ const CANONICAL = [];
   CANONICAL.sort((a, b) => a - b);
 }
 
-/** Stone-block body: horizontal courses with staggered vertical joints. */
-function wallBody(t, seed) {
-  const r = rng(seed);
-  t.fill(WALL.body);
-  for (let y = 0; y < TILE; y++) {
-    for (let x = 0; x < TILE; x++) {
-      const v = r();
-      if (v < 0.06) t.px(x, y, WALL.speck);
-      else if (v < 0.11) t.px(x, y, WALL.seam);
-    }
-  }
-  for (let cy = 0; cy < TILE; cy += 8) {
-    t.hline(cy, 0, TILE - 1, WALL.seam);
-    const off = (cy / 8) % 2 === 0 ? 0 : 8;
-    for (let x = off; x < TILE; x += 16) t.vline(x, cy, Math.min(cy + 7, TILE - 1), WALL.seam);
-  }
-}
+const OUTLINE = [0x14, 0x12, 0x0c];
+const LIGHT = [0xff, 0xf4, 0xdc];
+const SHADOW = [0x08, 0x07, 0x05];
 
+/** A wall frame: real brick, with directional shading + a rounded silhouette
+ *  composited so exposed edges read as carved stone. The shading is alpha over
+ *  the brick (not solid fills), so the hand-drawn texture stays visible. */
 function drawWallTile(mask) {
   const t = new Tile();
-  wallBody(t, 0x9e37 + mask * 2654435761);
-
+  t.blitSource(WALL_BRICK.x, WALL_BRICK.y);
   const open = (bit) => !(mask & bit);
 
-  // Lit cap where the wall's north face is exposed, shadow where its south is.
+  // Light comes from the north-west: lift exposed N/W edges, sink exposed S/E.
   if (open(N)) {
-    t.rect(0, 1, TILE, 4, WALL.top);
-    t.hline(1, 0, TILE - 1, WALL.lit);
-  }
-  if (open(S)) {
-    t.rect(0, TILE - 5, TILE, 4, WALL.dark);
-    t.hline(TILE - 5, 0, TILE - 1, WALL.seam);
+    t.hline(1, 0, TILE - 1, LIGHT, 90);
+    t.hline(2, 0, TILE - 1, LIGHT, 45);
   }
   if (open(W)) {
-    t.rect(1, 0, 3, TILE, WALL.dark);
-    t.vline(1, 0, TILE - 1, WALL.seam);
+    t.vline(1, 0, TILE - 1, LIGHT, 70);
+    t.vline(2, 0, TILE - 1, LIGHT, 32);
+  }
+  if (open(S)) {
+    for (let i = 0; i < 5; i++) t.hline(TILE - 1 - i, 0, TILE - 1, SHADOW, 150 - i * 26);
   }
   if (open(E)) {
-    t.rect(TILE - 4, 0, 3, TILE, WALL.dark);
-    t.vline(TILE - 2, 0, TILE - 1, WALL.seam);
+    for (let i = 0; i < 4; i++) t.vline(TILE - 1 - i, 0, TILE - 1, SHADOW, 130 - i * 28);
   }
 
   // 1px silhouette on every exposed side.
-  if (open(N)) t.hline(0, 0, TILE - 1, WALL.outline);
-  if (open(S)) t.hline(TILE - 1, 0, TILE - 1, WALL.outline);
-  if (open(W)) t.vline(0, 0, TILE - 1, WALL.outline);
-  if (open(E)) t.vline(TILE - 1, 0, TILE - 1, WALL.outline);
+  if (open(N)) t.hline(0, 0, TILE - 1, OUTLINE);
+  if (open(S)) t.hline(TILE - 1, 0, TILE - 1, OUTLINE);
+  if (open(W)) t.vline(0, 0, TILE - 1, OUTLINE);
+  if (open(E)) t.vline(TILE - 1, 0, TILE - 1, OUTLINE);
 
   // Outer corners: both cardinals open -> bite the corner off so the silhouette
   // reads as rounded stone rather than a hard square.
   const bite = (cx, cy, sx, sy) => {
-    const clear = (x, y) => { t.data[((y * TILE + x) * 4) + 3] = 0; };
+    const clear = (x, y) => t.clearPx(x, y);
     clear(cx, cy);
     clear(cx + sx, cy);
     clear(cx, cy + sy);
-    t.px(cx + sx * 2, cy, WALL.outline);
-    t.px(cx + sx, cy + sy, WALL.outline);
-    t.px(cx, cy + sy * 2, WALL.outline);
+    t.px(cx + sx * 2, cy, OUTLINE);
+    t.px(cx + sx, cy + sy, OUTLINE);
+    t.px(cx, cy + sy * 2, OUTLINE);
   };
   if (open(N) && open(W)) bite(0, 0, 1, 1);
   if (open(N) && open(E)) bite(TILE - 1, 0, -1, 1);
   if (open(S) && open(W)) bite(0, TILE - 1, 1, -1);
   if (open(S) && open(E)) bite(TILE - 1, TILE - 1, -1, -1);
 
-  // Inner corners: the two cardinals are wall but the diagonal is not, so a
-  // notch of the far room shows through here.
+  // Inner corners: the two cardinals are wall but the diagonal is not, so the
+  // far room shows a small notch here.
   const notch = (cx, cy, sx, sy) => {
     for (let j = 0; j < 4; j++) {
       for (let i = 0; i < 4 - j; i++) {
         const x = cx + sx * i;
         const y = cy + sy * j;
-        t.px(x, y, j === 0 || i === 0 ? WALL.outline : WALL.dark);
+        t.px(x, y, j === 0 || i === 0 ? OUTLINE : SHADOW, j === 0 || i === 0 ? 255 : 150);
       }
     }
   };
@@ -261,102 +232,57 @@ function drawWallTile(mask) {
 }
 
 // ─── Floors ──────────────────────────────────────────────────────────────────
+//
+// Every floor in this pack is a bordered stone PANEL with a motif in it. Tiled
+// edge to edge those panels read as a dense grid — too busy under the game's 2×
+// zoom. So each theme gets two frames: a calm base (the panel's own stone colour,
+// sampled from the art, laid flat with faint seams) used for ~5 of every 6 tiles,
+// and the real decorated panel scattered in as the 6th. Same trick the classic
+// dungeons use — a plain floor with the occasional feature tile — and the base
+// colour is the art's, so the panels never look pasted onto a foreign floor.
 
-/** Flagstone: 16px stones, courses offset every other row, seams on the tile
- *  edges so neighbouring tiles join up. */
-function drawFloorTile(theme, variant) {
-  const p = FLOOR_THEMES[theme];
+/** Median-ish stone colour of a source panel, sampled from its border ring so
+ *  the central motif doesn't drag the average. */
+function panelStoneColor(sx, sy) {
+  const samples = [];
+  for (let i = 2; i < 14; i++) {
+    samples.push(srcPx(sx + i, sy + 2));
+    samples.push(srcPx(sx + i, sy + 13));
+    samples.push(srcPx(sx + 2, sy + i));
+    samples.push(srcPx(sx + 13, sy + i));
+  }
+  const mid = (k) => samples.map((s) => s[k]).sort((a, b) => a - b)[samples.length >> 1];
+  return [mid(0), mid(1), mid(2)];
+}
+
+/** Calm base floor: the panel's stone colour, flat, with a faint darker seam on
+ *  two edges so a field of them still reads as tiled stone rather than a void. */
+function drawFloorBase(theme) {
   const t = new Tile();
-  const r = rng(0x51ab + variant * 7919 + hashString(theme));
-
-  t.fill(p.base);
-  for (let y = 0; y < TILE; y++) {
-    for (let x = 0; x < TILE; x++) {
-      const v = r();
-      if (v < 0.07) t.px(x, y, p.light);
-      else if (v < 0.14) t.px(x, y, p.dark);
-    }
-  }
-
-  for (let y = 0; y < TILE; y += 16) {
-    t.hline(y, 0, TILE - 1, p.seam);
-    t.hline(y + 1, 0, TILE - 1, p.light, 60);
-    const off = (y / 16) % 2 === 0 ? 0 : 8;
-    for (let x = off; x < TILE + off; x += 16) {
-      t.vline(x % TILE, y, y + 15, p.seam);
-    }
-  }
-
-  // Variant 0 is the plain stone the renderer lays down most of the time; the
-  // rest are the ones that break up the grid.
-  if (variant === 1) {
-    crack(t, r, p, 6, 9);
-  } else if (variant === 2) {
-    crack(t, r, p, 20, 3);
-  } else if (variant === 3) {
-    for (let i = 0; i < 5; i++) pebble(t, r, p);
-  } else if (variant === 4) {
-    t.rect(9, 20, 5, 4, p.dark);
-    t.rect(10, 21, 3, 2, p.seam);
-    pebble(t, r, p);
-  } else if (variant === 5) {
-    crack(t, r, p, 24, 22);
-    pebble(t, r, p);
-  } else if (variant === 6) {
-    for (let i = 0; i < 3; i++) {
-      const x = 4 + Math.floor(r() * 24);
-      const y = 4 + Math.floor(r() * 24);
-      t.rect(x, y, 2, 2, p.accent);
-    }
-  } else if (variant === 7) {
-    t.rect(6, 6, 6, 5, p.dark);
-    t.hline(6, 6, 11, p.seam);
-    crack(t, r, p, 18, 14);
-  }
-
+  const src = FLOOR_THEME_SRC[theme];
+  const c = panelStoneColor(src.x, src.y);
+  const seam = [Math.round(c[0] * 0.82), Math.round(c[1] * 0.82), Math.round(c[2] * 0.82)];
+  const lit = [Math.min(255, Math.round(c[0] * 1.1)), Math.min(255, Math.round(c[1] * 1.1)), Math.min(255, Math.round(c[2] * 1.1))];
+  t.fill(c);
+  t.hline(0, 0, TILE - 1, seam, 110);
+  t.vline(0, 0, TILE - 1, seam, 110);
+  t.hline(1, 0, TILE - 1, lit, 40);
   return t;
 }
 
-/** A hairline fracture. Deliberately one pixel wide and monotonic in x: an
- *  earlier version walked y freely and doubled the line, which at 2x zoom read
- *  as a little check-mark stamped on the floor rather than as stone. */
-function crack(t, r, p, x0, y0) {
-  let x = x0;
-  let y = y0;
-  const len = 6 + Math.floor(r() * 7);
-  const drift = r() < 0.5 ? 1 : -1;
-  for (let i = 0; i < len; i++) {
-    t.px(x, y, p.seam);
-    x += 1;
-    if (r() < 0.3) y += drift;
-    if (x >= TILE - 1 || y <= 1 || y >= TILE - 2) break;
-  }
+/** The real decorated panel, scattered in as the occasional feature tile. */
+function drawFloorPanel(theme) {
+  const t = new Tile();
+  const src = FLOOR_THEME_SRC[theme];
+  t.blitSource(src.x, src.y);
+  return t;
 }
 
-function pebble(t, r, p) {
-  const x = 3 + Math.floor(r() * 25);
-  const y = 3 + Math.floor(r() * 25);
-  t.px(x, y, p.accent);
-  t.px(x + 1, y, p.accent);
-  t.px(x, y + 1, p.dark);
-  t.px(x + 1, y + 1, p.dark);
-}
+// ─── Special tiles (procedural — small, animated, or absent from the pack) ─────
 
-function hashString(s) {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-// ─── Special tiles ───────────────────────────────────────────────────────────
-
-/** Stairs down. The first playtest's tester never registered that the dungeon
- *  had multiple floors, because this was a flat yellow square. It is now a
- *  stairwell: a black shaft at the top with lit treads marching down out of it,
- *  so the tile reads as "descend" without a label. */
+/** Stairs down. A drawn stairwell: a dark shaft with lit treads receding into
+ *  it, so the tile reads as "descend" without a label — the first playtest's
+ *  tester never registered the dungeon had floors when this was a flat square. */
 function drawStairs() {
   const t = new Tile();
   const stone = [0x6b, 0x70, 0x80];
@@ -367,13 +293,11 @@ function drawStairs() {
   t.fill([0x4a, 0x4f, 0x5e]);
   t.rect(1, 1, 30, 30, riser);
   t.rect(2, 2, 28, 28, shaft);
-
-  // Four treads, narrowing as they recede into the shaft.
   const steps = [
     { y: 23, inset: 2 },
     { y: 18, inset: 4 },
     { y: 13, inset: 6 },
-    { y: 8,  inset: 8 },
+    { y: 8, inset: 8 },
   ];
   for (const { y, inset } of steps) {
     const w = TILE - inset * 2;
@@ -381,8 +305,6 @@ function drawStairs() {
     t.hline(y, inset, inset + w - 1, tread);
     t.hline(y + 4, inset, inset + w - 1, [0x1c, 0x1f, 0x28]);
   }
-
-  // Frame the mouth so the shaft doesn't bleed into the surrounding floor.
   t.rect(0, 28, 32, 4, [0x5a, 0x60, 0x71]);
   t.hline(28, 0, 31, tread);
   t.vline(0, 0, 31, [0x2c, 0x30, 0x3c]);
@@ -392,30 +314,23 @@ function drawStairs() {
   return t;
 }
 
-/** Warp trap. Rendered in plain sight on purpose — stepping on one is a
- *  mistake, not a coin flip — so it is the loudest thing on the floor. */
+/** Warp trap. Loud on purpose — stepping on one is a mistake, not a coin flip. */
 function drawTrap() {
   const t = new Tile();
   const plate = [0x3c, 0x2e, 0x50];
   const rim = [0x6a, 0x51, 0x8c];
   const core = [0x1a, 0x12, 0x28];
-
   t.fill(plate);
   t.rect(1, 1, 30, 30, [0x2f, 0x24, 0x40]);
   t.hline(1, 1, 30, rim);
   t.hline(30, 1, 30, [0x24, 0x1b, 0x33]);
   t.vline(1, 1, 30, rim);
   t.vline(30, 1, 30, [0x24, 0x1b, 0x33]);
-
-  // A spiral, drawn as concentric rings with a rotating gap — reads as a vortex
-  // at 2x zoom without needing an animation.
-  const cx = 15.5;
-  const cy = 15.5;
+  const cx = 15.5, cy = 15.5;
   for (let ring = 0; ring < 4; ring++) {
     const rad = 4 + ring * 3;
-    const gap = ring * 1.3;
     for (let a = 0; a < 360; a += 4) {
-      const rel = ((a / 180) * Math.PI) - gap;
+      const rel = ((a / 180) * Math.PI) - ring * 1.3;
       if (Math.cos(rel) > 0.72) continue;
       const x = Math.round(cx + Math.cos((a / 180) * Math.PI) * rad);
       const y = Math.round(cy + Math.sin((a / 180) * Math.PI) * rad);
@@ -427,26 +342,12 @@ function drawTrap() {
   return t;
 }
 
-/** The gold passage into a boss room. */
+/** The gold passage into a boss room — real boss floor with veins on top. */
 function drawBossFloor() {
   const t = new Tile();
-  const p = FLOOR_THEMES.boss;
+  t.blitSource(FLOOR_THEME_SRC.boss.x, FLOOR_THEME_SRC.boss.y);
   const gold = [0xc9, 0x9d, 0x45];
   const goldLit = [0xf0, 0xd0, 0x7a];
-  const r = rng(0xb055);
-
-  t.fill(p.base);
-  for (let y = 0; y < TILE; y++) {
-    for (let x = 0; x < TILE; x++) {
-      const v = r();
-      if (v < 0.06) t.px(x, y, p.light);
-      else if (v < 0.12) t.px(x, y, p.dark);
-    }
-  }
-  t.hline(0, 0, TILE - 1, p.seam);
-  t.vline(0, 0, TILE - 1, p.seam);
-
-  // Veins running corner to corner, so a run of these tiles chains into a path.
   for (let i = 0; i < TILE; i++) {
     t.px(i, i, gold);
     t.px(i, TILE - 1 - i, gold);
@@ -465,14 +366,13 @@ function drawFire() {
   const t = new Tile();
   const r = rng(0xf13e);
   t.fill([0x3a, 0x21, 0x18]);
-  for (let y = 0; y < TILE; y++) {
+  for (let y = 0; y < TILE; y++)
     for (let x = 0; x < TILE; x++) {
       const v = r();
-      if (v < 0.10) t.px(x, y, [0xff, 0x8c, 0x2a]);
-      else if (v < 0.20) t.px(x, y, [0xc4, 0x4d, 0x18]);
+      if (v < 0.1) t.px(x, y, [0xff, 0x8c, 0x2a]);
+      else if (v < 0.2) t.px(x, y, [0xc4, 0x4d, 0x18]);
       else if (v < 0.28) t.px(x, y, [0x6a, 0x2a, 0x14]);
     }
-  }
   t.rect(11, 11, 10, 10, [0xff, 0xc4, 0x50]);
   t.rect(13, 13, 6, 6, [0xff, 0xef, 0xb0]);
   return t;
@@ -482,13 +382,12 @@ function drawSlime() {
   const t = new Tile();
   const r = rng(0x51e);
   t.fill([0x2f, 0x5a, 0x33]);
-  for (let y = 0; y < TILE; y++) {
+  for (let y = 0; y < TILE; y++)
     for (let x = 0; x < TILE; x++) {
       const v = r();
-      if (v < 0.10) t.px(x, y, [0x54, 0x8f, 0x4c]);
+      if (v < 0.1) t.px(x, y, [0x54, 0x8f, 0x4c]);
       else if (v < 0.18) t.px(x, y, [0x24, 0x46, 0x28]);
     }
-  }
   for (const [x, y, s] of [[7, 9, 3], [20, 7, 2], [14, 20, 4], [24, 22, 2]]) {
     t.rect(x, y, s, s, [0x7d, 0xc0, 0x6a]);
     t.rect(x, y, s - 1, 1, [0xa8, 0xe0, 0x92]);
@@ -496,41 +395,33 @@ function drawSlime() {
   return t;
 }
 
-/** The portcullis over a locked doorway. Was a flat red square with a brighter
- *  red border — the one piece of the map that still announced itself as a
- *  debug rectangle. Iron bars say "locked" without needing to be red. */
+/** Cast down onto whatever floor tile sits directly south of a wall. */
+function drawWallShadow() {
+  const t = new Tile();
+  const rows = [200, 150, 105, 70, 44, 24, 10];
+  for (let i = 0; i < rows.length; i++) t.rect(0, i, TILE, 1, [0x08, 0x09, 0x11], rows[i]);
+  return t;
+}
+
+/** The portcullis over a locked doorway — iron bars say "locked" without the old
+ *  red debug rectangle. */
 function drawBarrier() {
   const t = new Tile();
   const iron = [0x6a, 0x6f, 0x7e];
   const ironLit = [0x8f, 0x96, 0xa8];
   const ironDark = [0x33, 0x37, 0x44];
   const gap = [0x14, 0x16, 0x1f];
-
   t.fill(gap);
-  // Verticals every 8px, so a run of these reads as one continuous grille.
   for (let x = 2; x < TILE; x += 8) {
     t.rect(x, 0, 4, TILE, iron);
     t.vline(x, 0, TILE - 1, ironLit);
     t.vline(x + 3, 0, TILE - 1, ironDark);
   }
-  // Two horizontal bands with rivets.
   for (const y of [6, 22]) {
     t.rect(0, y, TILE, 4, iron);
     t.hline(y, 0, TILE - 1, ironLit);
     t.hline(y + 3, 0, TILE - 1, ironDark);
     for (let x = 3; x < TILE; x += 8) t.rect(x, y + 1, 2, 2, ironLit);
-  }
-  return t;
-}
-
-/** Cast down onto whatever floor tile sits directly south of a wall. Drawn as
- *  its own frame rather than baked into the floor variants so it composes with
- *  every theme. */
-function drawWallShadow() {
-  const t = new Tile();
-  const rows = [200, 150, 105, 70, 44, 24, 10];
-  for (let i = 0; i < rows.length; i++) {
-    t.rect(0, i, TILE, 1, [0x08, 0x09, 0x11], rows[i]);
   }
   return t;
 }
@@ -544,9 +435,8 @@ const wallFrameByCanonical = new Map();
 for (const mask of CANONICAL) wallFrameByCanonical.set(mask, push(drawWallTile(mask)));
 
 const floorFrames = {};
-for (const theme of Object.keys(FLOOR_THEMES)) {
-  floorFrames[theme] = [];
-  for (let v = 0; v < FLOOR_VARIANTS; v++) floorFrames[theme].push(push(drawFloorTile(theme, v)));
+for (const theme of THEME_NAMES) {
+  floorFrames[theme] = [push(drawFloorBase(theme)), push(drawFloorPanel(theme))];
 }
 
 const special = {
@@ -562,7 +452,6 @@ const special = {
 const rows = Math.ceil(frames.length / SHEET_COLS);
 const png = new PNG({ width: SHEET_COLS * TILE, height: rows * TILE });
 png.data.fill(0);
-
 frames.forEach((tile, idx) => {
   const ox = (idx % SHEET_COLS) * TILE;
   const oy = Math.floor(idx / SHEET_COLS) * TILE;
@@ -577,7 +466,6 @@ frames.forEach((tile, idx) => {
     }
   }
 });
-
 fs.writeFileSync(OUT_PNG, PNG.sync.write(png));
 
 // ─── Emit the frame table ────────────────────────────────────────────────────
@@ -585,16 +473,22 @@ fs.writeFileSync(OUT_PNG, PNG.sync.write(png));
 const maskToFrame = new Array(256);
 for (let m = 0; m < 256; m++) maskToFrame[m] = wallFrameByCanonical.get(canonicalize(m));
 
-const themeNames = Object.keys(FLOOR_THEMES);
+function chunk(arr, n) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+  return out;
+}
+
 const ts = `// GENERATED by assets/generate-dungeon-tiles.js — do not edit.
-// Frame indices into dungeon-tiles.png. Regenerate with:
-//   node assets/generate-dungeon-tiles.js && npm run assets:build
+// Frame indices into dungeon-tiles.png (walls + floors sampled from the Super
+// Overhead Adventure 2 dungeon sheet). Regenerate with:
+//   npm run assets:tiles
 
 /** Every floor look the dungeon has. Room types map onto these in TileRenderer. */
-export type FloorTheme = ${themeNames.map((t) => `"${t}"`).join(" | ")};
+export type FloorTheme = ${THEME_NAMES.map((t) => `"${t}"`).join(" | ")};
 
 export const FLOOR_VARIANT_FRAMES: Record<FloorTheme, readonly number[]> = {
-${themeNames.map((t) => `  ${t}: [${floorFrames[t].join(", ")}],`).join("\n")}
+${THEME_NAMES.map((t) => `  ${t}: [${floorFrames[t].join(", ")}],`).join("\n")}
 };
 
 /** Wall frame for an 8-neighbour mask (bit 0 = N, then clockwise: NE E SE S SW W NW).
@@ -608,18 +502,58 @@ export const SPECIAL_FRAMES = {
 ${Object.entries(special).map(([k, v]) => `  ${k}: ${v},`).join("\n")}
 } as const;
 `;
-
-function chunk(arr, n) {
-  const out = [];
-  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
-  return out;
-}
-
 fs.writeFileSync(OUT_TS, ts);
+
+// ─── Preview: an assembled room per theme ────────────────────────────────────
+
+if (process.env.TILE_PREVIEW) {
+  const TW = 7, TH = 5, pad = 8;
+  const prev = new PNG({ width: THEME_NAMES.length * (TW * TILE + pad) + pad, height: TH * TILE + pad * 2 });
+  prev.data.fill(20);
+  const frameAt = (idx) => frames[idx];
+  const wallMaskFor = (rx, ry) => {
+    // neighbours are wall if on the border ring
+    const wallAt = (x, y) => x < 0 || y < 0 || x >= TW || y >= TH || x === 0 || y === 0 || x === TW - 1 || y === TH - 1;
+    let m = 0;
+    if (wallAt(rx, ry - 1)) m |= N;
+    if (wallAt(rx + 1, ry - 1)) m |= NE;
+    if (wallAt(rx + 1, ry)) m |= E;
+    if (wallAt(rx + 1, ry + 1)) m |= SE;
+    if (wallAt(rx, ry + 1)) m |= S;
+    if (wallAt(rx - 1, ry + 1)) m |= SW;
+    if (wallAt(rx - 1, ry)) m |= W;
+    if (wallAt(rx - 1, ry - 1)) m |= NW;
+    return m;
+  };
+  THEME_NAMES.forEach((theme, ti) => {
+    const ox = pad + ti * (TW * TILE + pad), oy = pad;
+    for (let ry = 0; ry < TH; ry++) {
+      for (let rx = 0; rx < TW; rx++) {
+        const border = rx === 0 || ry === 0 || rx === TW - 1 || ry === TH - 1;
+        const idx = border
+          ? maskToFrame[wallMaskFor(rx, ry)]
+          : floorFrames[theme][0];
+        const tile = frameAt(idx);
+        for (let y = 0; y < TILE; y++)
+          for (let x = 0; x < TILE; x++) {
+            const s = (y * TILE + x) * 4;
+            if (tile.data[s + 3] === 0) continue;
+            const d = ((oy + ry * TILE + y) * prev.width + ox + rx * TILE + x) * 4;
+            prev.data[d] = tile.data[s];
+            prev.data[d + 1] = tile.data[s + 1];
+            prev.data[d + 2] = tile.data[s + 2];
+            prev.data[d + 3] = 255;
+          }
+      }
+    }
+  });
+  fs.writeFileSync(process.env.TILE_PREVIEW, PNG.sync.write(prev));
+  console.log(`preview -> ${process.env.TILE_PREVIEW}`);
+}
 
 console.log(
   `dungeon-tiles.png: ${frames.length} frames (${CANONICAL.length} wall, ` +
-  `${themeNames.length}x${FLOOR_VARIANTS} floor, ${Object.keys(special).length} special) ` +
+  `${THEME_NAMES.length} floor, ${Object.keys(special).length} special) ` +
   `at ${png.width}x${png.height}`,
 );
 console.log(`tilesetFrames.generated.ts written`);
