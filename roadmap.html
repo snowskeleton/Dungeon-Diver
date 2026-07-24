@@ -478,7 +478,7 @@
     <div class="doc-title">game-2 Roadmap</div>
     <div class="doc-subtitle">
       Roguelike · Co-op 1–4 · Top-down dungeon crawl · Public release target<br>
-      Updated 22 July 2026 — Floors 0–4 done, plus wave/timed/dark rooms, and <strong>the menu rebuild + the whole lobby/matchmaking block (22 July)</strong> — strangers can find each other now. <strong>First external playtest (20 July) reshuffled what's next</strong>: Floor 4.5 is a bug-and-feel response, Floor 5 is now the systems phase (currency, class identity, lobby) and picks up the deferred puzzle rooms. Notes + decision log in <code>docs/playtest-2026-07-20.md</code>
+      Updated 24 July 2026 — Floors 0–4 done, plus wave/timed/dark rooms, the menu + lobby/matchmaking block (22 July), the <strong>currency economy (23 July)</strong>, and <strong>Floor 4.5's playtest response is now all but finished (24 July)</strong>: co-op rewards, party stairs, party HP scaling, the minimap, deferred enemy spawning, downed-and-revive death, and a six-bug fix pass. Next up is Floor 5's remaining systems — class identity and puzzle rooms. Notes + decision log in <code>docs/playtest-2026-07-20.md</code>
     </div>
   </header>
 
@@ -836,7 +836,7 @@
           <span class="phase-chevron">&#9654;</span>
         </summary>
         <div class="phase-body">
-          <div class="phase-milestone"><strong>Milestone:</strong> Two people can play a full run together without a bug ending the session. Everything here comes from the first external playtest &mdash; full notes and the decision log (D1&ndash;D18) in <code>docs/playtest-2026-07-20.md</code>.</div>
+          <div class="phase-milestone"><strong>Milestone:</strong> Two people can play a full run together without a bug ending the session. Everything here comes from the first external playtest &mdash; full notes and the decision log (D1&ndash;D18) in <code>docs/playtest-2026-07-20.md</code>. <strong>All but two items have landed as of 24 July</strong>; what's left is the room-entry grace window and making the stairs read as stairs, and that one is really an art task.</div>
 
           <div class="phase-milestone"><strong>1. Session-enders</strong> &mdash; these end a co-op run outright.</div>
           <ul class="task-list">
@@ -847,25 +847,34 @@
 
           <div class="phase-milestone"><strong>2. Cheap feel wins</strong></div>
           <ul class="task-list">
-            <li><span class="tm">&mdash;</span> Interaction prompts ("press F") on chests, shop pedestals, offer pedestals, stairs &mdash; the tester couldn't tell a chest from scenery</li>
-            <li><span class="tm">&mdash;</span> Room-entry grace period so a door-adjacent enemy can't free-hit you</li>
-            <li><span class="tm">&mdash;</span> Slower enemies, more of them &mdash; encounters should read as positioning, not reflex</li>
+            <li><span class="tm done">&#10003;</span> Interaction prompts ("press F") on chests, shop pedestals, offer pedestals, stairs &mdash; world-space prompts over every interactable, with the key resolved live from the rebind map rather than hardcoded</li>
+            <li><span class="tm done">&#10003;</span> Slower enemies, more of them &mdash; enemy movement speed cut, and encounters now reveal as a batch on entry so a room reads as a group to position against</li>
             <li><span class="tm done">&#10003;</span> Enemy line-of-sight: no aggro through walls (also stops bosses chasing into the entry corridor)</li>
             <li><span class="tm done">&#10003;</span> Universal death feedback &mdash; several enemies currently just stop moving</li>
-            <li><span class="tm">&mdash;</span> Telegraph incoming waves before they spawn</li>
-            <li><span class="tm">&mdash;</span> Lock camera zoom at default; remove the zoom-out option (it's a workaround for samey textures &mdash; fix the textures instead)</li>
-            <li><span class="tm">&mdash;</span> Make the stairs read as stairs &mdash; the tester didn't register there <em>were</em> multiple floors</li>
+            <li><span class="tm done">&#10003;</span> Telegraph incoming spawns &mdash; every enemy reveal plays a dust puff (<code>SpawnFX</code>) at its position, and wave rooms were reworked from discrete waves into <strong>continuous attrition</strong>: each kill feeds in a replacement up to a concurrent cap, so there is no unannounced wave break to telegraph</li>
+            <li><span class="tm done">&#10003;</span> Lock camera zoom at default &mdash; zoom is now a <em>debug-only</em> knob, out of player Options. The texture-variety pass it was papering over stays open in Floor 6</li>
+            <li><span class="tm">&mdash;</span> Make the stairs read as stairs &mdash; the tester didn't register there <em>were</em> multiple floors. Still a flat tinted tile; wants art, and it's part of the tileset pass</li>
             <li><span class="tm done">&#10003;</span> Bug sweep <strong>done</strong>: projectiles pass through closed barriers &middot; boss stun-lockable against a wall &middot; walk-through chests &middot; oversized crossbow icons &middot; axes don't mirror when held &middot; ghost "Wave 1/3" banner &middot; knockback-immune enemies. <em>Two did not reproduce and still need a live look: the oversized <strong>hammer</strong> icon (it renders at the same 16px as every sword) and the <strong>boulder hitboxes</strong> (cover blocks are one 32&times;32 collider under art that fills the whole cell &mdash; the snag is more likely the solver catching on seams between merged wall rects).</em></li>
-            <li><span class="tm">&mdash;</span> Move respawn behind the debug menu &mdash; the design is permadeath</li>
+            <li><span class="tm done">&#10003;</span> Move respawn behind the debug menu &mdash; the design is permadeath. <code>respawnOnDeath</code> is a debug flag now, and death became a real state rather than nothing: a player at 0 HP is <strong>downed</strong> &mdash; frozen, un-controllable, ghosted blue &mdash; and a standing teammate within <code>REVIVE_RADIUS</code> fills a revive bar to stand them up at half health. Descending carries a downed teammate down on their feet; the whole party down at once ends the run (one <code>game_over</code> broadcast, clients walk back to the menu)</li>
             <li><span class="tm done">&#10003;</span> Rebind weapon switch off <code>Q</code>/<code>E</code></li>
           </ul>
 
           <div class="phase-milestone"><strong>3. Co-op actually works</strong></div>
           <ul class="task-list">
-            <li><span class="tm">&mdash;</span> <strong>Per-player boss rewards</strong> &mdash; each player picks 1 of 3, picks mutually exclusive across the party. (Today it's first-come: "Hey! You took my reward!")</li>
-            <li><span class="tm">&mdash;</span> <strong>Party stairs prompt</strong> &mdash; "Player X wants to descend. Join them to continue"; the floor advances only once every player is on the stairs. Descending without clearing stays <em>intentional</em> &mdash; trading loot for speed is a real choice</li>
-            <li><span class="tm">&mdash;</span> <strong>Enemy HP scales with party size</strong> &mdash; &times;1.0 / 1.5 / 2.0 / 2.5 for 1&ndash;4 players, fixed at run start. Scale the enemies, never nerf the player for bringing a friend</li>
-            <li><span class="tm">&mdash;</span> <strong>Minimap</strong> &mdash; called out emphatically, and load-bearing once players split up to find the exit</li>
+            <li><span class="tm done">&#10003;</span> <strong>Per-player boss rewards</strong> &mdash; reworked into a <strong>shared 3-card offer with mutually-exclusive picks</strong>: the whole party sees the same three, each player spends one pick, and a taken card greys out for everyone. At most three items leave the pedestal</li>
+            <li><span class="tm done">&#10003;</span> <strong>Party stairs prompt</strong> &mdash; the floor advances only once every living player is on the stairs (a downed teammate is carried down). Descending without clearing stays <em>intentional</em></li>
+            <li><span class="tm done">&#10003;</span> <strong>Enemy HP scales with party size</strong> &mdash; enemies and bosses both, fixed at run start. Scale the enemies, never nerf the player for bringing a friend</li>
+            <li><span class="tm done">&#10003;</span> <strong>Minimap</strong> &mdash; Zelda-style dungeon minimap HUD; load-bearing once players split up to find the exit</li>
+          </ul>
+
+          <div class="phase-milestone"><strong>4. Second bug pass</strong> &mdash; six more, 24 July.</div>
+          <ul class="task-list">
+            <li><span class="tm done">&#10003;</span> Death did nothing &mdash; <code>applyInput</code> never checked <code>isDead</code>, so a 0-HP player kept walking and swinging, while the stairs gate counted only living players and stranded a solo player at 0 HP forever. Both holes closed by the downed/revive state above</li>
+            <li><span class="tm done">&#10003;</span> Projectiles tunnelled through thin walls &mdash; wall checks are <strong>swept</strong> along prev&rarr;current in sub-tile steps instead of sampling only the new centre</li>
+            <li><span class="tm done">&#10003;</span> One-way exit barriers popped open &mdash; commitment is now <em>sticky</em> per player, so standing in the doorway (where <code>roomAt</code> reads null) no longer un-commits you for a tick</li>
+            <li><span class="tm done">&#10003;</span> Every run was the same dungeon &mdash; floor 1 now rolls a random seed. The Debug menu's seed still wins, and <code>CreateRoomOptions</code> gained an explicit <code>seed</code> for reproducible runs</li>
+            <li><span class="tm done">&#10003;</span> Reward pedestals glowed forever in solo &mdash; a pedestal ghosts as soon as <em>your</em> pick is spent, not once all three cards are drafted, and the pulsing tween stops fighting <code>setAlpha</code></li>
+            <li><span class="tm done">&#10003;</span> <strong>Deferred spawning</strong> &mdash; an enemy you have never reached does not exist yet. The floor pass builds every enemy up front but holds it unspawned (out of synced state, no AI, not damageable) until a player enters its room. This replaced the old room-dormancy machinery outright</li>
           </ul>
 
           <div class="phase-art-note">
@@ -941,7 +950,7 @@
             <li><span class="tm done">&#10003;</span> More enemy types — 29 imported (goos, bats, floaters, critters, directional, flyers), spawn-pooled in <code>REGULAR_ENEMIES</code></li>
             <li><span class="tm done">&#10003;</span> More bosses — 3 movesets built; 8 boss sprites available in <code>BOSSES</code></li>
             <li><span class="tm done">&#10003;</span> Healing Shrine + Shop room variants</li>
-            <li><span class="tm done">&#10003;</span> Wave rooms — 3 escalating waves on one <code>RoomChallenge</code> substrate</li>
+            <li><span class="tm done">&#10003;</span> Wave rooms — one <code>RoomChallenge</code> substrate, reworked into a continuous horde: a fixed reserve feeds in a replacement per kill up to a concurrent cap</li>
             <li><span class="tm done">&#10003;</span> Darkness rooms — client-only vision overlay, no server state</li>
             <li><span class="tm done">&#10003;</span> Timed-clear rooms — beat the clock for a bonus pedestal; missing it is not a failure</li>
             <li><span class="tm">—</span> Defend-the-objective room (the rest of the old "Bounty" slot) — needs a destructible entity</li>
@@ -985,6 +994,32 @@
         </div>
       </details>
 
+      <details class="phase-card done">
+        <summary>
+          <span class="floor-num">ONGOING</span>
+          <span class="phase-name">Engineering &amp; Tooling</span>
+          <span class="phase-badge badge-done">Done</span>
+          <span class="phase-chevron">&#9654;</span>
+        </summary>
+        <div class="phase-body">
+          <div class="phase-milestone"><strong>Not a floor</strong> &mdash; the substrate work that runs alongside the content phases. Kept here so it stops looking like nothing happened on the weeks it was the whole job.</div>
+          <ul class="task-list">
+            <li><span class="tm done">&#10003;</span> <strong>Vitest suite at the repo root</strong> (22 July) &mdash; ~735 tests, 96% lines, covering <code>shared/</code> and <code>server/</code> with the real physics, entities, combat, directors and <code>GameRoom</code> itself, no server and no browser. It replaced the old <code>verify-*.ts</code> golden-output harnesses, which pinned HP and damage totals and so failed on every balance pass without ever catching a real defect. The rule now: assert behaviour and relationships, never balance numbers</li>
+            <li><span class="tm done">&#10003;</span> <strong>Weapons refactored to be object-oriented</strong> &mdash; a three-level chain (<code>Weapon</code> &rarr; category base &rarr; the weapon), stats as compiler-checked getters, <code>WEAPON_REGISTRY</code> <em>derived</em> from the class array rather than hand-maintained</li>
+            <li><span class="tm done">&#10003;</span> <strong>Ammo refactored the same way</strong> &mdash; one class per projectile under a category base (arrows / bolts / boomerangs), <code>AMMO_REGISTRY</code> derived</li>
+            <li><span class="tm done">&#10003;</span> <strong>Typed state views</strong> (<code>shared/src/stateViews.ts</code>) &mdash; every server schema <code>implements</code> its synced shape, so renaming a <code>@type</code> field is a server-side compile error instead of a silent <code>undefined</code> on the client twenty files away</li>
+            <li><span class="tm done">&#10003;</span> <strong>Hitboxes measured from art, never declared</strong> &mdash; melee hurtboxes generated from the FX strips, enemy hurt bounds generated from the spritesheets. There is no per-weapon reach number and no hand-tuned enemy hurt size left to drift</li>
+            <li><span class="tm done">&#10003;</span> <strong>Dev balance tools</strong> &mdash; enemy stat spreadsheet with source write-back, plus a weapon + ammo balance tool</li>
+            <li><span class="tm done">&#10003;</span> <strong>Untrusted client ids validated</strong> &mdash; <code>characterClass</code>/<code>characterType</code> go through resolvers rather than being cast; an unknown class used to crash <code>onJoin</code></li>
+            <li><span class="tm done">&#10003;</span> <strong>Containerized deploy</strong> &mdash; Docker + Caddy, esbuild-bundled server, one origin serving the client and Colyseus over same-origin <code>/ws</code>; CORS added so join-by-code works in dev too</li>
+            <li><span class="tm done">&#10003;</span> <strong>Rebindable keys</strong> in Options, and the six older DOM overlays folded onto one shared <code>menuDom</code> stylesheet</li>
+          </ul>
+          <div class="phase-art-note">
+            <strong>Standing rule:</strong> content families are OO with the class list as the source of truth &mdash; enemies, bosses, weapons, ammo, upgrades, and room challenges. Registries exist only where something is genuinely referenced by id across the wire, and are derived, never authored.
+          </div>
+        </div>
+      </details>
+
     </div>
   </section>
 
@@ -1008,7 +1043,8 @@
       <div class="asset-group">
         <div class="ag-label soon">Needed — Phase 3–4 (Environment)</div>
         <ul class="asset-items">
-          <li><span class="adot soon"></span> Chest / treasure sprite</li>
+          <li><span class="adot done"></span> Chest / treasure sprite <span class="note">(6-frame open animation, brown + gold)</span></li>
+          <li><span class="adot done"></span> Coin / gold pickup <span class="note">(SOA2 Pickups sheet)</span></li>
           <li><span class="adot soon"></span> Upgrade icons <span class="note">(shapes ok for first pass)</span></li>
           <li><span class="adot done"></span> Mage nova / AOE blast FX <span class="note">(procedural — NovaFX + CastFX)</span></li>
           <li><span class="adot soon"></span> Lever / switch sprite <span class="note">(puzzle rooms, tabled)</span></li>
