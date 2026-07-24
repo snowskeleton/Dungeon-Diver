@@ -3,7 +3,7 @@ import {
   DungeonResult, RoomData,
   WEAPON_REGISTRY, WeaponId, WeaponInstance, Weapon,
   AMMO_REGISTRY,
-  SHOP_TIERS, SHRINE_COST,
+  SHOP_TIERS,
 } from "shared";
 import { GameState } from "../schema/GameState";
 import { ShopState, ShopItemState } from "../schema/ShopState";
@@ -196,11 +196,6 @@ export class LootDirector {
     // Already spent your one pick, or someone beat you to this card.
     if (offer.claimedBy.includes(sessionId)) return;
     if (offer.consumed.includes(index)) return;
-    // A shrine pick costs gold from the shared purse; a free (boss/challenge) offer
-    // has cost 0. Checked before granting so an unaffordable pick is a no-op that
-    // leaves the card available.
-    if (this.state.gold < offer.cost) return;
-
     // Exhaustive on `kind` — a new choice kind is a compile error here, not a
     // silently-ignored pedestal.
     switch (choice.kind) {
@@ -220,7 +215,6 @@ export class LootDirector {
         break;
       }
     }
-    this.state.gold -= offer.cost;
     offer.consumed.push(index);
     offer.claimedBy.push(sessionId);
   }
@@ -254,8 +248,8 @@ export class LootDirector {
     offer.roomId = roomId;
     offer.x = x;
     offer.y = y;
-    // A shrine boon is bought with gold; a boss/challenge drop is earned and free.
-    offer.cost = tier === "shrine" ? SHRINE_COST : 0;
+    // Every pedestal is FREE — shrine, boss and challenge alike. Gold is spent at
+    // shops and nowhere else; a reward you fought for never asks for payment.
 
     // Each choice carries its own rolled modifiers, so shuffling can't desync the
     // card from the reward — there is nothing to keep aligned.

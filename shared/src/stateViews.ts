@@ -148,9 +148,6 @@ export interface OfferStateView extends SyncedSchema {
   readonly roomId: string;
   readonly x: number;
   readonly y: number;
-  /** Gold each pick costs (0 = free boss/challenge drop, SHRINE_COST for a
-   *  shrine). Deducted from the shared purse when a card is drafted. */
-  readonly cost: number;
   /** The three cards, shared by the whole party. */
   readonly choices: SyncedList<OfferChoiceStateView>;
   /** Indices of the cards already taken — greyed out for everyone. */

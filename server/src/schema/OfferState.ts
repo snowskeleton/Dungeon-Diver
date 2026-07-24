@@ -46,9 +46,6 @@ export class OfferState extends Schema implements OfferStateView {
   @type("string") roomId: string = "";
   @type("number") x: number = 0;
   @type("number") y: number = 0;
-  /** Gold each pick costs, from the shared purse. 0 for boss/challenge drops
-   *  (earned, so free); SHRINE_COST for a shrine pedestal. */
-  @type("uint16") cost: number = 0;
   /** The three cards, shown identically to every player. */
   @type([OfferChoiceState]) choices = new ArraySchema<OfferChoiceState>();
   /** Indices of the cards already taken. A card whose index is in here is spent and

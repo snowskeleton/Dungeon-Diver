@@ -3,7 +3,7 @@ import {
   generateDungeon,
   DungeonResult, RoomType,
   floorGoldBudget, coinDenominations,
-  SHOP_TIERS, SHRINE_COST,
+  SHOP_TIERS,
   COIN_IDLE_MS, COIN_PICKUP_RADIUS, SERVER_TICK_MS,
   DEFAULT_DEBUG_CONFIG, DebugConfig,
 } from "shared";
@@ -227,35 +227,22 @@ describe("the shop spends gold, not HP", () => {
   });
 });
 
-describe("shrine offers cost gold, boss drops are free", () => {
-  it("charges SHRINE_COST for a shrine pick", () => {
+describe("reward pedestals are free — gold is spent at shops and nowhere else", () => {
+  it("grants a shrine pick with an empty purse", () => {
     const f = lootFloor("shrine");
     f.loot.spawnShrineOffers();
     const offer = f.state.offers.get(f.room.id)!;
-    expect(offer.cost).toBe(SHRINE_COST);
-    f.state.gold = SHRINE_COST + 20;
+    f.state.gold = 0;
     const picker = new Player(f.physics, offer.x, offer.y);
     f.loot.offerPick("s1", picker, { roomId: f.room.id, choiceIndex: 0 });
     expect(offer.consumed.length).toBe(1);
-    expect(f.state.gold).toBe(20);
+    expect(f.state.gold).toBe(0); // and takes nothing from the purse
   });
 
-  it("refuses a shrine pick the purse can't cover, leaving the card", () => {
-    const f = lootFloor("shrine");
-    f.loot.spawnShrineOffers();
-    const offer = f.state.offers.get(f.room.id)!;
-    f.state.gold = SHRINE_COST - 1;
-    const picker = new Player(f.physics, offer.x, offer.y);
-    f.loot.offerPick("s1", picker, { roomId: f.room.id, choiceIndex: 0 });
-    expect(offer.consumed.length).toBe(0);
-    expect(f.state.gold).toBe(SHRINE_COST - 1);
-  });
-
-  it("gives a boss drop away for free (cost 0)", () => {
+  it("grants a boss drop with an empty purse", () => {
     const f = lootFloor("boss");
     f.loot.dropBossOffer(f.room.centerCol * 32, f.room.centerRow * 32);
     const offer = f.state.offers.get(f.room.id)!;
-    expect(offer.cost).toBe(0);
     f.state.gold = 0;
     const picker = new Player(f.physics, offer.x, offer.y);
     f.loot.offerPick("s1", picker, { roomId: f.room.id, choiceIndex: 0 });

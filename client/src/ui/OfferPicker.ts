@@ -53,15 +53,9 @@ export class OfferPicker {
   show(
     choices: OfferChoiceView[],
     consumed: Set<number>,
-    cost: number,
-    gold: number,
     onPick: (index: number) => void,
   ) {
     if (this.menu) return;
-    // A shrine boon costs gold from the shared purse; a boss/challenge drop is free
-    // (cost 0). When the party can't afford it, cards stay readable but unclickable
-    // — the server would refuse the pick anyway, this just saves the round-trip.
-    const affordable = gold >= cost;
     // Escape belongs to GameScene here, same as the inventory menu.
     const menu = menuPanel({
       variant: "auto gold center",
@@ -75,11 +69,9 @@ export class OfferPicker {
       // A card a teammate already took is dead — greyed and unclickable. The server
       // re-checks anyway, so this only saves a doomed round-trip.
       const taken = consumed.has(i);
-      // A card the party can't afford is dead the same way a taken one is.
-      const locked = taken || !affordable;
       const card = el("div", {
-        className: `m-card offer-card ${choice.kind}${locked ? " taken" : ""}`,
-        onClick: locked ? undefined : () => {
+        className: `m-card offer-card ${choice.kind}${taken ? " taken" : ""}`,
+        onClick: taken ? undefined : () => {
           this.hide();
           onPick(i);
         },
@@ -94,13 +86,9 @@ export class OfferPicker {
       cards.appendChild(card);
     });
 
-    // Free drops keep the old "one only" line; a priced shrine says what it costs
-    // and, when the purse is short, why the cards are locked.
-    const sub = cost <= 0
-      ? "one only — the rest vanish"
-      : affordable
-        ? `${cost} gold — one only, the rest vanish`
-        : `${cost} gold — not enough in the purse (${gold})`;
+    // Every pedestal is free — gold is a shop-only currency — so the only thing to
+    // say is that the choice is one-way.
+    const sub = "one only — the rest vanish";
     menu.panel.append(
       el("h2", { className: "m-title", text: "CHOOSE YOUR REWARD" }),
       el("p", { className: "m-sub", text: sub }),

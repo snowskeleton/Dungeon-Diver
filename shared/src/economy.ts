@@ -33,9 +33,11 @@ export function floorGoldBudget(players: number): number {
  *  "left is affordable, right is the splurge" once and it holds every floor. */
 export const SHOP_TIERS = [50, 100, 150] as const;
 
-/** Flat cost to draft a card from a shrine pedestal. Boss and chest offers stay
- *  free; the shrine is the second gold sink after the shop. */
-export const SHRINE_COST = 50;
+/** The shop is the ONLY thing gold buys. Reward pedestals (shrine, boss, timed-clear)
+ *  and chests are earned, so they are always free — a shrine used to charge 50g and it
+ *  read as the game asking you to pay for a reward you had already won. Don't reintroduce
+ *  a price on anything but a shop pedestal; add a new gold SINK as a new shop-like thing
+ *  instead. */
 
 /** How long (ms) a dropped coin lies still before it starts homing toward a
  *  nearby player. Walking over one collects it immediately regardless. */
