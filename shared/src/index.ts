@@ -13,3 +13,4 @@ export * from "./characters";
 export * from "./enemies";
 export * from "./stateViews";
 export * from "./lobby";
+export * from "./economy";

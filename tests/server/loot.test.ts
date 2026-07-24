@@ -14,6 +14,10 @@ function floor(type: RoomType, floorNumber = 1) {
   const physics = new PhysicsWorld(dungeon.mapData, dungeon.cols, dungeon.rows);
   const state = new GameState();
   state.floor = floorNumber;
+  // Fund the shared purse generously: these tests exercise proximity, dedup, and
+  // the shared-draft rules, not affordability (the gold sinks have their own suite
+  // in economy.test.ts). An empty purse would make every buy/shrine-pick a no-op.
+  state.gold = 100000;
   const loot = new LootDirector(state);
   loot.setFloor(dungeon, physics);
   const room = dungeon.rooms.find(r => r.type === type)!;
@@ -65,16 +69,19 @@ describe("shops", () => {
     expect(f.state.shops.size).toBe(1);
   });
 
-  it("sells a weapon for HP to a player standing at the pedestal", () => {
-    const { shop, loot, physics, room } = shopFloor();
+  it("sells a weapon for gold to a player standing at the pedestal", () => {
+    const { shop, loot, state, physics, room } = shopFloor();
     const item = shop.items[0];
     const p = playerAt(physics, item!.x, item!.y);
     const hp0 = p.state.health;
+    const gold0 = state.gold;
 
     loot.buy(p, { roomId: room.id, itemIndex: 0 });
 
     expect(p.weapons.map(w => w.id)).toContain(item!.weaponId);
-    expect(p.state.health).toBe(hp0 - item!.cost);
+    // Gold comes out of the shared purse; the buyer's HP is untouched.
+    expect(state.gold).toBe(gold0 - item!.cost);
+    expect(p.state.health).toBe(hp0);
     expect(item!.purchased).toBe(true);
   });
 
@@ -101,16 +108,17 @@ describe("shops", () => {
     expect(latecomer.weapons).toHaveLength(1);
   });
 
-  it("never lets a purchase kill the buyer", () => {
-    const { shop, loot, physics, room } = shopFloor();
+  it("refuses a purchase the shared purse can't cover", () => {
+    const { shop, loot, state, physics, room } = shopFloor();
     const item = shop.items[0];
     const p = playerAt(physics, item!.x, item!.y);
-    p.state.health = item!.cost; // exactly the price
+    state.gold = item!.cost - 1; // one short
 
     loot.buy(p, { roomId: room.id, itemIndex: 0 });
 
-    expect(p.state.health).toBe(item!.cost); // refused, not charged
+    expect(state.gold).toBe(item!.cost - 1); // not charged
     expect(item!.purchased).toBe(false);
+    expect(p.weapons).toHaveLength(1); // nothing granted
   });
 
   it("refuses to charge for an unmodified duplicate the player already owns", () => {

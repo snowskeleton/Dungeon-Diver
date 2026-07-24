@@ -84,6 +84,12 @@ export abstract class Enemy extends Entity {
   protected get attackCooldownMs(): number { return 1200; }
   /** 0 = full knockback; higher absorbs more force. */
   protected get knockbackResistance(): number { return 3; }
+  /** This enemy's share of the floor's gold budget, relative to its peers. The
+   *  SpawnDirector sums every spawned enemy's weight and hands each a slice of the
+   *  budget in proportion — so gold is never priced per-enemy here, and enemy or
+   *  room counts can change without re-tuning any payout. A tougher enemy (or a
+   *  boss) overrides this higher. */
+  get goldWeight(): number { return 1; }
   /** "horizontal" art has one side view (flipX for left); "directional" has a
    *  row per facing. Must match the client visual def for this enemy. */
   protected get facingMode(): EnemyFacingMode { return "horizontal"; }
@@ -119,6 +125,12 @@ export abstract class Enemy extends Entity {
   get isDying(): boolean {
     return this.state.isDying;
   }
+
+  /** Gold this enemy drops on death, assigned once at spawn by SpawnDirector out
+   *  of the floor budget (see goldWeight). 0 for anything spawned outside the
+   *  budgeted floor pass — a boss summon, or a test-built enemy — which simply
+   *  drops nothing. */
+  goldValue = 0;
 
   /** Whether this enemy has been revealed (see the _spawned note). GameRoom skips
    *  the AI and contact-damage passes for an unspawned enemy, and it is not a

@@ -41,6 +41,7 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     roomId: string;
     choices: OfferChoiceView[];
     consumed: Set<number>;
+    cost: number;
   } | null = null;
   // Per-instance uids of the weapons last seen — a newly-appearing uid triggers
   // the acquire flourish. Populated on the first sync (which carries the starting
@@ -264,6 +265,7 @@ export class LocalPlayer extends Entity implements DebugDrawable {
           roomId,
           choices: Array.from(offer.choices) as OfferChoiceView[],
           consumed,
+          cost: offer.cost,
         };
       }
     });
@@ -295,9 +297,10 @@ export class LocalPlayer extends Entity implements DebugDrawable {
   // refuses a second claim, so a stale click can't double-grant.
   private openOfferPicker() {
     if (this.offerPicker.isOpen || !this.nearbyOffer) return;
-    const { roomId, choices, consumed } = this.nearbyOffer;
+    const { roomId, choices, consumed, cost } = this.nearbyOffer;
+    const gold = this.roomState.gold ?? 0;
     this.setMenuPaused(true);
-    this.offerPicker.show(choices, consumed, (index) => {
+    this.offerPicker.show(choices, consumed, cost, gold, (index) => {
       this.room.send("offerPick", { roomId, choiceIndex: index });
       this.setMenuPaused(false);
     });

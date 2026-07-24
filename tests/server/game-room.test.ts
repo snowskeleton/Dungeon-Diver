@@ -782,6 +782,7 @@ describe("loot messages reach the directors", () => {
     const shop = h.state.shops.get(shopRoom.id)!;
     const item = shop.items[0];
     g.players.get("s0")!.teleport(item!.x, item!.y);
+    h.state.gold = 1000; // fund the shared purse — the shop spends gold now
 
     h.send(h.clients[0], "buy", { roomId: shopRoom.id, itemIndex: 0 });
 
@@ -796,6 +797,7 @@ describe("loot messages reach the directors", () => {
     const shrine = g.currentDungeon.rooms.find(r => r.type === "shrine")!;
     const offer = h.state.offers.get(shrine.id)!;
     g.players.get("s0")!.teleport(offer.x, offer.y);
+    h.state.gold = 1000; // fund the shared purse — a shrine pick costs gold now
 
     h.send(h.clients[0], "offerPick", { roomId: shrine.id, choiceIndex: 0 });
 

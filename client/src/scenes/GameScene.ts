@@ -6,7 +6,7 @@ import {
   WEAPON_REGISTRY, AMMO_REGISTRY, DungeonOptions, DungeonResult, toDungeonOptions,
   RoomType, DebugConfig, DEFAULT_DEBUG_CONFIG,
   GameStateView, PlayerStateView, EnemyStateView, ProjectileStateView,
-  ShopStateView, ShopItemStateView, OfferStateView, ChestStateView,
+  ShopStateView, ShopItemStateView, OfferStateView, ChestStateView, CoinStateView,
 } from "shared";
 import { DarknessOverlay } from "../map/DarknessOverlay";
 import { BarrierOverlays } from "../map/BarrierOverlays";
@@ -20,6 +20,7 @@ import { CLIENT_CHARACTER_VISUAL_REGISTRY } from "../characters";
 import { preloadAttackFX, defineAttackFXAnimations } from "../entities/AttackFXSprites";
 import { HitFX, preloadHitFX, defineHitFXAnimation } from "../entities/HitFX";
 import { SpawnFX, preloadSpawnFX, defineSpawnFXAnimation } from "../entities/SpawnFX";
+import { CoinEntity, CoinFX, preloadCoin, defineCoinAnimations } from "../entities/CoinEntity";
 import { preloadBowSheet, defineBowAnimation } from "../entities/RangedWeaponFX";
 import { CLIENT_ENEMY_REGISTRY } from "../enemies";
 import { HitboxDebug } from "../debug/HitboxDebug";
@@ -71,6 +72,7 @@ export class GameScene extends Phaser.Scene {
   private shopItems = new Map<string, ShopItemEntity>();
   private offerPedestals = new Map<string, OfferPedestalEntity>();
   private chests = new Map<string, ChestEntity>();
+  private coins = new Map<string, CoinEntity>();
   private hitboxDebug!: HitboxDebug;
   /** The current floor's dungeon. The scene HOLDS the floor rather than treating
    *  generateDungeon as a function to re-call: four call sites regenerated it with
@@ -97,6 +99,7 @@ export class GameScene extends Phaser.Scene {
   private barriers!: BarrierOverlays;
   private hitFx!: HitFX;
   private spawnFx!: SpawnFX;
+  private coinFx!: CoinFX;
   private currentSeed = MAP_SEED;
   private currentFloor = 1;
   private mapCols = 0;
@@ -139,6 +142,7 @@ export class GameScene extends Phaser.Scene {
     this.shopItems.clear();
     this.offerPedestals.clear();
     this.chests.clear();
+    this.coins.clear();
     this.localSessionIds.clear();
 
     this.currentMapGroup = null;
@@ -154,6 +158,7 @@ export class GameScene extends Phaser.Scene {
     preloadAttackFX(this);
     preloadHitFX(this);
     preloadSpawnFX(this);
+    preloadCoin(this);
     preloadChest(this);
 
     // Preload each unique character spritesheet once
@@ -194,6 +199,7 @@ export class GameScene extends Phaser.Scene {
     defineAttackFXAnimations(this);
     defineHitFXAnimation(this);
     defineSpawnFXAnimation(this);
+    defineCoinAnimations(this);
     defineChestAnimations(this);
 
     // Define animations for each unique character spritesheet once
@@ -221,6 +227,7 @@ export class GameScene extends Phaser.Scene {
 
     this.hitFx = new HitFX(this);
     this.spawnFx = new SpawnFX(this);
+    this.coinFx = new CoinFX(this);
     this.barriers = new BarrierOverlays(this);
     // Built before rebuildMap so its first call can lay out the minimap. The
     // toggle is applied once options are loaded, just below.
@@ -575,6 +582,21 @@ export class GameScene extends Phaser.Scene {
       this.projectiles.delete(id);
     });
 
+    // Coins: dropped where an enemy dies, removed when swept into the shared purse.
+    // A removal always means a collection (coins never expire), so answer it with a
+    // sparkle at the coin's last spot — the "finish the animation" flourish.
+    state.coins.onAdd((coinState: CoinStateView, id: string) => {
+      const view = new CoinEntity(this, coinState.x, coinState.y);
+      this.coins.set(id, view);
+      coinState.onChange(() => view.setTarget(coinState));
+    });
+
+    state.coins.onRemove((coinState: CoinStateView, id: string) => {
+      this.coinFx.play(coinState.x, coinState.y);
+      this.coins.get(id)?.destroy();
+      this.coins.delete(id);
+    });
+
     // Shop pedestals: one ShopItemEntity per shop item, keyed "roomId:index".
     // Items only change via `purchased` (shared pool); floor change clears the
     // whole shops map, firing onRemove for the old rooms.
@@ -655,6 +677,7 @@ export class GameScene extends Phaser.Scene {
     this.remotePlayers.forEach((rp) => rp.update());
     this.enemies.forEach((e) => e.update());
     this.projectiles.forEach((p) => p.update());
+    this.coins.forEach((c) => c.update());
     this.hitboxDebug.update([
       ...this.localManager.getAll(),
       ...this.remotePlayers.values(),
@@ -701,6 +724,7 @@ export class GameScene extends Phaser.Scene {
     this.hud.update({
       players: this.localManager.getAll(),
       floor: this.currentFloor,
+      gold: obs?.gold ?? 0,
       debug: this.debug != null,
       paused: obs?.paused ?? false,
       playersOnStairs: obs?.playersOnStairs ?? 0,

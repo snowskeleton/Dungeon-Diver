@@ -1,7 +1,9 @@
 import {
   TILE, TILE_SIZE, tileCenter,
   DungeonResult, RoomData,
-  WEAPON_REGISTRY, WeaponId, WeaponInstance,
+  WEAPON_REGISTRY, WeaponId, WeaponInstance, Weapon,
+  AMMO_REGISTRY,
+  SHOP_TIERS, SHRINE_COST,
 } from "shared";
 import { GameState } from "../schema/GameState";
 import { ShopState, ShopItemState } from "../schema/ShopState";
@@ -64,17 +66,22 @@ export class LootDirector {
       if (room.type !== "shop") continue;
       const shop = new ShopState();
       shop.roomId = room.id;
-      const ids = this.rollShopWeapons(SHOP_ITEM_COUNT);
+      // Sorted cheapest-quality-first so the fixed tiers line up left→right with
+      // ascending price: the leftmost pedestal is the bargain, the rightmost the
+      // splurge, every floor (roadmap "Currency").
+      const ids = this.rollShopWeapons(SHOP_ITEM_COUNT)
+        .sort((a, b) => weaponQuality(WEAPON_REGISTRY[a]) - weaponQuality(WEAPON_REGISTRY[b]));
       // Lay pedestals in a row along the room's (always-carved) center row. The
       // generator keeps the stairs out of shop rooms, but a debug floor can force
       // every room to "shop" — nudge any pedestal that would cover the stairs.
       const cols = [room.centerCol - 3, room.centerCol, room.centerCol + 3]
         .map((col) => this.freeShopCol(col, room.centerRow));
       ids.forEach((wid, i) => {
-        const w = WEAPON_REGISTRY[wid];
         const item = new ShopItemState();
         item.weaponId = wid;
-        item.cost = Math.min(30, Math.max(8, Math.round(w.damage * 1.4)));
+        // Fixed gold tiers (50 / 100 / 150), not a per-weapon price. What scales
+        // with depth is the shop's quality, not its costs.
+        item.cost = SHOP_TIERS[Math.min(i, SHOP_TIERS.length - 1)];
         const pos = tileCenter(cols[i], room.centerRow);
         item.x = pos.x;
         item.y = pos.y;
@@ -147,24 +154,24 @@ export class LootDirector {
 
   // ---- player actions ------------------------------------------------------
 
-  // Buy a shop pedestal (spend HP, shared team pool). Validated server-side:
-  // buyer must stand near the pedestal, item unsold, and HP > cost (never lethal).
+  // Buy a shop pedestal from the shared party purse. Validated server-side: buyer
+  // must stand near the pedestal, item unsold, and the purse must cover the cost.
   buy(player: Player, msg: { roomId: string; itemIndex: number }): void {
     const shop = this.state.shops.get(msg?.roomId);
     const item = shop?.items[msg?.itemIndex];
     if (!item || item.purchased) return;
     if (!isNear(player, item.x, item.y)) return;
-    if (player.state.health <= item.cost) return;
+    if (this.state.gold < item.cost) return;
     const template = resolveTemplate(item.weaponId);
     if (!template) return;
     // Already own an unmodified copy? Don't charge or consume the pedestal — a
     // teammate who lacks it may still want it (shared pool). Duplicate instances
     // are legal in general, but a shop weapon carries no modifiers, so a second
-    // copy is strictly worthless HP spent. If shop pedestals ever roll modifiers
+    // copy is strictly worthless gold spent. If shop pedestals ever roll modifiers
     // this guard stops matching on its own and buying two becomes a real choice.
     if (player.ownsUnmodified(template.id)) return;
     player.addWeapon(template);
-    player.spendHp(item.cost);
+    this.state.gold -= item.cost;
     item.purchased = true;
   }
 
@@ -189,6 +196,10 @@ export class LootDirector {
     // Already spent your one pick, or someone beat you to this card.
     if (offer.claimedBy.includes(sessionId)) return;
     if (offer.consumed.includes(index)) return;
+    // A shrine pick costs gold from the shared purse; a free (boss/challenge) offer
+    // has cost 0. Checked before granting so an unaffordable pick is a no-op that
+    // leaves the card available.
+    if (this.state.gold < offer.cost) return;
 
     // Exhaustive on `kind` — a new choice kind is a compile error here, not a
     // silently-ignored pedestal.
@@ -209,6 +220,7 @@ export class LootDirector {
         break;
       }
     }
+    this.state.gold -= offer.cost;
     offer.consumed.push(index);
     offer.claimedBy.push(sessionId);
   }
@@ -242,6 +254,8 @@ export class LootDirector {
     offer.roomId = roomId;
     offer.x = x;
     offer.y = y;
+    // A shrine boon is bought with gold; a boss/challenge drop is earned and free.
+    offer.cost = tier === "shrine" ? SHRINE_COST : 0;
 
     // Each choice carries its own rolled modifiers, so shuffling can't desync the
     // card from the reward — there is nothing to keep aligned.
@@ -312,6 +326,16 @@ export class LootDirector {
     }
     return col;
   }
+}
+
+/** A rough quality score for ordering a shop's three pedestals into the fixed
+ *  price tiers. Melee weapons carry their damage directly; a ranged weapon's own
+ *  `damage` is only a flat bonus on top of its ammo, so fold the ammo's base
+ *  damage in too or every bow would sort as the cheapest thing on the floor. This
+ *  decides ORDER only — the actual prices are the fixed SHOP_TIERS. */
+function weaponQuality(w: Weapon): number {
+  const ammoBase = w.ammoId ? (AMMO_REGISTRY[w.ammoId]?.damage ?? 0) : 0;
+  return w.damage + ammoBase;
 }
 
 /** Shared proximity gate for all three loot interactions. */

@@ -3,7 +3,7 @@ import { WEAPON_REGISTRY, WeaponId } from "shared";
 import { InteractPrompt } from "./InteractPrompt";
 
 // In-world view of one shop pedestal: a pedestal base, the weapon icon hovering
-// above it, and an HP-cost label. Lightweight (not an Entity — no HP bar / no
+// above it, and a gold-cost label. Lightweight (not an Entity — no HP bar / no
 // server-driven movement); it just reflects the ShopItemState it's given.
 const ICON = 22;
 
@@ -27,8 +27,8 @@ export class ShopItemEntity {
     this.icon.setDisplaySize(ICON, ICON).setDepth(2.5);
     this.objects.push(this.icon);
 
-    const label = scene.add.text(x, y + 14, `${cost} HP`, {
-      fontSize: "10px", color: "#ff8888", backgroundColor: "#000000aa",
+    const label = scene.add.text(x, y + 14, `${cost} gold`, {
+      fontSize: "10px", color: "#f6c945", backgroundColor: "#000000aa",
     }).setOrigin(0.5, 0).setDepth(3).setPadding(3, 1);
     this.objects.push(label);
 

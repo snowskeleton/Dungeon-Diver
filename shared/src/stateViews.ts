@@ -144,6 +144,9 @@ export interface OfferStateView extends SyncedSchema {
   readonly roomId: string;
   readonly x: number;
   readonly y: number;
+  /** Gold each pick costs (0 = free boss/challenge drop, SHRINE_COST for a
+   *  shrine). Deducted from the shared purse when a card is drafted. */
+  readonly cost: number;
   /** The three cards, shared by the whole party. */
   readonly choices: SyncedList<OfferChoiceStateView>;
   /** Indices of the cards already taken — greyed out for everyone. */
@@ -168,6 +171,15 @@ export interface RoomChallengeStateView extends SyncedSchema {
   readonly complete: boolean;
 }
 
+/** A gold coin lying on the floor (or homing toward a player). `value` is what it
+ *  adds to the shared purse when collected — the client draws every coin the same
+ *  regardless, so it's only read for a tooltip/debug, never to pick a sprite. */
+export interface CoinStateView extends SyncedSchema {
+  readonly x: number;
+  readonly y: number;
+  readonly value: number;
+}
+
 // ── The root ───────────────────────────────────────────────────────────────
 
 export interface GameStateView extends SyncedSchema {
@@ -178,6 +190,10 @@ export interface GameStateView extends SyncedSchema {
   readonly offers: SyncedMap<OfferStateView>;
   readonly chests: SyncedMap<ChestStateView>;
   readonly challenges: SyncedMap<RoomChallengeStateView>;
+  /** Loose coins on the floor, keyed by coin id. */
+  readonly coins: SyncedMap<CoinStateView>;
+  /** The shared party purse — gold everyone spends from, everyone contributes to. */
+  readonly gold: number;
   readonly floor: number;
   readonly seed: number;
   readonly dungeonOpts: string;

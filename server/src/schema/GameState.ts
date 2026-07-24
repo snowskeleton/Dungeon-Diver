@@ -5,6 +5,7 @@ import { ProjectileState } from "./ProjectileState";
 import { ShopState } from "./ShopState";
 import { OfferState } from "./OfferState";
 import { ChestState } from "./ChestState";
+import { CoinState } from "./CoinState";
 import { RoomChallengeState } from "./RoomChallengeState";
 import { GameStateView, RunPhase } from "shared";
 
@@ -22,6 +23,13 @@ export class GameState extends Schema implements GameStateView {
   // Active room objectives keyed by room id — one per room whose type carries a
   // RoomChallenge, rebuilt per floor.
   @type({ map: RoomChallengeState }) challenges = new MapSchema<RoomChallengeState>();
+  // Loose coins on the floor, keyed by coin id — dropped on enemy death, removed
+  // when swept up into the shared purse.
+  @type({ map: CoinState }) coins = new MapSchema<CoinState>();
+  // The shared party purse: one communal pool of gold (roadmap "Currency").
+  // Rewards are personal, money is communal — a contested resource makes players
+  // negotiate, which is better co-op than four isolated wallets.
+  @type("uint32") gold: number = 0;
   @type("uint8") floor: number = 1;
   // Current dungeon seed — synced so late joiners can build the right map
   // (the floor_change broadcast only reaches clients already connected).

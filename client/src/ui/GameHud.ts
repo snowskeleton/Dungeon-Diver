@@ -22,6 +22,7 @@ import { promptKeyLabel } from "../options/keybindings";
 export class GameHud {
   private readonly hpText: Phaser.GameObjects.Text;
   private readonly floorText: Phaser.GameObjects.Text;
+  private readonly goldText: Phaser.GameObjects.Text;
   private readonly pausedText: Phaser.GameObjects.Text;
   private readonly storeCard: Phaser.GameObjects.Text;
   private readonly toast: Phaser.GameObjects.Text;
@@ -41,6 +42,14 @@ export class GameHud {
     this.floorText = ui.add(
       scene.add
         .text(8, 32, "", { fontSize: "13px", color: "#f6e05e", backgroundColor: "#00000088" })
+        .setDepth(10)
+        .setPadding(6, 4),
+    );
+
+    // The shared party purse, under the floor line. Gold reads best in gold.
+    this.goldText = ui.add(
+      scene.add
+        .text(8, 56, "", { fontSize: "13px", color: "#f6c945", backgroundColor: "#00000088" })
         .setDepth(10)
         .setPadding(6, 4),
     );
@@ -130,6 +139,7 @@ export class GameHud {
   update(opts: {
     players: LocalPlayer[];
     floor: number;
+    gold: number;
     debug: boolean;
     paused: boolean;
     playersOnStairs: number;
@@ -142,6 +152,7 @@ export class GameHud {
     this.floorText.setText(
       opts.debug ? `Floor ${opts.floor}  ·  DEBUG` : `Floor ${opts.floor}`,
     );
+    this.goldText.setText(`Gold: ${opts.gold}`);
     this.pausedText.setVisible(opts.paused);
     this.updateStairsPrompt(opts.playersOnStairs, opts.stairsPartySize);
     this.updateStoreCard(opts.players[0]);
@@ -183,7 +194,7 @@ export class GameHud {
     const weapon = viewFromTemplate(template);
     const stats = weaponStatLines(weapon).map((s) => `  ${s.label}: ${s.value}`).join("\n");
     this.storeCard.setText(
-      `${weapon.name}   (${near.cost} HP)\n${stats}\n[F] buy`,
+      `${weapon.name}   (${near.cost} gold)\n${stats}\n[F] buy`,
     );
     this.storeCard.setVisible(true);
   }

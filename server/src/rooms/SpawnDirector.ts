@@ -4,7 +4,7 @@ import {
   ENEMY_BASE_COUNT, ENEMY_FLOOR_BONUS_INTERVAL, ENEMY_PLAYER_SCALE,
   DungeonResult, DungeonOptions, RoomData, RoomType,
   DebugConfig, roomInteriorRect,
-  partyHpMultiplier,
+  partyHpMultiplier, floorGoldBudget,
 } from "shared";
 import { GameState } from "../schema/GameState";
 import { Enemy, EnemyClass } from "../entities/Enemy";
@@ -110,6 +110,22 @@ export class SpawnDirector {
         this.spawnEnemyInRoom(room.id, cls, true);
       }
     }
+    this.assignGoldBudget();
+  }
+
+  /** Divide the floor's gold budget across everything spawned, weighted by each
+   *  enemy's goldWeight. Runs once at the end of the floor pass, when this.enemies
+   *  holds exactly this floor's rank-and-file plus its boss (summons don't exist
+   *  yet and keep their default goldValue of 0, so they preserve the budget). This
+   *  is the whole "budgeted, not per-enemy-priced" design — see shared/economy. */
+  private assignGoldBudget(): void {
+    const budget = floorGoldBudget(this.players.size);
+    let totalWeight = 0;
+    this.enemies.forEach((e) => (totalWeight += e.goldWeight));
+    if (totalWeight <= 0) return;
+    this.enemies.forEach((e) => {
+      e.goldValue = Math.round((budget * e.goldWeight) / totalWeight);
+    });
   }
 
   // One boss per floor, in the room the generator marked "boss". Rotating by

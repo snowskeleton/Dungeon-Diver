@@ -10,6 +10,7 @@ import {
   SetNameMessage, SetLoadoutMessage, SetReadyMessage,
   MAX_ROOM_NAME_LEN, MAX_PLAYER_NAME_LEN,
   WeaponId, resolveCharacterClass, resolveCharacterType,
+  coinDenominations,
 } from "shared";
 import { allocateRoomCode } from "./roomCodes";
 import { GameState } from "../schema/GameState";
@@ -24,6 +25,7 @@ import { SpawnDirector } from "./SpawnDirector";
 import { Enemy, SpawnOpts } from "../entities/Enemy";
 import { PendingEffect } from "../entities/Entity";
 import { Boss } from "../entities/Boss";
+import { Coin } from "../entities/Coin";
 import { Projectile } from "../entities/Projectile";
 import { PlayerState } from "../schema/PlayerState";
 import { CombatSystem, HitSource } from "../combat";
@@ -36,9 +38,13 @@ export class GameRoom extends Room<GameState> {
   private players = new Map<string, Player>();
   private enemies = new Map<string, Enemy>();
   private projectiles = new Map<string, Projectile>();
+  // Loose coins on the floor, mirrored to state.coins. Dropped on enemy death,
+  // removed when swept into the shared purse (state.gold).
+  private coins = new Map<string, Coin>();
   private readonly combat = new CombatSystem();
   private spawnIndex = 0;
   private projectileCounter = 0;
+  private coinCounter = 0;
   private tickInterval!: ReturnType<typeof setInterval>;
   private physics!: PhysicsWorld;
   private floorManager!: FloorManager;
@@ -442,6 +448,10 @@ export class GameRoom extends Room<GameState> {
     this.state.enemies.clear();
     this.projectiles.clear();
     this.state.projectiles.clear();
+    // Coins don't carry over a descent — uncollected gold on the old floor is
+    // forfeit, same as its uncollected loot.
+    this.coins.clear();
+    this.state.coins.clear();
 
     this.initFloor(newSeed);
     this.state.floor = newFloor;
@@ -470,6 +480,24 @@ export class GameRoom extends Room<GameState> {
       player.teleport(spawn.x, spawn.y);
       player.state.health = player.maxHp;
     });
+  }
+
+  /** Scatter an enemy's gold as coins where it died. The value is split into a few
+   *  coins (see coinDenominations) flung to random nearby offsets so a drop reads
+   *  as a little burst rather than one coin stacked on the corpse. A zero-gold
+   *  enemy (a summon, a test build) drops nothing. */
+  private dropCoins(enemy: Enemy): void {
+    const values = coinDenominations(enemy.goldValue);
+    for (const value of values) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = Math.random() * COIN_SCATTER_RADIUS;
+      const x = enemy.state.x + Math.cos(angle) * dist;
+      const y = enemy.state.y + Math.sin(angle) * dist;
+      const id = `coin_${this.coinCounter++}`;
+      const coin = new Coin(x, y, value);
+      this.coins.set(id, coin);
+      this.state.coins.set(id, coin.state);
+    }
   }
 
   // Spawns a projectile and registers it for sync. `affects` (a Layer mask)
@@ -628,6 +656,10 @@ export class GameRoom extends Room<GameState> {
       // single death tick, so it can't be farmed by a lingering corpse.
       if (enemy instanceof Boss) this.loot.dropBossOffer(enemy.state.x, enemy.state.y);
 
+      // Every enemy drops its share of the floor's gold budget where it fell —
+      // gated to the single death tick by the same clearCheckDone flag.
+      if (enemy) this.dropCoins(enemy);
+
       // The room's challenge gets first refusal, BEFORE the clear check — that
       // ordering is the whole mechanism. A wave room answers the last kill of a
       // wave by putting the next wave in the room, so FloorManager's "everything
@@ -680,6 +712,21 @@ export class GameRoom extends Room<GameState> {
     // 8. Tile effects.
     this.players.forEach((p) => p.applyTileEffects(dtMs));
     this.enemies.forEach((e) => { if (!e.isDying && e.spawned) e.applyTileEffects(dtMs); });
+
+    // 8a. Coins: idle, then home toward a nearby player, then collect into the
+    //     shared purse. Runs after the physics step so homing chases the players'
+    //     final positions this tick. Collected ids collected first, then removed —
+    //     mutating this.coins mid-forEach would skip entries.
+    const collected: string[] = [];
+    this.coins.forEach((coin, id) => {
+      if (coin.update(dtMs, this.state.players)) collected.push(id);
+    });
+    for (const id of collected) {
+      const coin = this.coins.get(id);
+      if (coin) this.state.gold += coin.state.value;
+      this.coins.delete(id);
+      this.state.coins.delete(id);
+    }
 
     // 9. Stairs and trap detection.
     //    Stairs are a PARTY action: the floor only advances once every living
@@ -736,6 +783,10 @@ export class GameRoom extends Room<GameState> {
 
 
 /** In-place Fisher–Yates. Used for offer choices so a weapon isn't always slot 0. */
+// How far (px) a dropped coin can land from the corpse, so a multi-coin drop
+// scatters into a small burst instead of one stack.
+const COIN_SCATTER_RADIUS = 14;
+
 function shuffle<T>(items: T[]): void {
   for (let i = items.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));

@@ -341,6 +341,7 @@
   }
 
   .tm.done { color: #3db87a; }
+  .tm.partial { color: #d8a13d; }
 
   .phase-art-note {
     margin-top: 14px;
@@ -883,14 +884,14 @@
         <div class="phase-body">
           <div class="phase-milestone"><strong>Milestone:</strong> A run has an economy, classes have an identity, and strangers can find each other. Built in dependency order &mdash; currency, then lobby, then class powers, then puzzles.</div>
 
-          <div class="phase-milestone"><strong>Currency</strong> &mdash; replaces the HP-cost shop.</div>
+          <div class="phase-milestone"><strong>Currency</strong> &mdash; replaces the HP-cost shop. <strong>Landed 23 July.</strong> Coins drop from enemies (art from the SOA2 Pickups sheet), lie 3s then home to a nearby player, and sweep into a shared purse shown on the HUD; the shop and shrine now spend gold. Economy constants + helpers live in <code>shared/src/economy.ts</code>, the <code>Coin</code> entity + drop/budget logic on the server, and there's a full <code>economy.test.ts</code> suite.</div>
           <ul class="task-list">
-            <li><span class="tm">&mdash;</span> Enemies drop gold into <strong>one shared party purse</strong>. Shared deliberately: a contested resource makes players negotiate, and that's better co-op than four isolated wallets. (Rewards are personal, money is communal)</li>
-            <li><span class="tm">&mdash;</span> Shop tiers at <strong>50g / 100g / 150g</strong></li>
-            <li><span class="tm">&mdash;</span> <strong>Budgeted, not per-enemy-priced.</strong> State the intent as constants &mdash; <code>TARGET_SPEND_PER_PLAYER_PER_FLOOR&nbsp;=&nbsp;100</code>, <code>TARGET_CLEAR_FRACTION&nbsp;=&nbsp;0.7</code> &mdash; and derive the floor's gold budget (&asymp;143g &times; players). <code>SpawnDirector</code> divides it across what it spawned, weighted by a <code>goldWeight</code> getter on each <code>Enemy</code> subclass. Enemy and room counts can then change freely without breaking the economy. No id&rarr;gold table</li>
-            <li><span class="tm">&mdash;</span> Tier costs stay <em>fixed</em> and the per-floor budget stays <em>flat</em> across floors &mdash; what scales with depth is the shop's <em>quality</em>. Keeps "one item per floor" true on floor 9 and keeps prices learnable</li>
-            <li><span class="tm">&mdash;</span> Gold sinks: the shop, plus <strong>shrines now cost gold</strong>. Boss and chest offers stay free picks; gold may appear as one of the choices on an offer pedestal</li>
-            <li><span class="tm">&mdash;</span> Rushing a floor short-changes you &mdash; that shortfall <em>is</em> the cost of speed, and it's what makes descending early an interesting choice rather than a free one</li>
+            <li><span class="tm done">&#10003;</span> Enemies drop gold into <strong>one shared party purse</strong>. Shared deliberately: a contested resource makes players negotiate, and that's better co-op than four isolated wallets. (Rewards are personal, money is communal)</li>
+            <li><span class="tm done">&#10003;</span> Shop tiers at <strong>50g / 100g / 150g</strong> &mdash; the three pedestals sorted cheapest-quality-first so the tiers line up left&rarr;right</li>
+            <li><span class="tm done">&#10003;</span> <strong>Budgeted, not per-enemy-priced.</strong> State the intent as constants &mdash; <code>TARGET_SPEND_PER_PLAYER_PER_FLOOR&nbsp;=&nbsp;100</code>, <code>TARGET_CLEAR_FRACTION&nbsp;=&nbsp;0.7</code> &mdash; and derive the floor's gold budget (&asymp;143g &times; players). <code>SpawnDirector</code> divides it across what it spawned, weighted by a <code>goldWeight</code> getter on each <code>Enemy</code> subclass. Enemy and room counts can then change freely without breaking the economy. No id&rarr;gold table</li>
+            <li><span class="tm partial">&half;</span> Tier costs stay <em>fixed</em> and the per-floor budget stays <em>flat</em> across floors &mdash; both done. What still doesn't scale with depth is the shop's <em>quality</em> (weapons are still rolled uniformly regardless of floor) &mdash; the depth-scaled quality roll is the one open piece here</li>
+            <li><span class="tm partial">&half;</span> Gold sinks: the shop, plus <strong>shrines now cost gold</strong> (50g/pick) &mdash; both done. Boss and chest offers stay free picks. Still open: gold appearing as one of the <em>choices</em> on an offer pedestal</li>
+            <li><span class="tm done">&#10003;</span> Rushing a floor short-changes you &mdash; uncollected coins are forfeit on descent, so that shortfall <em>is</em> the cost of speed, and it's what makes descending early an interesting choice rather than a free one</li>
           </ul>
 
           <div class="phase-milestone"><strong>Classes get an identity</strong></div>

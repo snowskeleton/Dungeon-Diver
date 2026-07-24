@@ -48,6 +48,9 @@ export abstract class Boss extends Enemy implements DashCaster, SummonCaster {
   // A well-tuned boss overrides these; attack damage/cooldown are unused (bosses
   // deal no passive contact damage — every hit is a telegraphed spell).
   protected get maxHp(): number { return 600; }
+  // A boss is the floor's big payout — it takes a large slice of the gold budget
+  // relative to the rank and file (see Enemy.goldWeight).
+  override get goldWeight(): number { return 8; }
   protected get speed(): number { return 55; }
   protected get aggroRadius(): number { return 400; }
   protected get attackRadius(): number { return 26; }
