@@ -76,7 +76,7 @@ class HeldWeaponVisual implements WeaponVisual {
 
   playAttack(x: number, y: number, facing: Facing): void {
     if (!this.fxType || !this.fxSprite) return;
-    playAttackFX(this.fxSprite, this.fxType, x, y, facing, this.icon);
+    playAttackFX(this.fxSprite, this.fxType, x, y, facing, this.icon, this.iconAngle);
   }
 
   destroy(): void {

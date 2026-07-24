@@ -9,5 +9,9 @@ export abstract class Spear extends Weapon {
   get damage() { return 18; }
   get attackCooldownMs() { return 700; }
   get attackForce() { return 8; }
-  get iconAngle() { return 0; }
+  // Spear art (spear/lance/javelin/trident) is drawn pointing up-RIGHT at 45°,
+  // exactly like the swords/axes/maces — not upright like the hammer. The 0 it
+  // used to carry left it held cocked diagonally across the body; -45 stands the
+  // shaft up in hand, tip skyward.
+  get iconAngle() { return -45; }
 }

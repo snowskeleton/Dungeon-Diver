@@ -117,7 +117,7 @@ export function holdWeaponIconAtRest(
 
 // Active-swing state per FX sprite, so syncAttackFX() can re-anchor the strip
 // and icon to the entity's current position every frame while it moves.
-type ActiveSwing = { facing: Facing; kf: IconKeyframe };
+type ActiveSwing = { facing: Facing; kf: IconKeyframe; iconAngle: number };
 const activeSwings = new WeakMap<Phaser.GameObjects.Sprite, ActiveSwing>();
 
 export function preloadAttackFX(scene: Phaser.Scene) {
@@ -157,18 +157,24 @@ function applyIconKeyframe(
   px: number,
   py: number,
   facing: Facing,
+  iconAngle: number,
 ) {
   if (!kf) {
     icon.setVisible(false);
     return;
   }
+  // The keyframe angles assume art that points UP; a weapon drawn on the 45°
+  // diagonal carries that correction in its own `iconAngle`, so add it here too
+  // or a thrust points 45° off its own strip. The rest pose mirrors when facing
+  // left — the swing doesn't, so clear the flip and use the tilt unnegated.
+  icon.setFlipX(false);
   const rot = FACING_ROTATION[facing];
   const rad = Phaser.Math.DegToRad(rot);
   const cos = Math.round(Math.cos(rad));
   const sin = Math.round(Math.sin(rad));
   icon.x = px + kf.x * cos - kf.y * sin;
   icon.y = py + kf.x * sin + kf.y * cos;
-  icon.setAngle(kf.angle + rot);
+  icon.setAngle(kf.angle + rot + iconAngle);
   icon.setVisible(true);
 }
 
@@ -179,6 +185,7 @@ export function playAttackFX(
   py: number,
   facing: Facing,
   weaponIcon?: Phaser.GameObjects.Image,
+  iconAngle = 0,
 ) {
   sprite.x = px;
   sprite.y = py;
@@ -189,19 +196,23 @@ export function playAttackFX(
   sprite.off(Phaser.Animations.Events.ANIMATION_UPDATE);
   sprite.off(Phaser.Animations.Events.ANIMATION_COMPLETE);
 
-  const swing: ActiveSwing = { facing, kf: null };
+  const swing: ActiveSwing = {
+    facing,
+    kf: null,
+    iconAngle,
+  };
   activeSwings.set(sprite, swing);
 
   if (weaponIcon) {
     const keyframes = ICON_KEYFRAMES[fxType];
     swing.kf = keyframes[0];
-    applyIconKeyframe(weaponIcon, swing.kf, px, py, facing);
+    applyIconKeyframe(weaponIcon, swing.kf, px, py, facing, iconAngle);
     sprite.on(
       Phaser.Animations.Events.ANIMATION_UPDATE,
       (_anim: Phaser.Animations.Animation, frame: Phaser.Animations.AnimationFrame) => {
         // AnimationFrame.index is 1-based.
         swing.kf = keyframes[frame.index - 1] ?? null;
-        applyIconKeyframe(weaponIcon, swing.kf, sprite.x, sprite.y, facing);
+        applyIconKeyframe(weaponIcon, swing.kf, sprite.x, sprite.y, facing, iconAngle);
       },
     );
   }
@@ -230,6 +241,6 @@ export function syncAttackFX(
   sprite.x = px;
   sprite.y = py;
   if (weaponIcon) {
-    applyIconKeyframe(weaponIcon, swing.kf, px, py, swing.facing);
+    applyIconKeyframe(weaponIcon, swing.kf, px, py, swing.facing, swing.iconAngle);
   }
 }
