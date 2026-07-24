@@ -423,22 +423,33 @@ describe("the tick", () => {
     h.dispose();
   });
 
-  it("runs enemy AI only in rooms a player is standing in", async () => {
-    // Nothing ticks in a room with no player in it (playtest B14).
+  it("leaves enemies in unentered rooms unspawned — they don't exist until you arrive", async () => {
+    // Deferred spawning replaced the old "freeze AI in unwatched rooms" gate
+    // (playtest B14): an enemy in a room no player has reached is held UNSPAWNED —
+    // absent from synced state, not a combat target, never ticked — so it can't
+    // move, aggro, or be hit from across the floor. (This used to assert the far
+    // enemies' exact positions were unchanged, which flaked: two enemies could
+    // spawn overlapping and the physics separation step nudged them apart even with
+    // their AI gated off. The real contract is that they aren't in play at all.)
     const h = await startedRoom(1, { debug: debug({ enemiesPerRoom: 2, gridCols: 3, gridRows: 3 }) });
     const g = guts(h);
-    const far = [...g.enemies.values()].filter(e => {
-      const p = g.players.get("s0")!;
-      return Math.hypot(e.state.x - p.state.x, e.state.y - p.state.y) > 800;
-    });
+    const p = g.players.get("s0")!;
+    const far = [...g.enemies.entries()].filter(([, e]) =>
+      Math.hypot(e.state.x - p.state.x, e.state.y - p.state.y) > 800);
     expect(far.length).toBeGreaterThan(0);
-    const before = far.map(e => ({ x: e.state.x, y: e.state.y }));
 
+    // Unspawned right now: not revealed, not damageable, not in the synced map.
+    for (const [id, e] of far) {
+      expect(e.spawned).toBe(false);
+      expect(e.damageable).toBe(false);
+      expect(h.state.enemies.has(id)).toBe(false);
+    }
+
+    // The player never leaves the start room, so ticking must not reveal them.
     h.tick(20);
-
-    for (let i = 0; i < far.length; i++) {
-      expect(far[i].state.x).toBe(before[i].x);
-      expect(far[i].state.y).toBe(before[i].y);
+    for (const [id, e] of far) {
+      expect(e.spawned).toBe(false);
+      expect(h.state.enemies.has(id)).toBe(false);
     }
     h.dispose();
   });

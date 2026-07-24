@@ -135,6 +135,7 @@ export class GameScene extends Phaser.Scene {
     this.currentFloor = 1;
     this.ready = false;
     this.dialogOpen = false;
+    this.gameOverStarted = false;
 
     this.remotePlayers.clear();
     this.enemies.clear();
@@ -304,6 +305,10 @@ export class GameScene extends Phaser.Scene {
       first.room.onMessage("barrier_state", (msg: BarrierStateMessage) => {
         this.applyBarrierState(msg);
       });
+
+      // The whole party fell at once — the run is over. The server keeps ticking,
+      // so it's the client that walks everyone back to the menu.
+      first.room.onMessage("game_over", () => this.handleGameOver());
 
       // The map above was built with every parent barrier standing, which is the
       // right guess for a fresh floor and the wrong one for the floor we are
@@ -523,6 +528,20 @@ export class GameScene extends Phaser.Scene {
     this.scene.start("MenuScene");
   }
 
+  private gameOverStarted = false;
+
+  /** Whole party down: show the GAME OVER card, then leave to the menu. Guarded so
+   *  a repeated broadcast (or a re-tick) can't stack timers or double-leave. */
+  private handleGameOver(): void {
+    if (this.gameOverStarted) return;
+    this.gameOverStarted = true;
+    this.hud.showGameOver();
+    this.time.delayedCall(3200, async () => {
+      await this.localManager.leaveAll();
+      this.scene.start("MenuScene");
+    });
+  }
+
   private setupWorldSync(room: Room) {
     // The one boundary cast in the client. colyseus.js types `room.state` as the
     // untyped decoded state; from here down it is GameStateView, whose interfaces
@@ -625,12 +644,19 @@ export class GameScene extends Phaser.Scene {
     state.offers.onAdd((offer: OfferStateView, roomId: string) => {
       const view = new OfferPedestalEntity(this, offer.x, offer.y);
       this.offerPedestals.set(roomId, view);
-      // The pedestal is shared: it ghosts only once every card has been drafted, not
-      // when a single player picks (the rest of the party may still have picks).
-      const refresh = () => view.setClaimed(offer.consumed.length >= offer.choices.length);
-      // A push to the consumed list is what marks a card taken; listen to the list,
-      // since a child-collection mutation doesn't fire the parent schema's onChange.
+      // The pedestal is shared, but it should ghost for THIS screen as soon as our
+      // own player has spent their pick (their session id lands in claimedBy) — or
+      // once every card is drafted, whichever comes first. Checking only the latter
+      // left the pedestal glowing forever in solo play, where one player takes one
+      // of three cards and the other two are never claimed.
+      const localClaimed = () =>
+        Array.from(offer.claimedBy).some((sid) => this.localSessionIds.has(sid));
+      const refresh = () =>
+        view.setClaimed(offer.consumed.length >= offer.choices.length || localClaimed());
+      // A push to either list marks progress; a child-collection mutation doesn't
+      // fire the parent schema's onChange, so listen to both directly.
       (offer.consumed as unknown as { onAdd(cb: () => void): void }).onAdd(refresh);
+      (offer.claimedBy as unknown as { onAdd(cb: () => void): void }).onAdd(refresh);
       refresh();
     });
 

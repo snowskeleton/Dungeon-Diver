@@ -4,7 +4,7 @@ import {
   DungeonResult, RoomType,
   floorGoldBudget, coinDenominations,
   SHOP_TIERS, SHRINE_COST,
-  COIN_IDLE_MS, COIN_PICKUP_RADIUS,
+  COIN_IDLE_MS, COIN_PICKUP_RADIUS, SERVER_TICK_MS,
   DEFAULT_DEBUG_CONFIG, DebugConfig,
 } from "shared";
 import { startedRoom, RoomHarness } from "../helpers/gameRoom";
@@ -158,8 +158,19 @@ describe("killing an enemy in a real room drops gold", () => {
     const dropped = h.state.coins.size > 0 || h.state.gold > goldBefore;
     expect(dropped).toBe(true);
 
-    // Let the coin get collected — player is standing on it, so pickup is immediate.
-    h.tick(3);
+    // Every dropped coin ends up in the purse. A coin landing on the player (within
+    // COIN_PICKUP_RADIUS) is swept instantly; one that scattered just past it — the
+    // player is nudged off the exact death spot by the physics separation above —
+    // lies idle for COIN_IDLE_MS before homing in. So tick until the floor is clear
+    // rather than assuming a fixed count, which made this flaky on the scatter roll.
+    // The cap comfortably clears the idle window (COIN_IDLE_MS / SERVER_TICK_MS ticks)
+    // plus the short homing that follows.
+    const maxTicks = Math.ceil(COIN_IDLE_MS / SERVER_TICK_MS) + 20;
+    let ticks = 0;
+    while (h.state.coins.size > 0 && ticks < maxTicks) {
+      h.tick(1);
+      ticks += 1;
+    }
     expect(h.state.gold).toBeGreaterThan(goldBefore);
     expect(h.state.coins.size).toBe(0);
     h.dispose();

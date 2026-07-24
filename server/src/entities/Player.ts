@@ -230,7 +230,28 @@ export class Player extends Entity implements Caster {
     }
   }
 
+  /** Enter/leave the downed state. Downed freezes the player (no control, no
+   *  velocity) and resets the revive bar; standing back up clears both. Health is
+   *  managed by the caller — a revive restores it, entering downed leaves it at 0. */
+  setDowned(downed: boolean): void {
+    this.state.downed = downed;
+    this.state.reviveProgress = 0;
+    if (downed) {
+      this.state.isAttacking = false;
+      this.move(0, 0, 0);
+    }
+  }
+
   applyInput(input: InputMessage, dtMs: number): void {
+    // A downed player is frozen — no movement, no attack, no facing change —
+    // until a teammate revives them (GameRoom step 10). Zero the movement intent
+    // so a held key from before they fell doesn't keep the body drifting.
+    if (this.state.downed) {
+      this.move(0, 0, 0);
+      this.prevAttack = false;
+      return;
+    }
+
     this.spellCaster.tickClock(dtMs);
 
     // Hitstun freezes control — movement, attack, facing all pause — while the

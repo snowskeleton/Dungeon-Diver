@@ -27,6 +27,8 @@ export class GameHud {
   private readonly storeCard: Phaser.GameObjects.Text;
   private readonly toast: Phaser.GameObjects.Text;
   private readonly stairsPrompt: Phaser.GameObjects.Text;
+  private readonly downedBanner: Phaser.GameObjects.Text;
+  private readonly gameOverText: Phaser.GameObjects.Text;
   private readonly scene: Phaser.Scene;
   private toastTimer?: Phaser.Time.TimerEvent;
 
@@ -104,6 +106,32 @@ export class GameHud {
         .setVisible(false),
     );
 
+    // Shown while a local player is downed: tells them a teammate can pick them
+    // up, and shows the revive bar filling. Sits mid-screen, above the store card.
+    this.downedBanner = ui.add(
+      scene.add
+        .text(400, 300, "", {
+          fontSize: "18px", color: "#ff8f8f", backgroundColor: "#000000cc",
+          fontStyle: "bold", align: "center",
+        })
+        .setOrigin(0.5)
+        .setDepth(28)
+        .setPadding(14, 10)
+        .setVisible(false),
+    );
+
+    this.gameOverText = ui.add(
+      scene.add
+        .text(400, 288, "GAME OVER", {
+          fontSize: "44px", color: "#ff5555", backgroundColor: "#000000dd",
+          fontStyle: "bold", align: "center",
+        })
+        .setOrigin(0.5)
+        .setDepth(40)
+        .setPadding(20, 14)
+        .setVisible(false),
+    );
+
     if (showControlsHint) {
       // Was anchored to the bottom of the MAP, so it sat wherever the last tile
       // row happened to be rather than on screen. It's a HUD line — pin it to the
@@ -146,9 +174,10 @@ export class GameHud {
     stairsPartySize: number;
   }): void {
     const hpLines = opts.players
-      .map((lp, i) => `P${i + 1} HP: ${Math.round(lp.hp)}`)
+      .map((lp, i) => (lp.downed ? `P${i + 1} DOWN` : `P${i + 1} HP: ${Math.round(lp.hp)}`))
       .join("   ");
     this.hpText.setText(hpLines || "Connecting...");
+    this.updateDownedBanner(opts.players);
     this.floorText.setText(
       opts.debug ? `Floor ${opts.floor}  ·  DEBUG` : `Floor ${opts.floor}`,
     );
@@ -156,6 +185,31 @@ export class GameHud {
     this.pausedText.setVisible(opts.paused);
     this.updateStairsPrompt(opts.playersOnStairs, opts.stairsPartySize);
     this.updateStoreCard(opts.players[0]);
+  }
+
+  /** The whole party fell — freeze a GAME OVER card over everything. */
+  showGameOver(): void {
+    this.gameOverText.setVisible(true);
+  }
+
+  // Banner for a downed local player: a filling revive bar (drawn as a text meter)
+  // when a teammate is reviving, otherwise the "hold on" prompt. Hidden when every
+  // local player is up. Only local players are considered — a downed remote player
+  // reads from their ghosted sprite, not this screen-space banner.
+  private updateDownedBanner(players: { downed: boolean; reviveProgress: number }[]): void {
+    const down = players.find((p) => p.downed);
+    if (!down) {
+      this.downedBanner.setVisible(false);
+      return;
+    }
+    if (down.reviveProgress > 0) {
+      const filled = Math.round(down.reviveProgress * 10);
+      const bar = "█".repeat(filled) + "░".repeat(10 - filled);
+      this.downedBanner.setText(`Reviving...\n${bar}`);
+    } else {
+      this.downedBanner.setText("You are down!\nA teammate can revive you");
+    }
+    this.downedBanner.setVisible(true);
   }
 
   // Prompt shown while someone is waiting on the stairs. Nothing appears until at

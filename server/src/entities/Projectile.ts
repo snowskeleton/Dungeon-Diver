@@ -1,4 +1,4 @@
-import { AmmoConfig, TILE_PROPS, TileId } from "shared";
+import { AmmoConfig, TILE_PROPS, TileId, TILE_SIZE } from "shared";
 import { ProjectileState } from "../schema/ProjectileState";
 import { HitSource } from "../combat/HitSource";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
@@ -98,14 +98,33 @@ export class Projectile {
       this.hitTargets.clear();
     }
 
-    if (!this.cfg.ignoresWalls) {
-      const tile = this.physics.tileAt(this.state.x, this.state.y);
-      if (tile === null || !TILE_PROPS[tile as TileId].walkable) {
+    if (!this.cfg.ignoresWalls) this.checkWalls();
+  }
+
+  /** Wall/door collision, SWEPT along this tick's travel rather than sampled only
+   *  at the new centre. A fast shot fired flush against a wall used to tunnel
+   *  through it: one tick could carry the sample point clear past a 1-tile wall
+   *  into the room beyond. We walk the prev→current segment in sub-tile steps and
+   *  die at the first blocked point (both walls and locked doors — the doorway
+   *  tile is walkable, so barrierAt catches it where the tile test can't). */
+  private checkWalls(): void {
+    const dx = this.state.x - this.prevX;
+    const dy = this.state.y - this.prevY;
+    const dist = Math.hypot(dx, dy);
+    // Step in ≤half-tile increments so no wall can fit between two samples.
+    const steps = Math.max(1, Math.ceil(dist / (TILE_SIZE / 2)));
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      const x = this.prevX + dx * t;
+      const y = this.prevY + dy * t;
+      const tile = this.physics.tileAt(x, y);
+      if (tile === null || !TILE_PROPS[tile as TileId].walkable || this.physics.barrierAt(x, y)) {
+        // Stop AT the wall (the last clear sample), not embedded in it.
+        const back = (i - 1) / steps;
+        this.state.x = this.prevX + dx * back;
+        this.state.y = this.prevY + dy * back;
         this.dead = true;
-      } else if (this.physics.barrierAt(this.state.x, this.state.y)) {
-        // A locked door stops a shot like a wall does — the doorway tile itself
-        // is walkable, so the tile test above can't see it (playtest B5).
-        this.dead = true;
+        return;
       }
     }
   }

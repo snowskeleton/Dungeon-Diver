@@ -70,6 +70,8 @@ export class LocalPlayer extends Entity implements DebugDrawable {
   private serverAttacking = false;
   private lastAttackSeq = -1;
   hp: number;
+  downed = false;
+  reviveProgress = 0;
 
   constructor(
     scene: Phaser.Scene,
@@ -309,6 +311,9 @@ export class LocalPlayer extends Entity implements DebugDrawable {
   syncFromServer(state: PlayerStateView) {
     const { weaponId, attackSeq } = state;
     this.hp = state.health;
+    this.downed = state.downed;
+    this.reviveProgress = state.reviveProgress;
+    this.setDowned(state.downed);
     this.serverAttacking = state.isAttacking;
     this.checkAcquired(Array.from(state.weapons));
     // A new attackSeq means the server accepted a fresh attack — restart the

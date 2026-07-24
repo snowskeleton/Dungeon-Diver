@@ -187,6 +187,20 @@ export abstract class Entity {
     this.weaponVisual.playAttack(this.sprite.x, this.sprite.y, facing);
   }
 
+  private downedShown = false;
+
+  /** Ghost + blue-tint a downed player so a collapsed teammate reads at a glance.
+   *  Idempotent — cheap to call every frame from the sync path. */
+  setDowned(downed: boolean) {
+    if (downed === this.downedShown) return;
+    this.downedShown = downed;
+    const alpha = downed ? 0.4 : 1;
+    this.sprite.setAlpha(alpha);
+    this.charSprite?.setAlpha(alpha);
+    if (downed) this.charSprite?.setTint(0x6f8cff);
+    else this.charSprite?.clearTint();
+  }
+
   updateHpBar(hp: number) {
     if (!this.isHurt && this.lastHp !== undefined && hp < this.lastHp) {
       this.isHurt = true;

@@ -55,6 +55,12 @@ export class GameRoom extends Room<GameState> {
   private currentDungeon!: DungeonResult;
   private currentSeed = MAP_SEED;
   private stairsActive = false;
+  // Set once when the whole party is downed at the same time — the run is over.
+  private runEnded = false;
+  // Sticky commitment: the locked room a player is held inside by its one-way exit
+  // barrier. Kept until the room clears, so walking into the doorway (where roomAt
+  // reads null) doesn't briefly un-commit them and pop the barrier open.
+  private committedRoom = new Map<string, string>();
   // Non-null only for rooms created from the client's Debug menu.
   private debug: DebugConfig | null = null;
   private dungeonOpts: DungeonOptions = {};
@@ -63,6 +69,12 @@ export class GameRoom extends Room<GameState> {
   private pausedBy = new Set<string>();
 
   async onCreate(options?: CreateRoomOptions & { debug?: DebugConfig }) {
+    // A fresh run gets a random floor-1 seed so no two runs are the same dungeon
+    // (descending still does seed+1 from here). The Debug menu's explicit seed
+    // wins when set, so debug floors stay reproducible.
+    this.currentSeed = 1 + Math.floor(Math.random() * 0x7fffffff);
+    // An explicitly requested seed (reproducible run) overrides the random roll.
+    if (typeof options?.seed === "number") this.currentSeed = options.seed;
     if (options?.debug?.enabled) {
       this.debug = options.debug;
       this.dungeonOpts = toDungeonOptions(this.debug);
@@ -296,6 +308,8 @@ export class GameRoom extends Room<GameState> {
     if (this.floorManager) this.floorManager.dispose();
     this.floorManager = new FloorManager(rooms, connections, this.physics);
     this.stairsActive = false;
+    // Commitment is per-floor room state; the new floor's rooms are all unlocked.
+    this.committedRoom.clear();
 
     this.loot.setFloor(this.currentDungeon, this.physics);
     this.spawner.setFloor(this.currentDungeon, this.physics, this.floorManager);
@@ -411,6 +425,7 @@ export class GameRoom extends Room<GameState> {
     if (player) this.physics.removeBody(player.body);
     this.players.delete(client.sessionId);
     this.state.players.delete(client.sessionId);
+    this.committedRoom.delete(client.sessionId);
     // Don't let a disconnect while paused freeze the room forever.
     this.pausedBy.delete(client.sessionId);
     this.state.paused = this.pausedBy.size > 0;
@@ -479,7 +494,82 @@ export class GameRoom extends Room<GameState> {
       const spawn = spawns[i % spawns.length];
       player.teleport(spawn.x, spawn.y);
       player.state.health = player.maxHp;
+      // Descending carries a downed teammate down with the party, on their feet.
+      if (player.state.downed) player.setDowned(false);
     });
+  }
+
+  /** Sticky one-way commitment. A player standing in a locked room's INTERIOR is
+   *  committed and stays committed — even when they step into the doorway, where
+   *  roomAt reads null — until that room clears. Without the stickiness, walking up
+   *  to the exit doorway un-committed the player for a tick and the barrier let them
+   *  straight out. Cleared when the room clears, or if they somehow end up in a
+   *  DIFFERENT room's interior (a teleport/respawn safety, not a normal walk). */
+  private updateCommitment(sid: string, player: Player): boolean {
+    let room = this.committedRoom.get(sid);
+    if (room) {
+      const interior = this.floorManager.roomAt(player.state.x, player.state.y);
+      if (this.floorManager.isRoomCleared(room) || (interior && interior.id !== room)) {
+        room = undefined;
+      }
+    }
+    if (!room && this.floorManager.isCommittedAt(player.state.x, player.state.y)) {
+      room = this.floorManager.roomAt(player.state.x, player.state.y)!.id;
+    }
+    if (room) this.committedRoom.set(sid, room);
+    else this.committedRoom.delete(sid);
+    return room !== undefined;
+  }
+
+  /** Death is a downed state, not a removal. Transition the freshly-dead to downed,
+   *  fill the revive bar while a living teammate stands over them, and end the run
+   *  if nobody is left standing. */
+  private updateDowned(dtMs: number): void {
+    const downed: Player[] = [];
+    const standing: Player[] = [];
+    this.players.forEach((player) => {
+      if (player.state.health <= 0) {
+        if (!player.state.downed) player.setDowned(true);
+        downed.push(player);
+      } else {
+        standing.push(player);
+      }
+    });
+
+    if (downed.length === 0) return;
+
+    // Debug affordance: skip the whole downed/revive flow and respawn at spawn.
+    if (this.debug?.respawnOnDeath) {
+      this.respawnAll(downed);
+      downed.forEach((p) => p.setDowned(false));
+      return;
+    }
+
+    // Whole party down at once → the run is over. Broadcast once; the tick keeps
+    // running (the room isn't torn down), so the clients drive the return to menu.
+    if (standing.length === 0) {
+      if (!this.runEnded) {
+        this.runEnded = true;
+        this.broadcast("game_over", {});
+      }
+      return;
+    }
+
+    // A living teammate within REVIVE_RADIUS fills the bar; step away and it decays.
+    for (const p of downed) {
+      const beingRevived = standing.some((r) => {
+        const dx = r.state.x - p.state.x;
+        const dy = r.state.y - p.state.y;
+        return dx * dx + dy * dy <= REVIVE_RADIUS * REVIVE_RADIUS;
+      });
+      const next = p.state.reviveProgress + (beingRevived ? dtMs : -dtMs) / REVIVE_MS;
+      if (next >= 1) {
+        p.setDowned(false);
+        p.state.health = Math.max(1, Math.round(p.maxHp * REVIVE_HP_FRACTION));
+      } else {
+        p.state.reviveProgress = Math.max(0, next);
+      }
+    }
   }
 
   /** Scatter an enemy's gold as coins where it died. The value is split into a few
@@ -556,11 +646,8 @@ export class GameRoom extends Room<GameState> {
     //     COMMITTED — their body starts colliding with that room's exit barrier —
     //     while a player still outside ignores it and can walk in late. This is
     //     re-evaluated every tick, so clearing the room releases everyone.
-    this.players.forEach((player) => {
-      this.physics.setPlayerCommitted(
-        player.body,
-        this.floorManager.isCommittedAt(player.state.x, player.state.y),
-      );
+    this.players.forEach((player, sid) => {
+      this.physics.setPlayerCommitted(player.body, this.updateCommitment(sid, player));
     });
 
     // 2. Enemy AI — per-enemy visibility: a player is hidden only from enemies
@@ -759,14 +846,11 @@ export class GameRoom extends Room<GameState> {
       }
     }
 
-    // 10. Dead players respawn — but only under the debug respawn flag. The
-    //     shipping game is permadeath (the design intent); respawn survives as a
-    //     test affordance behind the Debug menu.
-    if (this.debug?.respawnOnDeath) {
-      const dead: Player[] = [];
-      this.players.forEach((player) => { if (player.isDead) dead.push(player); });
-      if (dead.length > 0) this.respawnAll(dead);
-    }
+    // 10. Downed + revive. A player at 0 HP is DOWNED, not gone: frozen and
+    //     un-controllable, but a standing teammate revives them. If the WHOLE party
+    //     is down at once the run ends. Debug respawnOnDeath shortcuts a downed
+    //     player straight back to full at the floor spawn.
+    this.updateDowned(dtMs);
 
     // 11. Softlock guard: unlock rooms that locked behind a player who is no longer
     //     inside (death respawn above, or disconnect). Runs after step 10 so dead
@@ -786,6 +870,12 @@ export class GameRoom extends Room<GameState> {
 // How far (px) a dropped coin can land from the corpse, so a multi-coin drop
 // scatters into a small burst instead of one stack.
 const COIN_SCATTER_RADIUS = 14;
+
+// Revive tuning. A living teammate within REVIVE_RADIUS px of a downed player fills
+// the bar over REVIVE_MS; completing it stands them up at REVIVE_HP_FRACTION of max.
+const REVIVE_RADIUS = 40;
+const REVIVE_MS = 3000;
+const REVIVE_HP_FRACTION = 0.5;
 
 function shuffle<T>(items: T[]): void {
   for (let i = items.length - 1; i > 0; i--) {

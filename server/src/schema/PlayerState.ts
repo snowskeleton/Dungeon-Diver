@@ -33,4 +33,8 @@ export class PlayerState extends EntityState implements PlayerStateView {
   // party roster want it, `ready` because nothing reads it once the run starts.
   @type("string") name: string = "Player";
   @type("boolean") ready: boolean = false;
+  // Downed = at 0 HP but not out of the run: frozen and un-controllable, waiting
+  // for a teammate to revive. reviveProgress is 0..1, how full the revive bar is.
+  @type("boolean") downed: boolean = false;
+  @type("float32") reviveProgress: number = 0;
 }

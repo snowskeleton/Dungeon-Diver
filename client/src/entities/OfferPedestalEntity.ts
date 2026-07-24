@@ -10,6 +10,7 @@ const GLOW = 0xffe066;
 export class OfferPedestalEntity {
   private objects: Phaser.GameObjects.GameObject[] = [];
   private glow: Phaser.GameObjects.Arc;
+  private glowTween?: Phaser.Tweens.Tween;
   private prompt: InteractPrompt;
   readonly x: number;
   readonly y: number;
@@ -25,7 +26,7 @@ export class OfferPedestalEntity {
     // A slow pulse so it reads as "interactive reward" without needing art yet.
     this.glow = scene.add.circle(x, y - 4, 9, GLOW, 0.55).setDepth(2.4);
     this.objects.push(this.glow);
-    scene.tweens.add({
+    this.glowTween = scene.tweens.add({
       targets: this.glow,
       scale: 1.35,
       alpha: 0.2,
@@ -49,8 +50,13 @@ export class OfferPedestalEntity {
     else this.prompt.hide();
   }
 
-  /** Ghost out once someone has taken it (first-come — see GameRoom offerPick). */
+  /** Ghost out once claimed. The pulsing glow has to be stopped first — its tween
+   *  drives alpha every frame and would otherwise fight setAlpha and keep shining. */
   setClaimed(claimed: boolean) {
+    if (claimed && this.glowTween) {
+      this.glowTween.stop();
+      this.glowTween = undefined;
+    }
     this.objects.forEach((o) => (o as any).setAlpha?.(claimed ? 0.15 : 1));
   }
 

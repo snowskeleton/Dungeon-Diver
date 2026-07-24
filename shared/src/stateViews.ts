@@ -92,6 +92,10 @@ export interface PlayerStateView extends EntityStateView {
   readonly name: string;
   /** Lobby readiness. Stays true through the run; it is only read before it starts. */
   readonly ready: boolean;
+  /** At 0 HP but not out: frozen, waiting on a teammate. See PlayerState. */
+  readonly downed: boolean;
+  /** Revive-bar fill, 0..1, while a teammate stands over a downed player. */
+  readonly reviveProgress: number;
 }
 
 export interface EnemyStateView extends EntityStateView {

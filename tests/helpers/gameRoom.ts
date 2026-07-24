@@ -8,7 +8,7 @@
 
 import { vi } from "vitest";
 import { matchMaker } from "colyseus";
-import { CreateRoomOptions, JoinRoomOptions, DebugConfig } from "shared";
+import { CreateRoomOptions, JoinRoomOptions, DebugConfig, MAP_SEED } from "shared";
 import { GameRoom } from "../../server/src/rooms/GameRoom";
 import { GameState } from "../../server/src/schema/GameState";
 
@@ -92,8 +92,12 @@ export async function createRoom(
   patched.clients = clients;
 
   // The room arms a 20 Hz setInterval in onCreate; tests drive the tick by hand.
+  // Pin the floor seed so the map is reproducible across runs — production rolls a
+  // random one, which would make any test that walks the generated floor flaky. A
+  // test that wants a specific seed still overrides it via options.
+  const seededOptions = { seed: MAP_SEED, ...options };
   const timers = vi.spyOn(globalThis, "setInterval").mockReturnValue(0 as never);
-  await room.onCreate(options);
+  await room.onCreate(seededOptions);
   timers.mockRestore();
 
   return {

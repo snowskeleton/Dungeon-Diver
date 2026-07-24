@@ -52,6 +52,7 @@ export class RemotePlayer extends Entity implements DebugDrawable {
     this.currentHp = state.health;
     this.facing = state.facing;
     this.isAttacking = state.isAttacking;
+    this.setDowned(state.downed);
     // Active weapon changed on the server — hot-swap the visuals to match.
     if (weaponId && weaponId !== this.activeWeaponId) {
       const w = WEAPON_REGISTRY[weaponId as WeaponId];

@@ -19,6 +19,9 @@ export interface CreateRoomOptions {
   roomName?: string;
   /** Private rooms are unlisted and reachable only by their code. */
   isPrivate?: boolean;
+  /** Pin the floor-1 dungeon seed. Omitted for a normal run (the server rolls a
+   *  random one so no two runs match); supplied to reproduce a specific dungeon. */
+  seed?: number;
 }
 
 /** What every client sends on join, host or not. */
