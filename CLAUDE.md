@@ -200,7 +200,8 @@ client/src/
   debug/hurtboxShapes.ts    ← melee-swing hurtbox shapes, shared by LocalPlayer and RemotePlayer
   dev/PlaceholderReport.ts  ← dev-only: lists placeholder art in the console AND the npm-run-dev terminal (via terminalLogPlugin)
   map/BarrierOverlays.ts    ← the tiled images over locked doorways, keyed by connection id (showParent/showChild/hideParent/hideChild/clear)
-  map/TileRenderer.ts       ← buildMap() renders MAP_DATA from the dungeon-tiles.png tileset (TILE_TO_FRAME map); tweens fire/stairs/boss tiles; still generates the barrier texture programmatically
+  map/TileRenderer.ts       ← buildMap(scene, dungeon) renders a floor from the dungeon-tiles.png tileset: walls AUTOTILE off their 8 neighbours (47-tile blob), floors pick a theme from the room type (exhaustive switch) and a variant from a per-tile hash, specials draw on top of a floor tile, and any floor south of a wall gets a cast shadow. Also exports BARRIER_TEXTURE/BARRIER_FRAME
+  map/tilesetFrames.generated.ts ← GENERATED frame table (floor themes, the 256→frame wall-mask lookup, specials). Never hand-edit; `npm run assets:tiles`
   public/sprites/           ← PNGs Phaser loads at runtime (copied by `npm run assets:build`)
 ```
 
@@ -217,6 +218,14 @@ client/src/
 **Async `create()` guard**: Phaser doesn't await async `create()`, so `update()` can run before setup is done. Guard: `private ready = false` set at end of `create()`; `update()` returns early if `!this.ready`.
 
 **Tile system**: `shared/src/types.ts` defines `TILE_PROPS` keyed by tile ID. Server's `Entity.ts` reads these for walkability checks and tile effects. Client's `TileRenderer.ts` renders the same generated `MAP_DATA` using frames from the `dungeon-tiles.png` tileset — same data, no sync needed.
+
+**The tileset is CODE.** `assets/generate-dungeon-tiles.js` draws every frame pixel-by-pixel and emits **both** `assets/dungeon-tiles.png` and `client/src/map/tilesetFrames.generated.ts`. Re-theme by editing a palette and re-running `npm run assets:tiles` — never repaint the PNG, it is build output. Three things this buys, and the reasons it is worth being generated rather than painted:
+
+- **Walls autotile, and the 47-tile blob is complete by construction.** A wall's frame comes from which of its eight neighbours are also wall, so edges, outer corners (bitten to read as rounded), inner corners, end-caps and 1-tile corridors all fall out of the geometry — no room shape can produce an arrangement the sheet lacks. Only the 4 cardinals plus the diagonals *between two set cardinals* matter, which collapses 256 arrangements onto 47; the generator enumerates the canonical set and emits the whole 256-entry lookup, so `TileRenderer` computes a raw mask and indexes it directly.
+- **The frame table ships with the art.** The renderer can never index a sheet that moved under it, because both come out of the same run. Adding a frame is not a renumbering hazard.
+- **Room types are legible at the locked 2× zoom** — the Floor 6 "texture variety" item. `themeFor(RoomType)` is an **exhaustive switch** (a new room type is a compile error, not a silent fallback to stone). Combat/wave/timed/dark deliberately share `stone`: they are all "a room with enemies in it", and only the rooms that mean something else get their own palette. Each theme has 8 floor variants; a per-tile hash picks a detailed one roughly 1 tile in 6, which breaks up the grid deterministically — the same tile must pick the same variant across rebuilds or the stones reshuffle underfoot.
+
+Walkable tiles get a floor drawn underneath and the special (stairs/trap/boss/fire/slime) on top, so a stairwell sits **in** the room's stone rather than replacing a square of it. The barrier over a locked doorway is a tileset frame too (an iron portcullis) — it used to be a red rectangle drawn with `Graphics` at boot, which is why locked doors read as a debug overlay.
 
 **Content styles.** **Enemies, bosses, weapons, and ammo are object-oriented**: one subclass each, stats as compiler-checked getters resolved up an `extends` chain, listed in a plain array of classes (`REGULAR_ENEMIES` / `BOSSES` / `WEAPONS` / `AMMO_CLASSES`) — no `ENEMY_REGISTRY`, no generic `Goo`, no id→config table. Enemies/bosses put *behaviour* on the class (`server/src/entities/enemies` + `/bosses`); weapons (`shared/src/weapons`, three-level chain `Weapon → Sword/Bow/Staff/… → the weapon`) and ammo (`shared/src/ammo`, `Ammo → Arrow/Bolt/Boomerang → the ammo`) currently put only *stats* there, but being real classes means a specific one can grow a bespoke method later without reshaping anything. `WEAPON_REGISTRY` / `AMMO_REGISTRY` (id→template) are *derived* from `WEAPONS` / `AMMO_CLASSES` because both are referenced by id across the wire — a genuine lookup need, not a config shortcut. Still plain config in a `shared/` registry: **characters** (`CHARACTER_REGISTRY` — per-class maxHp/speed/defaultWeaponId); add one by adding a config + registry entry. Client visuals live in parallel registries (`client/src/characters`, `client/src/enemies`, `client/src/weapons`). Clients pass `characterClass`/`characterType` as join options, synced on `PlayerState` — both are UNTRUSTED and go through `resolveCharacterClass`/`resolveCharacterType` rather than being cast (an unknown class used to crash `onJoin`).
 
@@ -308,7 +317,7 @@ For ranged weapons the ammo carries the base damage and the weapon's own `damage
 ### Add a tile type
 1. Add ID to `TILE` const in `shared/src/types.ts`
 2. Add its `TileProps` to `TILE_PROPS` in the same file
-3. Map it to a tileset frame in `TileRenderer.ts` → `TILE_TO_FRAME` (add the frame to `assets/dungeon-tiles.png` first if it needs new art, then `npm run assets:build`)
+3. Draw its frame in `assets/generate-dungeon-tiles.js` (a `draw*()` function + an entry in `special`), run `npm run assets:tiles`, then add a `case` for it in `TileRenderer.buildMap`'s switch. Don't hand-paint `dungeon-tiles.png` — it is regenerated
 4. Emit the new ID from the carve logic in `shared/src/dungeonGenerator.ts`
 
 ### Change the map

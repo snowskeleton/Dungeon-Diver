@@ -2,7 +2,9 @@
 
 Read this when adding or replacing art.
 
-All sprites are finished-art PNGs dropped straight into `assets/` (guy, gal, skeleton, skeleton-mage, goos, bat, FX strips, the tileset). There is no source format to compile — art goes in as a PNG and gets copied to the client verbatim.
+All sprites are finished-art PNGs dropped straight into `assets/` (guy, gal, skeleton, skeleton-mage, goos, bat, FX strips). There is no source format to compile — art goes in as a PNG and gets copied to the client verbatim.
+
+**One exception: `dungeon-tiles.png` is build output, not art.** It is drawn pixel-by-pixel by `generate-dungeon-tiles.js` (see below). Editing it by hand works until the next regeneration silently throws the edit away.
 
 ## The one command
 
@@ -16,11 +18,12 @@ npm run assets:build      # = node assets/sync-to-client.js
 
 ## Other scripts in `assets/`
 
+- `generate-dungeon-tiles.js` — **the dungeon tileset.** Draws all 102 frames from the palettes at the top of the file and emits both `assets/dungeon-tiles.png` and `client/src/map/tilesetFrames.generated.ts` (the frame table the renderer indexes). Run it with **`npm run assets:tiles`**, which regenerates and syncs in one step. Contents: a 47-tile wall blob for autotiling, 6 floor themes × 8 variants, and the specials (stairs, warp trap, boss passage, fire, slime, wall shadow, barrier portcullis). To re-theme a room type, edit its palette in `FLOOR_THEMES`; to add a floor variant, bump `FLOOR_VARIANTS` and add a branch in `drawFloorTile`. **Only `pngjs` is required, which IS a project dependency** — unlike the `sharp` scripts below, this one runs with no extra install. Why generated: the 47 blob frames have to be mutually consistent or walls grow wrong edges at some room shape nobody tested, and the frame indices have to match the renderer. Both are guaranteed by construction here. See the tileset section in [../CLAUDE.md](../CLAUDE.md).
 - `generate-weapons.js` — splits `weapon-icons.png` into per-weapon PNGs and writes per-weapon TypeScript definition files into `shared/src/weapons/{category}/{id}/`.
 - `generate-fx-hurtboxes.js` + `generate-enemy-hurtboxes.ts` — derive melee hitboxes from the art, so no reach or hurt size is ever hand-tuned. The first measures the four attack-FX strips into `shared/src/weapons/fxHurtboxes.generated.ts` (a weapon's swing hurtbox); the second measures every enemy + player spritesheet into `shared/src/enemies/hurtBounds.generated.ts` (what each creature can be *hit* on). Both outputs are committed. **`npm run assets:hurtboxes` runs both** — re-run after editing any FX strip, adding an enemy, or replacing a creature sheet. The enemy generator reads `client/src/enemies/spriteGeometry.ts`, so a new enemy needs its geometry there first.
 - `generate-snake-sheets.js` — the Snakes art ships as three per-direction strips instead of one sheet; this composes `fang.png` / `hood-fang.png` into the standard 4-row directional layout (the "left" row is the side strip mirrored per-frame). The output is committed, so only re-run it if the source art changes.
 
-Both require `sharp`, which is **not** a project dependency: `npm install --no-save sharp` first.
+`generate-weapons.js` and `generate-snake-sheets.js` require `sharp`, which is **not** a project dependency: `npm install --no-save sharp` first.
 
 ## Sprite-sheet grid alignment (bit us once)
 

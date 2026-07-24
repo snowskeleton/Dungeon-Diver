@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { BarrierRect, TILE_SIZE, tileCenter } from "shared";
+import { BARRIER_TEXTURE, BARRIER_FRAME } from "./TileRenderer";
 
 /**
  * The tiled images drawn over locked doorways.
@@ -69,7 +70,7 @@ export class BarrierOverlays {
     for (let row = rowMin; row <= rowMax; row++) {
       for (let col = colMin; col <= colMax; col++) {
         const { x, y } = tileCenter(col, row);
-        const img = this.scene.add.image(x, y, "barrier_tile");
+        const img = this.scene.add.image(x, y, BARRIER_TEXTURE, BARRIER_FRAME);
         img.setDepth(1.5);
         images.push(img);
       }

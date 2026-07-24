@@ -16,6 +16,7 @@
     "balance": "TS_NODE_COMPILER_OPTIONS='{\"module\":\"commonjs\"}' ts-node tools/enemy-balance/server.ts",
     "balance:weapons": "TS_NODE_COMPILER_OPTIONS='{\"module\":\"commonjs\"}' ts-node tools/weapon-balance/server.ts",
     "assets:build": "node assets/sync-to-client.js",
+    "assets:tiles": "node assets/generate-dungeon-tiles.js && node assets/sync-to-client.js",
     "assets:hurtboxes": "node assets/generate-fx-hurtboxes.js && npx ts-node --compiler-options '{\"module\":\"commonjs\",\"esModuleInterop\":true,\"skipLibCheck\":true}' assets/generate-enemy-hurtboxes.ts"
   },
   "devDependencies": {

@@ -478,7 +478,7 @@
     <div class="doc-title">game-2 Roadmap</div>
     <div class="doc-subtitle">
       Roguelike · Co-op 1–4 · Top-down dungeon crawl · Public release target<br>
-      Updated 24 July 2026 — Floors 0–4 done, plus wave/timed/dark rooms, the menu + lobby/matchmaking block (22 July), the <strong>currency economy (23 July)</strong>, and <strong>Floor 4.5's playtest response is now all but finished (24 July)</strong>: co-op rewards, party stairs, party HP scaling, the minimap, deferred enemy spawning, downed-and-revive death, and a six-bug fix pass. Next up is Floor 5's remaining systems — class identity and puzzle rooms. Notes + decision log in <code>docs/playtest-2026-07-20.md</code>
+      Updated 24 July 2026 — Floors 0–4 done, plus wave/timed/dark rooms, the menu + lobby/matchmaking block (22 July), the <strong>currency economy (23 July)</strong>, the <strong>tileset overhaul (24 July)</strong>, and <strong>Floor 4.5's playtest response is now all but finished (24 July)</strong>: co-op rewards, party stairs, party HP scaling, the minimap, deferred enemy spawning, downed-and-revive death, and a six-bug fix pass. Next up is Floor 5's remaining systems — class identity and puzzle rooms. Notes + decision log in <code>docs/playtest-2026-07-20.md</code>
     </div>
   </header>
 
@@ -836,7 +836,7 @@
           <span class="phase-chevron">&#9654;</span>
         </summary>
         <div class="phase-body">
-          <div class="phase-milestone"><strong>Milestone:</strong> Two people can play a full run together without a bug ending the session. Everything here comes from the first external playtest &mdash; full notes and the decision log (D1&ndash;D18) in <code>docs/playtest-2026-07-20.md</code>. <strong>All but two items have landed as of 24 July</strong>; what's left is the room-entry grace window and making the stairs read as stairs, and that one is really an art task.</div>
+          <div class="phase-milestone"><strong>Milestone:</strong> Two people can play a full run together without a bug ending the session. Everything here comes from the first external playtest &mdash; full notes and the decision log (D1&ndash;D18) in <code>docs/playtest-2026-07-20.md</code>. <strong>Only the room-entry grace window is still open as of 24 July</strong> &mdash; the stairs now read as stairs, done as part of the tileset overhaul in Floor 6.</div>
 
           <div class="phase-milestone"><strong>1. Session-enders</strong> &mdash; these end a co-op run outright.</div>
           <ul class="task-list">
@@ -853,7 +853,7 @@
             <li><span class="tm done">&#10003;</span> Universal death feedback &mdash; several enemies currently just stop moving</li>
             <li><span class="tm done">&#10003;</span> Telegraph incoming spawns &mdash; every enemy reveal plays a dust puff (<code>SpawnFX</code>) at its position, and wave rooms were reworked from discrete waves into <strong>continuous attrition</strong>: each kill feeds in a replacement up to a concurrent cap, so there is no unannounced wave break to telegraph</li>
             <li><span class="tm done">&#10003;</span> Lock camera zoom at default &mdash; zoom is now a <em>debug-only</em> knob, out of player Options. The texture-variety pass it was papering over stays open in Floor 6</li>
-            <li><span class="tm">&mdash;</span> Make the stairs read as stairs &mdash; the tester didn't register there <em>were</em> multiple floors. Still a flat tinted tile; wants art, and it's part of the tileset pass</li>
+            <li><span class="tm done">&#10003;</span> Make the stairs read as stairs &mdash; the tester didn't register there <em>were</em> multiple floors. Done in the tileset overhaul: the stairs are a drawn stairwell (a dark shaft with lit treads receding into it) instead of a flat yellow square, and the pulsing scale tween is gone &mdash; it was what made the tile read as a magic rune rather than architecture</li>
             <li><span class="tm done">&#10003;</span> Bug sweep <strong>done</strong>: projectiles pass through closed barriers &middot; boss stun-lockable against a wall &middot; walk-through chests &middot; oversized crossbow icons &middot; axes don't mirror when held &middot; ghost "Wave 1/3" banner &middot; knockback-immune enemies. <em>Two did not reproduce and still need a live look: the oversized <strong>hammer</strong> icon (it renders at the same 16px as every sword) and the <strong>boulder hitboxes</strong> (cover blocks are one 32&times;32 collider under art that fills the whole cell &mdash; the snag is more likely the solver catching on seams between merged wall rects).</em></li>
             <li><span class="tm done">&#10003;</span> Move respawn behind the debug menu &mdash; the design is permadeath. <code>respawnOnDeath</code> is a debug flag now, and death became a real state rather than nothing: a player at 0 HP is <strong>downed</strong> &mdash; frozen, un-controllable, ghosted blue &mdash; and a standing teammate within <code>REVIVE_RADIUS</code> fills a revive bar to stand them up at half health. Descending carries a downed teammate down on their feet; the whole party down at once ends the run (one <code>game_over</code> broadcast, clients walk back to the menu)</li>
             <li><span class="tm done">&#10003;</span> Rebind weapon switch off <code>Q</code>/<code>E</code></li>
@@ -978,7 +978,7 @@
             <li><span class="tm">—</span> <strong>Sound effects + ambient music</strong> — the tester noticed the silence within three minutes. Biggest single gap between this and something that feels like a game</li>
             <li><span class="tm">—</span> <strong>Controller support</strong> — gamepad input exists but is untested. M/kb is the default only because it's easiest to test, and it doesn't feel great</li>
             <li><span class="tm">—</span> <strong>Weapon balance pass</strong> — all 42 weapons are visually final and none are balanced against each other</li>
-            <li><span class="tm">—</span> Texture variety pass so rooms are distinguishable at the locked zoom (see Floor 4.5)</li>
+            <li><span class="tm done">&#10003;</span> Texture variety pass so rooms are distinguishable at the locked zoom (see Floor 4.5) &mdash; done as a <strong>tileset overhaul</strong>, 24 July. The tileset is now generated code (<code>assets/generate-dungeon-tiles.js</code> &rarr; the PNG <em>and</em> the frame table): walls autotile off their eight neighbours through a complete 47-tile blob, so corners, end-caps and corridors all read as carved stone; floors carry a per-room-type theme (an exhaustive switch &mdash; stone / maze cobble / shop wood / shrine marble / chest moss / boss gold) with 8 variants each, scattered by a per-tile hash; and walls cast a shadow onto the floor below them. Locked doorways became an iron portcullis instead of a red debug rectangle. Re-theming is a palette edit and a re-run</li>
             <li><span class="tm">—</span> Difficulty balancing pass across all 10 floors</li>
             <li><span class="tm">—</span> Itch.io build; Steam prep if scope warrants</li>
           </ul>

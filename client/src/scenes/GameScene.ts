@@ -367,7 +367,7 @@ export class GameScene extends Phaser.Scene {
     // no schema field behind it.
     this.roomTypes = dungeon.roomTypes;
 
-    this.currentMapGroup = buildMap(this, dungeon.mapData as any, dungeon.rows, dungeon.cols);
+    this.currentMapGroup = buildMap(this, dungeon);
     // Every parent barrier is standing on a fresh map — the guess reconciled
     // against the server via requestBarrierState. The minimap reads this to
     // decide which rooms are cleared.
