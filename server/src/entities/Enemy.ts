@@ -77,7 +77,7 @@ export abstract class Enemy extends Entity {
   // ── Stats (override per enemy) ──────────────────────────────────────────────
   protected get maxHp(): number { return 60; }
   protected get speed(): number { return 50; }
-  protected get aggroRadius(): number { return 160; }
+  protected get aggroRadius(): number { return 360; }
   // Center-to-center; must exceed 2×ENTITY_RADIUS (10px) or attacks never land.
   protected get attackRadius(): number { return 14; }
   protected get attackDamage(): number { return 10; }

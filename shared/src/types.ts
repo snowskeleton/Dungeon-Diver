@@ -135,7 +135,7 @@ export const ENTITY_RADIUS = 5;
 export const FLYING_CRUISE_HEIGHT = 44;
 
 // Enemy count per combat/maze room: base + floor(floorNum/2), then scaled by player count.
-export const ENEMY_BASE_COUNT = 3;
+export const ENEMY_BASE_COUNT = 7;
 export const ENEMY_FLOOR_BONUS_INTERVAL = 2; // +1 enemy per this many floors
 export const ENEMY_PLAYER_SCALE = 0.25;      // +25% per extra player beyond 1
 
