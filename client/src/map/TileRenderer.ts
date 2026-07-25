@@ -1,11 +1,15 @@
 import Phaser from "phaser";
-import { TileId, TILE_SIZE, TILE, RoomType, DungeonResult, roomCellAt } from "shared";
 import {
-  FLOOR_VARIANT_FRAMES,
-  WALL_FRAME_BY_MASK,
-  SPECIAL_FRAMES,
-  FloorTheme,
-} from "./tilesetFrames.generated";
+  TileId,
+  TILE_SIZE,
+  TILE,
+  ROOM_W,
+  ROOM_H,
+  RoomData,
+  DungeonResult,
+  roomCellAt,
+} from "shared";
+import { FLOOR_FRAMES, WALL_FRAME_BY_MASK, SPECIAL_FRAMES } from "./tilesetFrames.generated";
 
 const TILESET_KEY = "dungeon-tiles";
 
@@ -15,58 +19,71 @@ const DEPTH_FLOOR = 0;
 const DEPTH_SHADOW = 0.05;
 const DEPTH_WALL = 0.1;
 
-/**
- * Which floor look a room type wears.
- *
- * An exhaustive switch, not a lookup table: adding a RoomType has to be a
- * compile error here, because the alternative is a new room type silently
- * inheriting stone and nobody noticing for a month.
- *
- * Combat, wave, timed and dark all map to plain stone deliberately — they are
- * all "a room with enemies in it", and giving each its own palette would spend
- * the player's attention on a distinction that doesn't exist. The themes mark
- * the rooms that genuinely mean something else.
- */
-function themeFor(type: RoomType): FloorTheme {
-  switch (type) {
-    case "combat":
-    case "wave":
-    case "timed":
-    case "dark":
-      return "stone";
-    case "maze":
-      return "maze";
-    case "shop":
-      return "shop";
-    case "shrine":
-      return "shrine";
-    case "chest":
-      return "chest";
-    case "boss":
-      return "boss";
-  }
-}
+// Room interior in cells (the walkable box, excluding the 1-tile wall ring).
+const IW = ROOM_W - 2;
+const IH = ROOM_H - 2;
 
-/** Stable per-tile scatter. The same tile must pick the same variant every time
- *  the floor is rebuilt (a barrier update or a re-entered room), or the stones
- *  visibly reshuffle underfoot. */
-function tileHash(col: number, row: number): number {
-  let h = Math.imul(col, 0x27d4eb2d) ^ Math.imul(row, 0x165667b1);
+type FloorSize = "tiny" | "regular" | "large";
+
+/**
+ * How a room lays out its flagstone sizes. The floor is one colour set, so a
+ * room reads as different from its neighbour through the SIZE of its stones, not
+ * colour — the whole thing one size, a small-stone rim around big inner slabs,
+ * or a size change down the middle. Picked per room from its id so it's stable.
+ */
+type FloorPlan =
+  | { kind: "uniform"; size: FloorSize }
+  | { kind: "rim"; rim: FloorSize; inner: FloorSize }
+  | { kind: "halfH"; top: FloorSize; bottom: FloorSize }
+  | { kind: "halfV"; left: FloorSize; right: FloorSize };
+
+const FLOOR_PLANS: FloorPlan[] = [
+  { kind: "uniform", size: "regular" },
+  { kind: "uniform", size: "regular" },
+  { kind: "uniform", size: "large" },
+  { kind: "uniform", size: "tiny" },
+  { kind: "rim", rim: "tiny", inner: "large" },
+  { kind: "rim", rim: "tiny", inner: "regular" },
+  { kind: "rim", rim: "regular", inner: "large" },
+  { kind: "halfV", left: "regular", right: "large" },
+  { kind: "halfH", top: "tiny", bottom: "regular" },
+];
+
+/** Stable hash so the floor never reshuffles when a room is rebuilt (a barrier
+ *  update, a re-entered room). */
+function hash2(a: number, b: number): number {
+  let h = Math.imul(a, 0x27d4eb2d) ^ Math.imul(b, 0x165667b1);
   h ^= h >>> 15;
   h = Math.imul(h, 0x2545f491);
   h ^= h >>> 13;
   return h >>> 0;
 }
 
-/** Mostly the base tile, with a detailed variant roughly one tile in six. Enough
- *  to kill the grid, little enough that the details don't read as clutter. A
- *  theme with a single frame (the SOA2 paneled floors, which already tile into a
- *  varied surface) just returns it. */
-function floorVariant(frames: readonly number[], col: number, row: number): number {
-  if (frames.length < 2) return frames[0];
-  const h = tileHash(col, row);
-  if (h % 6 !== 0) return frames[0];
-  return frames[1 + ((h >>> 8) % (frames.length - 1))];
+function hashStr(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/** The stone size at an interior cell (ic, ir are 0-based from the interior's
+ *  top-left) under a plan. Rim thickness is 2 (even) so large inner blocks stay
+ *  aligned to the 2×2 grid. */
+function sizeAt(plan: FloorPlan, ic: number, ir: number): FloorSize {
+  switch (plan.kind) {
+    case "uniform":
+      return plan.size;
+    case "rim": {
+      const onRim = ic < 2 || ir < 2 || ic >= IW - 2 || ir >= IH - 2;
+      return onRim ? plan.rim : plan.inner;
+    }
+    case "halfV":
+      return ic < IW / 2 ? plan.left : plan.right;
+    case "halfH":
+      return ir < IH / 2 ? plan.top : plan.bottom;
+  }
 }
 
 /** The texture key + frame BarrierOverlays draws over a locked doorway. It comes
@@ -94,15 +111,54 @@ export function buildMap(scene: Phaser.Scene, dungeon: DungeonResult): Phaser.Ga
     return mapData[row][col] === TILE.WALL;
   };
 
-  const themeCache = new Map<string, FloorTheme>();
-  const themeAt = (col: number, row: number): FloorTheme => {
-    const cell = roomCellAt(col * TILE_SIZE + TILE_SIZE / 2, row * TILE_SIZE + TILE_SIZE / 2);
-    let theme = themeCache.get(cell.id);
-    if (theme === undefined) {
-      theme = themeFor(dungeon.roomTypes.get(cell.id) ?? "combat");
-      themeCache.set(cell.id, theme);
+  const roomById = new Map<string, RoomData>();
+  for (const room of dungeon.rooms) roomById.set(room.id, room);
+  const planCache = new Map<string, FloorPlan>();
+
+  /** Choose the frame for one floor cell: find its room, its size under that
+   *  room's plan, and a scattered variant. `large` cells resolve to one quadrant
+   *  of a 2×2 stone; if the cell's 2×2 block would be clipped (room edge / odd
+   *  dimension) it falls back to a regular stone so no half-slabs appear. */
+  const floorFrameAt = (col: number, row: number): number => {
+    const id = roomCellAt(col * TILE_SIZE + TILE_SIZE / 2, row * TILE_SIZE + TILE_SIZE / 2).id;
+    const room = roomById.get(id);
+    if (!room) return FLOOR_FRAMES.regular[hash2(col, row) % FLOOR_FRAMES.regular.length];
+
+    let plan = planCache.get(id);
+    if (!plan) {
+      plan = FLOOR_PLANS[hashStr(id) % FLOOR_PLANS.length];
+      planCache.set(id, plan);
     }
-    return theme;
+
+    // Interior-relative cell (excludes the wall ring). Doorway/corridor tiles
+    // fall outside the interior box — give them a plain regular stone.
+    const ic = col - (room.tileCol + 1);
+    const ir = row - (room.tileRow + 1);
+    if (ic < 0 || ir < 0 || ic >= IW || ir >= IH) {
+      return FLOOR_FRAMES.regular[hash2(col, row) % FLOOR_FRAMES.regular.length];
+    }
+
+    let size = sizeAt(plan, ic, ir);
+    if (size === "large") {
+      // The 2×2 block this cell belongs to, anchored to the interior grid.
+      const bic = ic - (ic % 2);
+      const bir = ir - (ir % 2);
+      const blockComplete =
+        bic + 1 < IW &&
+        bir + 1 < IH &&
+        sizeAt(plan, bic, bir) === "large" &&
+        sizeAt(plan, bic + 1, bir) === "large" &&
+        sizeAt(plan, bic, bir + 1) === "large" &&
+        sizeAt(plan, bic + 1, bir + 1) === "large";
+      if (blockComplete) {
+        const set = FLOOR_FRAMES.large[hash2(bic, bir) % FLOOR_FRAMES.large.length];
+        const quadrant = (ir % 2) * 2 + (ic % 2);
+        return set[quadrant];
+      }
+      size = "regular";
+    }
+    const pool = size === "tiny" ? FLOOR_FRAMES.tiny : FLOOR_FRAMES.regular;
+    return pool[hash2(col, row) % pool.length];
   };
 
   const place = (col: number, row: number, frame: number, depth: number) => {
@@ -141,8 +197,7 @@ export function buildMap(scene: Phaser.Scene, dungeon: DungeonResult): Phaser.Ga
       // Every walkable tile gets a floor underneath it, and the special tiles
       // are drawn on top. That way a stairwell or a trap sits IN the room's
       // stone instead of replacing a square of it.
-      const frames = FLOOR_VARIANT_FRAMES[themeAt(col, row)];
-      place(col, row, floorVariant(frames, col, row), DEPTH_FLOOR);
+      place(col, row, floorFrameAt(col, row), DEPTH_FLOOR);
 
       if (isWall(col, row - 1)) place(col, row, SPECIAL_FRAMES.wallShadow, DEPTH_SHADOW);
 

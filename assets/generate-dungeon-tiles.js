@@ -68,15 +68,13 @@ const srcPx = (x, y) => pixel(SRC, x, y);
 /** The cyan brick every wall is built from. Tiles seamlessly. Sheet coords. */
 const WALL_BRICK = { x: 192, y: 0 };
 
-/** The dark-blue flagstone floor, lifted from the example dungeon composition.
- *  A few near-identical variants so a field of them isn't a mechanical grid;
- *  they all carry the same mortar joints, so any arrangement tiles. */
-const FLOOR_TILES = [
-  { x: 704, y: 1120 },
-  { x: 720, y: 1120 },
-  { x: 736, y: 1120 },
-  { x: 704, y: 1136 },
-];
+/** The flagstone palette, sampled from the example floor: it is exactly two
+ *  colours, a blue stone and a dark navy mortar. `lit`/`shade` are derived for a
+ *  faint hand-carved bevel. */
+const STONE = [0x00, 0x52, 0x80];
+const MORTAR = [0x21, 0x16, 0x40];
+const STONE_LIT = [0x2a, 0x74, 0xa0];
+const STONE_SHADE = [0x00, 0x3a, 0x60];
 
 // The renderer keys floors by room-type "theme". We only use the blue set right
 // now, so every theme resolves to the same blue floor — but the keys stay so the
@@ -84,17 +82,18 @@ const FLOOR_TILES = [
 // slotted in per theme later without touching the renderer.
 const THEME_NAMES = ["stone", "maze", "shop", "shrine", "chest", "boss"];
 
-// ─── 32px drawing surface ──────────────────────────────────────────────────────
+// ─── Drawing surface (square, `size` px; TILE by default) ──────────────────────
 
 class Tile {
-  constructor() {
-    this.data = new Uint8Array(TILE * TILE * 4);
+  constructor(size = TILE) {
+    this.size = size;
+    this.data = new Uint8Array(size * size * 4);
   }
   idx(x, y) {
-    return (y * TILE + x) * 4;
+    return (y * this.size + x) * 4;
   }
   px(x, y, c, a = 255) {
-    if (x < 0 || y < 0 || x >= TILE || y >= TILE) return;
+    if (x < 0 || y < 0 || x >= this.size || y >= this.size) return;
     const i = this.idx(x, y);
     if (a >= 255) {
       this.data[i] = c[0];
@@ -119,7 +118,7 @@ class Tile {
     for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) this.px(i, j, c, a);
   }
   fill(c) {
-    this.rect(0, 0, TILE, TILE, c);
+    this.rect(0, 0, this.size, this.size, c);
   }
   hline(y, x0, x1, c, a = 255) {
     for (let x = x0; x <= x1; x++) this.px(x, y, c, a);
@@ -127,11 +126,26 @@ class Tile {
   vline(x, y0, y1, c, a = 255) {
     for (let y = y0; y <= y1; y++) this.px(x, y, c, a);
   }
-  /** Blit a SRC_TILE-sized tile from a PNG, scaled 2× to fill this 32px tile. */
-  blit(png, sx, sy) {
-    const scale = TILE / SRC_TILE;
+  /** Copy the 32×32 region at (ox,oy) of this surface into a new TILE-sized tile. */
+  quadrant(ox, oy) {
+    const out = new Tile(TILE);
     for (let y = 0; y < TILE; y++) {
       for (let x = 0; x < TILE; x++) {
+        const s = this.idx(ox + x, oy + y);
+        const d = out.idx(x, y);
+        out.data[d] = this.data[s];
+        out.data[d + 1] = this.data[s + 1];
+        out.data[d + 2] = this.data[s + 2];
+        out.data[d + 3] = this.data[s + 3];
+      }
+    }
+    return out;
+  }
+  /** Blit a SRC_TILE-sized tile from a PNG, scaled to fill this square tile. */
+  blit(png, sx, sy) {
+    const scale = this.size / SRC_TILE;
+    for (let y = 0; y < this.size; y++) {
+      for (let x = 0; x < this.size; x++) {
         const [r, g, b] = pixel(png, sx + Math.floor(x / scale), sy + Math.floor(y / scale));
         this.px(x, y, [r, g, b]);
       }
@@ -250,14 +264,93 @@ function drawWallTile(mask) {
   return t;
 }
 
-// ─── Floor ───────────────────────────────────────────────────────────────────
+// ─── Floor: hand-placed flagstones ─────────────────────────────────────────────
+//
+// The example's floor is stones inset in mortar. We reproduce it — in the exact
+// two-colour palette — but push the irregularity further than the source: every
+// stone is a touch smaller than its slot, nudged off-centre, and rotated a few
+// degrees, so the floor reads as "someone laid these by hand" rather than a grid.
+// Three stone sizes (tiny / regular / large); the renderer mixes them per room.
+//
+// Each variant bakes a different jitter/rotation, and the renderer scatters the
+// variants, so no two neighbouring slots look placed the same way.
 
-/** A dark-blue flagstone floor tile (from the example composition). */
-function drawFloor(i) {
-  const t = new Tile();
-  const f = FLOOR_TILES[i];
-  t.blit(EX, f.x, f.y);
+/** Is local point (lx,ly) inside a rounded rect of half-extents hw,hh, radius r? */
+function insideRoundRect(lx, ly, hw, hh, r) {
+  const ax = Math.abs(lx);
+  const ay = Math.abs(ly);
+  if (ax > hw || ay > hh) return false;
+  if (ax <= hw - r || ay <= hh - r) return true;
+  const dx = ax - (hw - r);
+  const dy = ay - (hh - r);
+  return dx * dx + dy * dy <= r * r;
+}
+
+/** Stamp one flagstone onto a surface: a rounded rect in STONE, rotated by
+ *  `angle`° about (cx,cy), with a 1px lit top-left and shaded bottom-right edge
+ *  for a hand-carved bevel. The surface must already be filled with MORTAR. */
+function stampStone(surf, cx, cy, w, h, angle, radius) {
+  const a = (angle * Math.PI) / 180;
+  const cos = Math.cos(-a);
+  const sin = Math.sin(-a);
+  const hw = w / 2;
+  const hh = h / 2;
+  const reach = Math.ceil(Math.max(hw, hh) + 2);
+  for (let y = Math.floor(cy - reach); y <= Math.ceil(cy + reach); y++) {
+    for (let x = Math.floor(cx - reach); x <= Math.ceil(cx + reach); x++) {
+      const dx = x + 0.5 - cx;
+      const dy = y + 0.5 - cy;
+      const lx = dx * cos - dy * sin;
+      const ly = dx * sin + dy * cos;
+      if (!insideRoundRect(lx, ly, hw, hh, radius)) continue;
+      let c = STONE;
+      const edge = 1.4;
+      if (lx < -hw + edge || ly < -hh + edge) c = STONE_LIT;
+      else if (lx > hw - edge || ly > hh - edge) c = STONE_SHADE;
+      surf.px(x, y, c);
+    }
+  }
+}
+
+/** Deterministic jitter helper: a seeded generator plus small signed noise. */
+function stoneRng(seed) {
+  const r = rng(seed);
+  return {
+    // signed value in [-m, m]
+    j: (m) => (r() * 2 - 1) * m,
+    // value in [a, b]
+    range: (a, b) => a + r() * (b - a),
+  };
+}
+
+/** One 32px cell holding a single ~regular flagstone. */
+function drawRegular(seed) {
+  const t = new Tile(TILE);
+  t.fill(MORTAR);
+  const g = stoneRng(seed);
+  stampStone(t, 16 + g.j(2.2), 16 + g.j(2.2), g.range(24, 27), g.range(24, 27), g.j(5), 4);
   return t;
+}
+
+/** One 32px cell holding a 2×2 of tiny flagstones. */
+function drawTiny(seed) {
+  const t = new Tile(TILE);
+  t.fill(MORTAR);
+  const g = stoneRng(seed);
+  for (const [cx, cy] of [[8, 8], [24, 8], [8, 24], [24, 24]]) {
+    stampStone(t, cx + g.j(1.6), cy + g.j(1.6), g.range(10, 12.5), g.range(10, 12.5), g.j(8), 2);
+  }
+  return t;
+}
+
+/** One large flagstone spanning a 2×2 block (64px), sliced into four 32px
+ *  quadrant tiles [tl, tr, bl, br] the renderer lays in a 2×2 group. */
+function drawLargeQuads(seed) {
+  const surf = new Tile(64);
+  surf.fill(MORTAR);
+  const g = stoneRng(seed);
+  stampStone(surf, 32 + g.j(3), 32 + g.j(3), g.range(52, 57), g.range(52, 57), g.j(3.5), 7);
+  return [surf.quadrant(0, 0), surf.quadrant(32, 0), surf.quadrant(0, 32), surf.quadrant(32, 32)];
 }
 
 // ─── Special tiles (procedural — small, animated, or absent from the pack) ─────
@@ -324,10 +417,9 @@ function drawTrap() {
   return t;
 }
 
-/** The gold passage into a boss room — the flagstone floor with gold veins. */
+/** The gold passage into a boss room — a flagstone with gold veins on top. */
 function drawBossFloor() {
-  const t = new Tile();
-  t.blit(EX, FLOOR_TILES[0].x, FLOOR_TILES[0].y);
+  const t = drawRegular(0x9055);
   const gold = [0xc9, 0x9d, 0x45];
   const goldLit = [0xf0, 0xd0, 0x7a];
   for (let i = 0; i < TILE; i++) {
@@ -416,10 +508,16 @@ const push = (tile) => frames.push(tile) - 1;
 const wallFrameByCanonical = new Map();
 for (const mask of CANONICAL) wallFrameByCanonical.set(mask, push(drawWallTile(mask)));
 
-// The flagstone floor variants, shared by every theme (one colour set for now).
-const floorVariantFrames = FLOOR_TILES.map((_, i) => push(drawFloor(i)));
-const floorFrames = {};
-for (const theme of THEME_NAMES) floorFrames[theme] = floorVariantFrames;
+// Flagstone floor variants at three sizes. Many variants so the renderer can
+// scatter them and the floor never repeats a placement next to itself.
+const FLOOR_TINY = [];
+const FLOOR_REGULAR = [];
+const FLOOR_LARGE = []; // each entry is [tl, tr, bl, br] frame indices
+for (let i = 0; i < 14; i++) FLOOR_REGULAR.push(push(drawRegular(0x5100 + i * 2654435761)));
+for (let i = 0; i < 14; i++) FLOOR_TINY.push(push(drawTiny(0x7a00 + i * 2246822519)));
+for (let i = 0; i < 8; i++) {
+  FLOOR_LARGE.push(drawLargeQuads(0xb500 + i * 3266489917).map((q) => push(q)));
+}
 
 const special = {
   stairs: push(drawStairs()),
@@ -466,12 +564,18 @@ const ts = `// GENERATED by assets/generate-dungeon-tiles.js — do not edit.
 // Overhead Adventure 2 dungeon sheet). Regenerate with:
 //   npm run assets:tiles
 
-/** Every floor look the dungeon has. Room types map onto these in TileRenderer. */
-export type FloorTheme = ${THEME_NAMES.map((t) => `"${t}"`).join(" | ")};
-
-export const FLOOR_VARIANT_FRAMES: Record<FloorTheme, readonly number[]> = {
-${THEME_NAMES.map((t) => `  ${t}: [${floorFrames[t].join(", ")}],`).join("\n")}
-};
+/** Flagstone floor frames at three sizes. \`large\` entries are 2×2 quadrant sets
+ *  [topLeft, topRight, bottomLeft, bottomRight] laid across a 2×2 cell block; the
+ *  others are single 32px cells (\`tiny\` = a 2×2 of small stones in one cell). The
+ *  renderer picks a size per cell from a per-room plan and scatters the variants.
+ *  One colour set for now, so there is no per-room-type palette. */
+export const FLOOR_FRAMES = {
+  tiny: [${FLOOR_TINY.join(", ")}],
+  regular: [${FLOOR_REGULAR.join(", ")}],
+  large: [
+${FLOOR_LARGE.map((q) => `    [${q.join(", ")}],`).join("\n")}
+  ],
+} as const;
 
 /** Wall frame for an 8-neighbour mask (bit 0 = N, then clockwise: NE E SE S SW W NW).
  *  A set bit means "that neighbour is also wall". Indexed by the raw 0–255 mask;
@@ -486,15 +590,14 @@ ${Object.entries(special).map(([k, v]) => `  ${k}: ${v},`).join("\n")}
 `;
 fs.writeFileSync(OUT_TS, ts);
 
-// ─── Preview: an assembled room per theme ────────────────────────────────────
+// ─── Preview: a bordered room per floor size ─────────────────────────────────
 
 if (process.env.TILE_PREVIEW) {
-  const TW = 7, TH = 5, pad = 8;
-  const prev = new PNG({ width: THEME_NAMES.length * (TW * TILE + pad) + pad, height: TH * TILE + pad * 2 });
+  const TW = 9, TH = 8, pad = 8;
+  const plans = ["tiny", "regular", "large", "rim"];
+  const prev = new PNG({ width: plans.length * (TW * TILE + pad) + pad, height: TH * TILE + pad * 2 });
   prev.data.fill(20);
-  const frameAt = (idx) => frames[idx];
   const wallMaskFor = (rx, ry) => {
-    // neighbours are wall if on the border ring
     const wallAt = (x, y) => x < 0 || y < 0 || x >= TW || y >= TH || x === 0 || y === 0 || x === TW - 1 || y === TH - 1;
     let m = 0;
     if (wallAt(rx, ry - 1)) m |= N;
@@ -507,25 +610,41 @@ if (process.env.TILE_PREVIEW) {
     if (wallAt(rx - 1, ry - 1)) m |= NW;
     return m;
   };
-  THEME_NAMES.forEach((theme, ti) => {
-    const ox = pad + ti * (TW * TILE + pad), oy = pad;
+  const stamp = (tile, ox, oy) => {
+    for (let y = 0; y < TILE; y++)
+      for (let x = 0; x < TILE; x++) {
+        const s = (y * TILE + x) * 4;
+        if (tile.data[s + 3] === 0) continue;
+        const d = ((oy + y) * prev.width + ox + x) * 4;
+        prev.data[d] = tile.data[s];
+        prev.data[d + 1] = tile.data[s + 1];
+        prev.data[d + 2] = tile.data[s + 2];
+        prev.data[d + 3] = 255;
+      }
+  };
+  const hash = (a, b) => {
+    let h = Math.imul(a, 0x27d4eb2d) ^ Math.imul(b, 0x165667b1);
+    h ^= h >>> 15; h = Math.imul(h, 0x2545f491); h ^= h >>> 13; return h >>> 0;
+  };
+  plans.forEach((plan, ti) => {
+    const bx = pad + ti * (TW * TILE + pad), by = pad;
     for (let ry = 0; ry < TH; ry++) {
       for (let rx = 0; rx < TW; rx++) {
-        const border = rx === 0 || ry === 0 || rx === TW - 1 || ry === TH - 1;
-        const idx = border
-          ? maskToFrame[wallMaskFor(rx, ry)]
-          : floorFrames[theme][0];
-        const tile = frameAt(idx);
-        for (let y = 0; y < TILE; y++)
-          for (let x = 0; x < TILE; x++) {
-            const s = (y * TILE + x) * 4;
-            if (tile.data[s + 3] === 0) continue;
-            const d = ((oy + ry * TILE + y) * prev.width + ox + rx * TILE + x) * 4;
-            prev.data[d] = tile.data[s];
-            prev.data[d + 1] = tile.data[s + 1];
-            prev.data[d + 2] = tile.data[s + 2];
-            prev.data[d + 3] = 255;
-          }
+        if (rx === 0 || ry === 0 || rx === TW - 1 || ry === TH - 1) {
+          stamp(frames[maskToFrame[wallMaskFor(rx, ry)]], bx + rx * TILE, by + ry * TILE);
+          continue;
+        }
+        const irx = rx - 1, iry = ry - 1;
+        let size = plan;
+        if (plan === "rim") size = (irx < 1 || iry < 1 || irx > TW - 4 || iry > TH - 4) ? "tiny" : "large";
+        if (size === "large") {
+          const bcol = irx >> 1, brow = iry >> 1, q = (iry & 1) * 2 + (irx & 1);
+          const set = FLOOR_LARGE[hash(bcol, brow) % FLOOR_LARGE.length];
+          stamp(frames[set[q]], bx + rx * TILE, by + ry * TILE);
+        } else {
+          const pool = size === "tiny" ? FLOOR_TINY : FLOOR_REGULAR;
+          stamp(frames[pool[hash(rx, ry) % pool.length]], bx + rx * TILE, by + ry * TILE);
+        }
       }
     }
   });
@@ -535,6 +654,7 @@ if (process.env.TILE_PREVIEW) {
 
 console.log(
   `dungeon-tiles.png: ${frames.length} frames (${CANONICAL.length} wall, ` +
-  `${floorVariantFrames.length} floor, ${Object.keys(special).length} special) at ${png.width}x${png.height}`,
+  `${FLOOR_TINY.length + FLOOR_REGULAR.length + FLOOR_LARGE.length * 4} floor, ` +
+  `${Object.keys(special).length} special) at ${png.width}x${png.height}`,
 );
 console.log(`tilesetFrames.generated.ts written`);

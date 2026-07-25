@@ -3,17 +3,25 @@
 // Overhead Adventure 2 dungeon sheet). Regenerate with:
 //   npm run assets:tiles
 
-/** Every floor look the dungeon has. Room types map onto these in TileRenderer. */
-export type FloorTheme = "stone" | "maze" | "shop" | "shrine" | "chest" | "boss";
-
-export const FLOOR_VARIANT_FRAMES: Record<FloorTheme, readonly number[]> = {
-  stone: [47, 48, 49, 50],
-  maze: [47, 48, 49, 50],
-  shop: [47, 48, 49, 50],
-  shrine: [47, 48, 49, 50],
-  chest: [47, 48, 49, 50],
-  boss: [47, 48, 49, 50],
-};
+/** Flagstone floor frames at three sizes. `large` entries are 2×2 quadrant sets
+ *  [topLeft, topRight, bottomLeft, bottomRight] laid across a 2×2 cell block; the
+ *  others are single 32px cells (`tiny` = a 2×2 of small stones in one cell). The
+ *  renderer picks a size per cell from a per-room plan and scatters the variants.
+ *  One colour set for now, so there is no per-room-type palette. */
+export const FLOOR_FRAMES = {
+  tiny: [61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74],
+  regular: [47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60],
+  large: [
+    [75, 76, 77, 78],
+    [79, 80, 81, 82],
+    [83, 84, 85, 86],
+    [87, 88, 89, 90],
+    [91, 92, 93, 94],
+    [95, 96, 97, 98],
+    [99, 100, 101, 102],
+    [103, 104, 105, 106],
+  ],
+} as const;
 
 /** Wall frame for an 8-neighbour mask (bit 0 = N, then clockwise: NE E SE S SW W NW).
  *  A set bit means "that neighbour is also wall". Indexed by the raw 0–255 mask;
@@ -38,11 +46,11 @@ export const WALL_FRAME_BY_MASK: readonly number[] = [
 ];
 
 export const SPECIAL_FRAMES = {
-  stairs: 51,
-  trap: 52,
-  bossFloor: 53,
-  fire: 54,
-  slime: 55,
-  wallShadow: 56,
-  barrier: 57,
+  stairs: 107,
+  trap: 108,
+  bossFloor: 109,
+  fire: 110,
+  slime: 111,
+  wallShadow: 112,
+  barrier: 113,
 } as const;
