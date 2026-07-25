@@ -12,14 +12,17 @@
 //     block). The author's own example dungeon (Examples/Zaldo/Example
 //     Dungeon.png) is built from this set, and it is the reference for how the
 //     tiles are meant to compose.
-//   - FLOORS : the dark-blue FLAGSTONE floor — dark stones with darker mortar
-//     joints, a few near-identical variants scattered so it isn't a mechanical
-//     grid. Lifted from the example composition (the dungeon sheet's floor tiles
-//     don't sit on a clean 16px sub-grid). The decorated block/water/panel tiles
-//     are 3D OBJECTS that sit ON the floor and cast shadows, NOT floor fill —
-//     tiling those was the mistake in a previous pass. All room types share it.
+//   - FLOORS : dark-blue FLAGSTONES — stones inset in navy mortar, in the
+//     example's exact two-colour palette, but DRAWN (not blitted) so each stone
+//     is a touch small, nudged off-centre and rotated a few degrees for a
+//     hand-placed look. Three sizes (tiny / regular / large); the renderer mixes
+//     them per room. (The sheet's own floor tiles don't sit on a clean 16px
+//     sub-grid, and its decorated panels are OBJECTS on the floor, not fill —
+//     tiling those was the mistake in a previous pass.)
 //   - WALLS  : the set's cyan brick, tiled, with autotile edge shading + rounded
 //     corners composited on so the 47-tile blob is complete by construction.
+//   - BLOCKS : the set's raised cyan blocks (BLOCK_SRC), used by the renderer for
+//     in-room obstacles ("cover" / tetris pieces), as the example does.
 //   - STAIRS, trap, boss passage, fire, slime, wall shadow and the door
 //     portcullis stay procedurally drawn — small, animated, or absent from the set.
 //
@@ -39,21 +42,14 @@ const SHEET_COLS = 12;
 
 const DIR = "/Users/snow/Downloads/Super Overhead Adventure 2";
 const SRC_PATH = process.env.SOA2_DUNGEON || `${DIR}/Environments/Dungeon.png`;
-// The dungeon SHEET has the walls, but its flagstone floor tiles don't sit on a
-// clean 16px sub-grid. The author's own example dungeon does — it's the floor
-// laid out correctly — so we lift the floor tiles from there. Same art pack.
-const EXAMPLE_PATH = process.env.SOA2_EXAMPLE || `${DIR}/Examples/Zaldo/Example Dungeon.png`;
 const OUT_PNG = path.join(__dirname, "dungeon-tiles.png");
 const OUT_TS = path.join(__dirname, "..", "client", "src", "map", "tilesetFrames.generated.ts");
 
-for (const [p, env] of [[SRC_PATH, "SOA2_DUNGEON"], [EXAMPLE_PATH, "SOA2_EXAMPLE"]]) {
-  if (!fs.existsSync(p)) {
-    console.error(`Source not found: ${p}\nSet ${env}=/path/to/file.png`);
-    process.exit(1);
-  }
+if (!fs.existsSync(SRC_PATH)) {
+  console.error(`Source sheet not found: ${SRC_PATH}\nSet SOA2_DUNGEON=/path/to/Dungeon.png`);
+  process.exit(1);
 }
 const SRC = PNG.sync.read(fs.readFileSync(SRC_PATH));
-const EX = PNG.sync.read(fs.readFileSync(EXAMPLE_PATH));
 
 /** Sample a pixel from a loaded PNG (with alpha). Out-of-range reads opaque black. */
 function pixel(png, x, y) {
@@ -519,6 +515,21 @@ for (let i = 0; i < 8; i++) {
   FLOOR_LARGE.push(drawLargeQuads(0xb500 + i * 3266489917).map((q) => push(q)));
 }
 
+// Interior obstacle blocks ("cover" / the tetris pieces inside rooms) — the
+// raised cyan blocks from the sheet, exactly the tiles the example dungeon uses
+// for in-room obstacles (each is a block with its own baked shadow skirt). A
+// curated mix: mostly plain, a few socketed/motif ones, scattered by the renderer.
+const BLOCK_SRC = [
+  [256, 400], [256, 416], [256, 432], // plain
+  [288, 400], [304, 400], [352, 416], // boxes / grid / socket
+  [272, 432], [288, 432],             // X / O
+];
+const BLOCK_FRAMES = BLOCK_SRC.map(([x, y]) => {
+  const t = new Tile();
+  t.blitSource(x, y);
+  return push(t);
+});
+
 const special = {
   stairs: push(drawStairs()),
   trap: push(drawTrap()),
@@ -587,6 +598,11 @@ ${chunk(maskToFrame, 16).map((row) => `  ${row.join(", ")},`).join("\n")}
 export const SPECIAL_FRAMES = {
 ${Object.entries(special).map(([k, v]) => `  ${k}: ${v},`).join("\n")}
 } as const;
+
+/** Interior obstacle blocks (the in-room "cover" / tetris pieces). The renderer
+ *  uses these for wall tiles that sit inside a room's interior, instead of the
+ *  brick autotiling it uses for the room's structural walls. */
+export const BLOCK_FRAMES: readonly number[] = [${BLOCK_FRAMES.join(", ")}];
 `;
 fs.writeFileSync(OUT_TS, ts);
 

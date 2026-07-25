@@ -9,7 +9,12 @@ import {
   DungeonResult,
   roomCellAt,
 } from "shared";
-import { FLOOR_FRAMES, WALL_FRAME_BY_MASK, SPECIAL_FRAMES } from "./tilesetFrames.generated";
+import {
+  FLOOR_FRAMES,
+  WALL_FRAME_BY_MASK,
+  SPECIAL_FRAMES,
+  BLOCK_FRAMES,
+} from "./tilesetFrames.generated";
 
 const TILESET_KEY = "dungeon-tiles";
 
@@ -161,6 +166,21 @@ export function buildMap(scene: Phaser.Scene, dungeon: DungeonResult): Phaser.Ga
     return pool[hash2(col, row) % pool.length];
   };
 
+  /** A wall tile that sits INSIDE a room's interior is an obstacle the level
+   *  designer placed (a cover block / tetris piece), not part of the room's
+   *  structural shell — so it gets a block tile, not brick autotiling. Returns
+   *  the block frame, or null for structural walls (perimeter ring, the void
+   *  between rooms). */
+  const coverBlockFrameAt = (col: number, row: number): number | null => {
+    const id = roomCellAt(col * TILE_SIZE + TILE_SIZE / 2, row * TILE_SIZE + TILE_SIZE / 2).id;
+    const room = roomById.get(id);
+    if (!room) return null;
+    const ic = col - (room.tileCol + 1);
+    const ir = row - (room.tileRow + 1);
+    if (ic < 0 || ir < 0 || ic >= IW || ir >= IH) return null;
+    return BLOCK_FRAMES[hash2(col, row) % BLOCK_FRAMES.length];
+  };
+
   const place = (col: number, row: number, frame: number, depth: number) => {
     const img = scene.add.image(
       col * TILE_SIZE + TILE_SIZE / 2,
@@ -178,6 +198,13 @@ export function buildMap(scene: Phaser.Scene, dungeon: DungeonResult): Phaser.Ga
       const tileId: TileId = mapData[row][col];
 
       if (tileId === TILE.WALL) {
+        // An obstacle placed inside a room reads as a block, not as more of the
+        // room's brick shell.
+        const blockFrame = coverBlockFrameAt(col, row);
+        if (blockFrame !== null) {
+          place(col, row, blockFrame, DEPTH_WALL);
+          continue;
+        }
         // Autotile: the eight neighbours pick the frame, so edges, outer corners
         // and inner corners all fall out of the geometry rather than being
         // authored per room shape.

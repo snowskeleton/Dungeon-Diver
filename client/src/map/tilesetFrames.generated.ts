@@ -46,11 +46,16 @@ export const WALL_FRAME_BY_MASK: readonly number[] = [
 ];
 
 export const SPECIAL_FRAMES = {
-  stairs: 107,
-  trap: 108,
-  bossFloor: 109,
-  fire: 110,
-  slime: 111,
-  wallShadow: 112,
-  barrier: 113,
+  stairs: 115,
+  trap: 116,
+  bossFloor: 117,
+  fire: 118,
+  slime: 119,
+  wallShadow: 120,
+  barrier: 121,
 } as const;
+
+/** Interior obstacle blocks (the in-room "cover" / tetris pieces). The renderer
+ *  uses these for wall tiles that sit inside a room's interior, instead of the
+ *  brick autotiling it uses for the room's structural walls. */
+export const BLOCK_FRAMES: readonly number[] = [107, 108, 109, 110, 111, 112, 113, 114];
