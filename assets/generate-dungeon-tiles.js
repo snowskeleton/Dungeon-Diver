@@ -12,10 +12,12 @@
 //     block). The author's own example dungeon (Examples/Zaldo/Example
 //     Dungeon.png) is built from this set, and it is the reference for how the
 //     tiles are meant to compose.
-//   - FLOORS : a single FLAT dark-blue floor tile, exactly as the example uses
-//     it. The decorated block/water/panel tiles in this pack are 3D OBJECTS that
-//     sit ON the floor (they cast shadows), not floor fill — tiling them was the
-//     mistake in the previous pass. Every room type uses the same floor for now.
+//   - FLOORS : the dark-blue FLAGSTONE floor — dark stones with darker mortar
+//     joints, a few near-identical variants scattered so it isn't a mechanical
+//     grid. Lifted from the example composition (the dungeon sheet's floor tiles
+//     don't sit on a clean 16px sub-grid). The decorated block/water/panel tiles
+//     are 3D OBJECTS that sit ON the floor and cast shadows, NOT floor fill —
+//     tiling those was the mistake in a previous pass. All room types share it.
 //   - WALLS  : the set's cyan brick, tiled, with autotile edge shading + rounded
 //     corners composited on so the 47-tile blob is complete by construction.
 //   - STAIRS, trap, boss passage, fire, slime, wall shadow and the door
@@ -35,32 +37,46 @@ const TILE = 32;
 const SRC_TILE = 16; // native tile size in the source sheet
 const SHEET_COLS = 12;
 
-const SRC_PATH =
-  process.env.SOA2_DUNGEON ||
-  "/Users/snow/Downloads/Super Overhead Adventure 2/Environments/Dungeon.png";
+const DIR = "/Users/snow/Downloads/Super Overhead Adventure 2";
+const SRC_PATH = process.env.SOA2_DUNGEON || `${DIR}/Environments/Dungeon.png`;
+// The dungeon SHEET has the walls, but its flagstone floor tiles don't sit on a
+// clean 16px sub-grid. The author's own example dungeon does — it's the floor
+// laid out correctly — so we lift the floor tiles from there. Same art pack.
+const EXAMPLE_PATH = process.env.SOA2_EXAMPLE || `${DIR}/Examples/Zaldo/Example Dungeon.png`;
 const OUT_PNG = path.join(__dirname, "dungeon-tiles.png");
 const OUT_TS = path.join(__dirname, "..", "client", "src", "map", "tilesetFrames.generated.ts");
 
-if (!fs.existsSync(SRC_PATH)) {
-  console.error(`Source sheet not found: ${SRC_PATH}\nSet SOA2_DUNGEON=/path/to/Dungeon.png`);
-  process.exit(1);
+for (const [p, env] of [[SRC_PATH, "SOA2_DUNGEON"], [EXAMPLE_PATH, "SOA2_EXAMPLE"]]) {
+  if (!fs.existsSync(p)) {
+    console.error(`Source not found: ${p}\nSet ${env}=/path/to/file.png`);
+    process.exit(1);
+  }
 }
 const SRC = PNG.sync.read(fs.readFileSync(SRC_PATH));
+const EX = PNG.sync.read(fs.readFileSync(EXAMPLE_PATH));
 
-/** Sample a source pixel (with alpha). Out-of-range reads as opaque black. */
-function srcPx(x, y) {
-  if (x < 0 || y < 0 || x >= SRC.width || y >= SRC.height) return [0, 0, 0, 255];
-  const i = (y * SRC.width + x) * 4;
-  return [SRC.data[i], SRC.data[i + 1], SRC.data[i + 2], SRC.data[i + 3]];
+/** Sample a pixel from a loaded PNG (with alpha). Out-of-range reads opaque black. */
+function pixel(png, x, y) {
+  if (x < 0 || y < 0 || x >= png.width || y >= png.height) return [0, 0, 0, 255];
+  const i = (y * png.width + x) * 4;
+  return [png.data[i], png.data[i + 1], png.data[i + 2], png.data[i + 3]];
 }
+const srcPx = (x, y) => pixel(SRC, x, y);
 
 // ─── Source coordinates (16px tiles), from the BLUE set, verified by preview ───
 
-/** The cyan brick every wall is built from. Tiles seamlessly. */
+/** The cyan brick every wall is built from. Tiles seamlessly. Sheet coords. */
 const WALL_BRICK = { x: 192, y: 0 };
 
-/** The flat dark-blue floor, used exactly as the author's example dungeon does. */
-const FLOOR_SRC = { x: 336, y: 192 };
+/** The dark-blue flagstone floor, lifted from the example dungeon composition.
+ *  A few near-identical variants so a field of them isn't a mechanical grid;
+ *  they all carry the same mortar joints, so any arrangement tiles. */
+const FLOOR_TILES = [
+  { x: 704, y: 1120 },
+  { x: 720, y: 1120 },
+  { x: 736, y: 1120 },
+  { x: 704, y: 1136 },
+];
 
 // The renderer keys floors by room-type "theme". We only use the blue set right
 // now, so every theme resolves to the same blue floor — but the keys stay so the
@@ -111,15 +127,19 @@ class Tile {
   vline(x, y0, y1, c, a = 255) {
     for (let y = y0; y <= y1; y++) this.px(x, y, c, a);
   }
-  /** Blit a SRC_TILE-sized source tile scaled 2× to fill this 32px tile. */
-  blitSource(sx, sy) {
+  /** Blit a SRC_TILE-sized tile from a PNG, scaled 2× to fill this 32px tile. */
+  blit(png, sx, sy) {
     const scale = TILE / SRC_TILE;
     for (let y = 0; y < TILE; y++) {
       for (let x = 0; x < TILE; x++) {
-        const [r, g, b] = srcPx(sx + Math.floor(x / scale), sy + Math.floor(y / scale));
+        const [r, g, b] = pixel(png, sx + Math.floor(x / scale), sy + Math.floor(y / scale));
         this.px(x, y, [r, g, b]);
       }
     }
+  }
+  /** Blit from the dungeon sheet (walls, specials). */
+  blitSource(sx, sy) {
+    this.blit(SRC, sx, sy);
   }
 }
 
@@ -232,12 +252,11 @@ function drawWallTile(mask) {
 
 // ─── Floor ───────────────────────────────────────────────────────────────────
 
-/** The flat dark-blue floor. Deliberately plain — the example dungeon's floor is
- *  a solid fill, and the visual interest comes from the walls and from objects
- *  (blocks, enemies, pedestals) placed on top, not from floor texture. */
-function drawFloor() {
+/** A dark-blue flagstone floor tile (from the example composition). */
+function drawFloor(i) {
   const t = new Tile();
-  t.blitSource(FLOOR_SRC.x, FLOOR_SRC.y);
+  const f = FLOOR_TILES[i];
+  t.blit(EX, f.x, f.y);
   return t;
 }
 
@@ -305,10 +324,10 @@ function drawTrap() {
   return t;
 }
 
-/** The gold passage into a boss room — the blue floor with gold veins on top. */
+/** The gold passage into a boss room — the flagstone floor with gold veins. */
 function drawBossFloor() {
   const t = new Tile();
-  t.blitSource(FLOOR_SRC.x, FLOOR_SRC.y);
+  t.blit(EX, FLOOR_TILES[0].x, FLOOR_TILES[0].y);
   const gold = [0xc9, 0x9d, 0x45];
   const goldLit = [0xf0, 0xd0, 0x7a];
   for (let i = 0; i < TILE; i++) {
@@ -397,10 +416,10 @@ const push = (tile) => frames.push(tile) - 1;
 const wallFrameByCanonical = new Map();
 for (const mask of CANONICAL) wallFrameByCanonical.set(mask, push(drawWallTile(mask)));
 
-// One flat blue floor, shared by every theme (we use a single colour set for now).
-const floorFrame = push(drawFloor());
+// The flagstone floor variants, shared by every theme (one colour set for now).
+const floorVariantFrames = FLOOR_TILES.map((_, i) => push(drawFloor(i)));
 const floorFrames = {};
-for (const theme of THEME_NAMES) floorFrames[theme] = [floorFrame];
+for (const theme of THEME_NAMES) floorFrames[theme] = floorVariantFrames;
 
 const special = {
   stairs: push(drawStairs()),
@@ -516,6 +535,6 @@ if (process.env.TILE_PREVIEW) {
 
 console.log(
   `dungeon-tiles.png: ${frames.length} frames (${CANONICAL.length} wall, ` +
-  `1 floor, ${Object.keys(special).length} special) at ${png.width}x${png.height}`,
+  `${floorVariantFrames.length} floor, ${Object.keys(special).length} special) at ${png.width}x${png.height}`,
 );
 console.log(`tilesetFrames.generated.ts written`);
