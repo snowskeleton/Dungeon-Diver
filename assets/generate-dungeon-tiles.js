@@ -5,18 +5,21 @@
 //
 // The tileset is still emitted by CODE — the renderer indexes a frame table that
 // must match the PNG, and one script emitting both is what guarantees they can't
-// drift (see the tileset note in CLAUDE.md). But the pixels are now SAMPLED from
-// real hand-drawn art rather than drawn procedurally:
+// drift (see the tileset note in CLAUDE.md). But the pixels are SAMPLED from the
+// real art rather than drawn procedurally:
 //
-//   - WALLS  : one real brick tile, tiled, with autotile edge shading + rounded
-//              corners composited on so the 47-tile blob is still complete by
-//              construction. Walls are uniform dungeon stone; the FLOOR carries
-//              room identity (which sidesteps "who owns a wall between two rooms").
-//   - FLOORS : one real paneled-stone floor tile per room theme, picked to be a
-//              distinct colour (tan / teal / gold / lavender / green / red).
+//   - We use ONE colour set from the sheet: the blue/cyan set (its far-left
+//     block). The author's own example dungeon (Examples/Zaldo/Example
+//     Dungeon.png) is built from this set, and it is the reference for how the
+//     tiles are meant to compose.
+//   - FLOORS : a single FLAT dark-blue floor tile, exactly as the example uses
+//     it. The decorated block/water/panel tiles in this pack are 3D OBJECTS that
+//     sit ON the floor (they cast shadows), not floor fill — tiling them was the
+//     mistake in the previous pass. Every room type uses the same floor for now.
+//   - WALLS  : the set's cyan brick, tiled, with autotile edge shading + rounded
+//     corners composited on so the 47-tile blob is complete by construction.
 //   - STAIRS, trap, boss passage, fire, slime, wall shadow and the door
-//     portcullis stay procedurally drawn — they are small, animated, or simply
-//     not present as clean tiles in this pack.
+//     portcullis stay procedurally drawn — small, animated, or absent from the set.
 //
 // The source sheet lives OUTSIDE the repo (like the SOA2 character import). The
 // committed PNG + generated table are what the game loads; you only need the
@@ -51,23 +54,19 @@ function srcPx(x, y) {
   return [SRC.data[i], SRC.data[i + 1], SRC.data[i + 2], SRC.data[i + 3]];
 }
 
-// ─── Source coordinates (16px tiles), verified by preview against the sheet ────
+// ─── Source coordinates (16px tiles), from the BLUE set, verified by preview ───
 
-/** The one brick every wall in the dungeon is built from. Tiles seamlessly. */
-const WALL_BRICK = { x: 2752, y: 0 };
+/** The cyan brick every wall is built from. Tiles seamlessly. */
+const WALL_BRICK = { x: 192, y: 0 };
 
-/** One paneled-stone floor tile per room theme. Room types collapse onto these
- *  themes in TileRenderer's exhaustive switch — combat/wave/timed/dark all read
- *  as `stone`, only the rooms that mean something else get their own colour. */
-const FLOOR_THEME_SRC = {
-  stone:  { x: 480,  y: 336 },
-  maze:   { x: 5600, y: 144 },
-  shop:   { x: 2016, y: 336 },
-  shrine: { x: 2016, y: 144 },
-  chest:  { x: 2528, y: 336 },
-  boss:   { x: 4576, y: 336 },
-};
-const THEME_NAMES = Object.keys(FLOOR_THEME_SRC);
+/** The flat dark-blue floor, used exactly as the author's example dungeon does. */
+const FLOOR_SRC = { x: 336, y: 192 };
+
+// The renderer keys floors by room-type "theme". We only use the blue set right
+// now, so every theme resolves to the same blue floor — but the keys stay so the
+// exhaustive switch in TileRenderer still compiles and a second colour set can be
+// slotted in per theme later without touching the renderer.
+const THEME_NAMES = ["stone", "maze", "shop", "shrine", "chest", "boss"];
 
 // ─── 32px drawing surface ──────────────────────────────────────────────────────
 
@@ -162,9 +161,9 @@ const CANONICAL = [];
   CANONICAL.sort((a, b) => a - b);
 }
 
-const OUTLINE = [0x14, 0x12, 0x0c];
-const LIGHT = [0xff, 0xf4, 0xdc];
-const SHADOW = [0x08, 0x07, 0x05];
+const OUTLINE = [0x06, 0x1c, 0x26];
+const LIGHT = [0xc4, 0xff, 0xf4];
+const SHADOW = [0x02, 0x18, 0x2c];
 
 /** A wall frame: real brick, with directional shading + a rounded silhouette
  *  composited so exposed edges read as carved stone. The shading is alpha over
@@ -231,50 +230,14 @@ function drawWallTile(mask) {
   return t;
 }
 
-// ─── Floors ──────────────────────────────────────────────────────────────────
-//
-// Every floor in this pack is a bordered stone PANEL with a motif in it. Tiled
-// edge to edge those panels read as a dense grid — too busy under the game's 2×
-// zoom. So each theme gets two frames: a calm base (the panel's own stone colour,
-// sampled from the art, laid flat with faint seams) used for ~5 of every 6 tiles,
-// and the real decorated panel scattered in as the 6th. Same trick the classic
-// dungeons use — a plain floor with the occasional feature tile — and the base
-// colour is the art's, so the panels never look pasted onto a foreign floor.
+// ─── Floor ───────────────────────────────────────────────────────────────────
 
-/** Median-ish stone colour of a source panel, sampled from its border ring so
- *  the central motif doesn't drag the average. */
-function panelStoneColor(sx, sy) {
-  const samples = [];
-  for (let i = 2; i < 14; i++) {
-    samples.push(srcPx(sx + i, sy + 2));
-    samples.push(srcPx(sx + i, sy + 13));
-    samples.push(srcPx(sx + 2, sy + i));
-    samples.push(srcPx(sx + 13, sy + i));
-  }
-  const mid = (k) => samples.map((s) => s[k]).sort((a, b) => a - b)[samples.length >> 1];
-  return [mid(0), mid(1), mid(2)];
-}
-
-/** Calm base floor: the panel's stone colour, flat, with a faint darker seam on
- *  two edges so a field of them still reads as tiled stone rather than a void. */
-function drawFloorBase(theme) {
+/** The flat dark-blue floor. Deliberately plain — the example dungeon's floor is
+ *  a solid fill, and the visual interest comes from the walls and from objects
+ *  (blocks, enemies, pedestals) placed on top, not from floor texture. */
+function drawFloor() {
   const t = new Tile();
-  const src = FLOOR_THEME_SRC[theme];
-  const c = panelStoneColor(src.x, src.y);
-  const seam = [Math.round(c[0] * 0.82), Math.round(c[1] * 0.82), Math.round(c[2] * 0.82)];
-  const lit = [Math.min(255, Math.round(c[0] * 1.1)), Math.min(255, Math.round(c[1] * 1.1)), Math.min(255, Math.round(c[2] * 1.1))];
-  t.fill(c);
-  t.hline(0, 0, TILE - 1, seam, 110);
-  t.vline(0, 0, TILE - 1, seam, 110);
-  t.hline(1, 0, TILE - 1, lit, 40);
-  return t;
-}
-
-/** The real decorated panel, scattered in as the occasional feature tile. */
-function drawFloorPanel(theme) {
-  const t = new Tile();
-  const src = FLOOR_THEME_SRC[theme];
-  t.blitSource(src.x, src.y);
+  t.blitSource(FLOOR_SRC.x, FLOOR_SRC.y);
   return t;
 }
 
@@ -342,10 +305,10 @@ function drawTrap() {
   return t;
 }
 
-/** The gold passage into a boss room — real boss floor with veins on top. */
+/** The gold passage into a boss room — the blue floor with gold veins on top. */
 function drawBossFloor() {
   const t = new Tile();
-  t.blitSource(FLOOR_THEME_SRC.boss.x, FLOOR_THEME_SRC.boss.y);
+  t.blitSource(FLOOR_SRC.x, FLOOR_SRC.y);
   const gold = [0xc9, 0x9d, 0x45];
   const goldLit = [0xf0, 0xd0, 0x7a];
   for (let i = 0; i < TILE; i++) {
@@ -434,10 +397,10 @@ const push = (tile) => frames.push(tile) - 1;
 const wallFrameByCanonical = new Map();
 for (const mask of CANONICAL) wallFrameByCanonical.set(mask, push(drawWallTile(mask)));
 
+// One flat blue floor, shared by every theme (we use a single colour set for now).
+const floorFrame = push(drawFloor());
 const floorFrames = {};
-for (const theme of THEME_NAMES) {
-  floorFrames[theme] = [push(drawFloorBase(theme)), push(drawFloorPanel(theme))];
-}
+for (const theme of THEME_NAMES) floorFrames[theme] = [floorFrame];
 
 const special = {
   stairs: push(drawStairs()),
@@ -553,7 +516,6 @@ if (process.env.TILE_PREVIEW) {
 
 console.log(
   `dungeon-tiles.png: ${frames.length} frames (${CANONICAL.length} wall, ` +
-  `${THEME_NAMES.length} floor, ${Object.keys(special).length} special) ` +
-  `at ${png.width}x${png.height}`,
+  `1 floor, ${Object.keys(special).length} special) at ${png.width}x${png.height}`,
 );
 console.log(`tilesetFrames.generated.ts written`);

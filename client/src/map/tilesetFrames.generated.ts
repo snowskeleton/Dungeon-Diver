@@ -7,12 +7,12 @@
 export type FloorTheme = "stone" | "maze" | "shop" | "shrine" | "chest" | "boss";
 
 export const FLOOR_VARIANT_FRAMES: Record<FloorTheme, readonly number[]> = {
-  stone: [47, 48],
-  maze: [49, 50],
-  shop: [51, 52],
-  shrine: [53, 54],
-  chest: [55, 56],
-  boss: [57, 58],
+  stone: [47],
+  maze: [47],
+  shop: [47],
+  shrine: [47],
+  chest: [47],
+  boss: [47],
 };
 
 /** Wall frame for an 8-neighbour mask (bit 0 = N, then clockwise: NE E SE S SW W NW).
@@ -38,11 +38,11 @@ export const WALL_FRAME_BY_MASK: readonly number[] = [
 ];
 
 export const SPECIAL_FRAMES = {
-  stairs: 59,
-  trap: 60,
-  bossFloor: 61,
-  fire: 62,
-  slime: 63,
-  wallShadow: 64,
-  barrier: 65,
+  stairs: 48,
+  trap: 49,
+  bossFloor: 50,
+  fire: 51,
+  slime: 52,
+  wallShadow: 53,
+  barrier: 54,
 } as const;
