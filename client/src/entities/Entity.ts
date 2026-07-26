@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { TILE_SIZE, Facing, RangedStyle, FOOT_OFFSET, ENTITY_RADIUS, WEAPON_REGISTRY } from "shared";
+import { TILE_SIZE, Facing, RangedStyle, FOOT_OFFSET, ENTITY_RADIUS, WEAPON_REGISTRY, ComboSwing } from "shared";
 import { DEBUG_COLORS, type DebugShape } from "../debug/DebugDraw";
 import { AttackFXType } from "./AttackFXSprites";
 import { WeaponVisual, createWeaponVisual, createNoWeaponVisual } from "./WeaponVisuals";
@@ -133,6 +133,13 @@ export abstract class Entity {
     this.wasAttacking = false;
   }
 
+  /** Resolve the combo swing for a synced (weaponId, comboStep) into pendingComboSwing,
+   *  so the next attack FX draws the matching strip + mirror. Call before retrigger. */
+  protected setPendingComboSwing(weaponId: string, comboStep: number) {
+    const swings = WEAPON_REGISTRY[weaponId]?.comboSwings;
+    this.pendingComboSwing = swings ? swings[comboStep % swings.length] ?? null : null;
+  }
+
   protected playAnim(action: CharacterAction, facing: Facing) {
     if (!this.charSprite || !this.spriteConfig) return;
     this.syncSpritePosition();
@@ -182,9 +189,14 @@ export abstract class Entity {
     this.charSprite!.play(key);
   }
 
+  // The combo swing the next attack visual should draw, set by a player subclass
+  // from the synced comboStep just before it retriggers. Null = default first swing
+  // (enemies, or a weapon with no combo).
+  protected pendingComboSwing: ComboSwing | null = null;
+
   private updateAttackFX(startedAttack: boolean, facing: Facing) {
     if (!startedAttack) return;
-    this.weaponVisual.playAttack(this.sprite.x, this.sprite.y, facing);
+    this.weaponVisual.playAttack(this.sprite.x, this.sprite.y, facing, this.pendingComboSwing);
   }
 
   private downedShown = false;

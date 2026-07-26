@@ -2,6 +2,7 @@ import {
   InputMessage, CharacterClass, CharacterType, CharacterConfig, getCharacterConfig,
   WeaponId, Weapon, WeaponInstance, WeaponMod, WEAPON_REGISTRY, AMMO_REGISTRY,
   PLAYER_BODY_PROFILE, PLAYER_ATTACK_AFFECTS, Facing, Attack, foldStat,
+  ComboSwing, DEFAULT_COMBO_WINDOW_MS,
 } from "shared";
 import { PlayerState, UpgradeSlotState } from "../schema/PlayerState";
 import { WeaponSlotState } from "../schema/WeaponSlotState";
@@ -48,6 +49,14 @@ export class Player extends Entity implements Caster {
   // Previous tick's attack-button state, for rising-edge detection (melee fires
   // once per press; ranged auto-fires while held).
   private prevAttack = false;
+  // Melee combo state. comboIndex walks 0→1→2→0 across consecutive swings; it
+  // resets to the first swing whenever the chain window lapses (see advanceCombo).
+  // lastSwingAt is the caster-clock time the previous melee swing began.
+  private comboIndex = 0;
+  private lastSwingAt = -Infinity;
+  // The chain grace beyond the weapon's cooldown, in ms. A per-player preference
+  // the client sends from its Options; defaults until one arrives.
+  private comboWindowMs = DEFAULT_COMBO_WINDOW_MS;
 
   constructor(
     physics: PhysicsWorld,
@@ -129,6 +138,32 @@ export class Player extends Entity implements Caster {
   }
   get attackAffects(): number {
     return PLAYER_ATTACK_AFFECTS;
+  }
+
+  /** The combo swing this attack is on, for the melee spell (Caster.meleeCombo).
+   *  comboIndex was advanced when this swing was accepted, so this reads the
+   *  variant — FX + damage/knockback multipliers — for the swing now in flight. */
+  meleeCombo(inst: WeaponInstance): ComboSwing {
+    const swings = inst.comboSwings;
+    return swings[this.comboIndex % swings.length];
+  }
+
+  /** Set this player's combo grace window (ms). Sent from the client's Options;
+   *  clamped so a bad value can't disable or unboundedly extend the chain. */
+  setComboWindow(ms: number): void {
+    if (!Number.isFinite(ms)) return;
+    this.comboWindowMs = Math.max(0, Math.min(2000, ms));
+  }
+
+  /** Advance (or reset) the melee combo for a swing accepted at caster-clock `now`.
+   *  The chain continues only when the gap since the last swing is within the
+   *  weapon's cooldown plus the grace window; otherwise it restarts at swing 0. */
+  private advanceCombo(now: number): void {
+    const graceExpired = now - this.lastSwingAt > this.weapon.attackCooldownMs + this.comboWindowMs;
+    const len = this.weapon.comboSwings.length;
+    this.comboIndex = graceExpired ? 0 : (this.comboIndex + 1) % len;
+    this.lastSwingAt = now;
+    this.state.comboStep = this.comboIndex;
   }
 
   /** Stage 3 of the attack pipeline: the player's own offensive scaling. This is
@@ -299,6 +334,11 @@ export class Player extends Entity implements Caster {
       const wantsToFire = spell.fireMode === "hold" ? input.attack : risingEdge;
       if (wantsToFire && spell.isReady(this.spellCaster.now)) {
         this.state.attackSeq = (this.state.attackSeq + 1) % 65536;
+        // Melee weapons chain their combo; ranged/AOE have none, so their swing is
+        // always the neutral first step. Advance BEFORE begin so the spell's
+        // onActivate reads the freshly-chosen swing this same tick.
+        if (!weapon.isRanged && !weapon.isAoe) this.advanceCombo(this.spellCaster.now);
+        else { this.comboIndex = 0; this.state.comboStep = 0; }
         this.spellCaster.begin(spell, aim);
         this.spellCaster.update(this, dtMs, aim); // zero wind-up: strike this tick
       }

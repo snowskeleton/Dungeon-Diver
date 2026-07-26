@@ -1,4 +1,4 @@
-import { Facing, Attack } from "shared";
+import { Facing, Attack, ComboSwing, WeaponInstance } from "shared";
 import { HitSource } from "../combat/HitSource";
 import type { SpawnProjectile, EnemyClass } from "../entities/Enemy";
 
@@ -66,6 +66,14 @@ export interface Caster {
    * a Player currently cares (lifesteal); enemies leave it undefined.
    */
   onDamageDealt?(damage: number): void;
+
+  /**
+   * The combo swing this caster is currently on for the given melee weapon — its
+   * FX variant plus damage/knockback multipliers. Only a Player tracks a combo
+   * (it advances the chain as it swings); everyone else leaves this undefined and
+   * the melee spell falls back to a plain first swing.
+   */
+  meleeCombo?(inst: WeaponInstance): ComboSwing;
 }
 
 // A caster that can charge across the room. Movement + wall-bounce is the mover's

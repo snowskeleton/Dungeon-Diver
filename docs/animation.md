@@ -26,6 +26,37 @@ Two related server rules in the same method:
 - **Melee fires only on the rising edge** (`input.attack && !prevAttack`) so you can't hold-to-chain-swing, while **ranged auto-fires while held**.
 - **Facing is frozen while a ranged weapon is held** (after the first frame) so you can strafe/back-pedal and keep firing your aimed direction. `LocalPlayer` mirrors that exact facing rule locally so the sprite matches with no round-trip — **if you change one, change both.**
 
+## Melee combo (first → reverse → finisher)
+
+Consecutive melee swings chain a three-hit combo: a plain swing, the same arc
+**mirrored** (a backswing), then a **wider finisher** that hits harder. Wait longer
+than the grace window and it drops back to the first swing.
+
+- **The combo is defined on the weapon**, MIT-style, not in a lookup table.
+  `Weapon.comboSwings` (`shared/src/weapons/base.ts`) returns the three
+  `ComboSwing`s — each an `{ fxType, mirrored, damageMult, knockbackMult }` — built
+  from the weapon's own `fxType` (the finisher uses `longFxVariant`) and its
+  per-swing multiplier getters (`comboNDamageMult` / `comboNKnockbackMult`, plain
+  numbers so the weapon-balance tool edits them; a weapon or a category base can
+  buff just one swing). Ranged/AOE weapons carry the getters but never combo.
+- **The step lives on the player and is server-authoritative.** `Player`
+  (`server/src/entities/Player.ts`) walks `comboIndex` 0→1→2→0 as it accepts
+  melee swings and resets it when the gap since the last swing exceeds the
+  weapon's cooldown plus the grace window (`advanceCombo`). It exposes the current
+  swing to the melee spell via `Caster.meleeCombo`, so `weaponSpell`'s melee
+  effect picks the right hurtbox (`Weapon.comboHurtbox`, which mirrors via
+  `fxHurtboxAt(..., mirrored)`) and folds the multipliers into the blow.
+- **The step crosses the wire as `PlayerState.comboStep`** (beside `attackSeq`),
+  so the client draws the matching strip. On an `attackSeq` change,
+  `LocalPlayer`/`RemotePlayer` call `Entity.setPendingComboSwing(weaponId,
+  comboStep)`; the FX layer (`playAttackFX`) flips the strip with `setFlipY` for a
+  backswing and swaps to the finisher's wider strip. `HeldWeaponVisual` keeps one
+  strip sprite per FX type the weapon can swing.
+- **The grace window is a client Option** (`comboWindowMs`, default
+  `DEFAULT_COMBO_WINDOW_MS`). It governs server-authoritative timing, so — unlike
+  every other option — `LocalPlayer` sends it to the room (`"comboWindow"`) on
+  join and `Player.setComboWindow` clamps it.
+
 ## `syncSpritePosition` — why it exists
 
 `RemotePlayer.update()` moves `sprite.x/y` (the invisible rectangle anchor) via lerp, but only `Entity.setPosition()` — which `RemotePlayer` never calls — would copy that onto the visible `charSprite`. Fixed by moving the `charSprite.x/y = sprite.x/y` sync into `playAnim()` (`syncSpritePosition()`), which both `LocalPlayer` and `RemotePlayer` call every frame. It also calls `syncAttackFX()` to re-anchor any in-flight FX strip and weapon icon to the entity's current position — so swinging while moving looks correct.

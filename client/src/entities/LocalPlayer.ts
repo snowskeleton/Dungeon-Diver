@@ -14,6 +14,7 @@ import { meleeHurtboxShapes } from "../debug/hurtboxShapes";
 import { AcquireFX, ACQUIRE_MS } from "./AcquireFX";
 import { InventoryMenu } from "../ui/InventoryMenu";
 import { OfferPicker, OfferChoiceView } from "../ui/OfferPicker";
+import { loadOptions } from "../options/gameOptions";
 
 // Must match GameRoom BUY_RADIUS so the client prompt appears exactly when the
 // server will accept the purchase.
@@ -95,6 +96,8 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     this.roomState = room.state as GameStateView;
     this.inputSource = inputSource;
     this.setupCharacter(visualDef.spriteConfig, weapon.fxType, weapon.id, weapon.rangedStyle);
+    // Tell the server this player's melee combo grace window (a client Option).
+    this.room.send("comboWindow", { ms: loadOptions().comboWindowMs });
   }
 
   update() {
@@ -317,6 +320,7 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     // A new attackSeq means the server accepted a fresh attack — restart the
     // swing/bow clip even if isAttacking never dropped (held-fire).
     if (attackSeq !== this.lastAttackSeq) {
+      this.setPendingComboSwing(weaponId, state.comboStep);
       if (this.lastAttackSeq !== -1) this.retriggerAttack();
       this.lastAttackSeq = attackSeq;
       this.swingStartedAt = performance.now();

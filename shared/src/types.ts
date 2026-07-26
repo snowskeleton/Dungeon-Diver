@@ -110,6 +110,13 @@ export const KNOCKBACK_STUN_MS_PER_UNIT = 60; // ms of stun per unit of overage
 export const KNOCKBACK_STUN_MAX_MS = 3000;    // cap so big hits don't stun-lock forever
 export const SERVER_TICK_MS = 50;   // 20 Hz
 export const MAX_CLIENTS = 4;
+// Melee combo grace window (ms). A swing continues the combo (first → reverse →
+// finisher) only if the next swing lands within the weapon's cooldown PLUS this
+// grace; wait longer and the chain resets to the first swing. The default here is
+// deliberately short — the client surfaces it as a universal, tunable Option
+// (gameOptions.comboWindowMs) that each player sends to the server on join, so
+// this is only the fallback when no preference has been received.
+export const DEFAULT_COMBO_WINDOW_MS = 300;
 // When a deferred enemy is revealed (a player walks into its room) it doesn't act
 // immediately: it emerges from its dust puff over this long, holding in place and
 // dealing no contact damage, then starts moving. Shared so the client can pace the
