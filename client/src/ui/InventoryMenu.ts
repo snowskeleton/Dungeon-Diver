@@ -11,6 +11,8 @@ import { addStyle, button, el, menuPanel, MenuPanel } from "./menuDom";
 // it is the part of a weapon that isn't on its template.
 const CSS = `
   .inv-mods { font-size: 11px; color: #ffe066; margin-top: 3px; display: flex; gap: 8px; }
+  .inv-selectable { cursor: pointer; }
+  .inv-selectable:hover { outline: 2px solid #ffe066; }
 `;
 
 export class InventoryMenu {
@@ -27,6 +29,7 @@ export class InventoryMenu {
     activeIndex: number,
     upgrades: UpgradeSlotView[],
     onClose: () => void,
+    onSelect: (index: number) => void,
   ) {
     if (this.menu) return;
     const close = () => {
@@ -41,8 +44,14 @@ export class InventoryMenu {
     addStyle("inv-style", CSS);
 
     const body = el("div", { className: "m-scroll" });
+    const weaponList = el("div");
+    body.appendChild(weaponList);
 
-    weapons.forEach((slot, i) => {
+    // Rebuilt whenever the equipped slot changes so clicking a weapon moves the
+    // EQUIPPED badge/highlight immediately, before the server round-trip lands.
+    const renderWeapons = (active: number) => {
+      weaponList.replaceChildren();
+      weapons.forEach((slot, i) => {
       // Stats come off the synced slot, so a rolled weapon shows its real numbers
       // rather than its template's.
       const weapon = viewFromSlot(slot);
@@ -64,7 +73,7 @@ export class InventoryMenu {
       const info = el("div", { className: "m-grow" }, [
         el("div", { className: "m-row-name" }, [
           el("span", { text: weapon.name }),
-          ...(i === activeIndex ? [el("span", { className: "m-badge gold", text: "EQUIPPED" })] : []),
+          ...(i === active ? [el("span", { className: "m-badge gold", text: "EQUIPPED" })] : []),
         ]),
         el("div", {
           className: "m-row-detail",
@@ -80,8 +89,19 @@ export class InventoryMenu {
         }));
       }
 
-      body.appendChild(el("div", { className: `m-row${i === activeIndex ? " active" : ""}` }, [iconBox, info]));
-    });
+      const row = el("div", { className: `m-row${i === active ? " active" : ""}` }, [iconBox, info]);
+      // Click a row to equip that weapon — the hotkeys (Q/E) still work too.
+      if (i !== active) {
+        row.classList.add("inv-selectable");
+        row.addEventListener("click", () => {
+          onSelect(i);
+          renderWeapons(i);
+        });
+      }
+      weaponList.appendChild(row);
+      });
+    };
+    renderWeapons(activeIndex);
 
     if (upgrades.length) {
       body.appendChild(el("h3", { className: "m-heading", text: "Upgrades" }));
@@ -99,7 +119,7 @@ export class InventoryMenu {
       el("h2", { className: "m-title", text: "Inventory" }),
       body,
       el("div", { className: "m-actions" }, [
-        el("div", { className: "m-hint m-grow", text: "Q/E to switch weapon · game is paused" }),
+        el("div", { className: "m-hint m-grow", text: "Click a weapon or use Q/E to switch · game is paused" }),
         button("Resume", close, "primary"),
       ]),
     );

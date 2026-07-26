@@ -183,6 +183,7 @@ export class LocalPlayer extends Entity implements DebugDrawable {
       ps.activeWeaponIndex,
       Array.from(ps.upgrades) as UpgradeSlotView[],
       () => this.setMenuPaused(false),
+      (index) => this.room.send("selectWeapon", { index }),
     );
     this.setMenuPaused(true);
   }

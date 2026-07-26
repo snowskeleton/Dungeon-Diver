@@ -342,7 +342,9 @@ export class GameScene extends Phaser.Scene {
       else this.openPauseMenu();
     });
 
-    this.inventoryHud = new InventoryHud(this, 56, this.ui);
+    // Below the HP/floor/gold stack (gold sits at y=56) so the weapon row and
+    // the gold line don't overlap in the top-left.
+    this.inventoryHud = new InventoryHud(this, 82, this.ui);
     this.challengeBanner = new ChallengeBanner(this, 400, 96, this.ui);
     this.darkness = new DarknessOverlay(this);
     this.hud = new GameHud(this, this.ui, options.showControlsHint);
@@ -402,6 +404,10 @@ export class GameScene extends Phaser.Scene {
 
   private handleFloorChange(msg: FloorChangeMessage) {
     this.currentFloor = msg.floor;
+    // Room ids are "gx,gy" and so repeat across floors — without wiping the
+    // explored set, the new floor inherits the old one's revealed/cleared
+    // painting and the minimap looks like the previous floor's map.
+    this.exploredRooms.clear();
     this.rebuildMap(msg.seed);
     // The new floor's pre-clear broadcast arrived BEFORE this message — i.e.
     // before the map it refers to existed — so ask again rather than trusting it.

@@ -170,6 +170,16 @@ export class Player extends Entity implements Caster {
     this.state.weaponId = this.weapon.id;
   }
 
+  /** Equip a specific weapon slot by index (the inventory menu clicks a row).
+   *  Out-of-range indices are ignored. Like switchWeapon, does not reset a swing. */
+  selectWeapon(index: number): void {
+    if (!Number.isInteger(index)) return;
+    if (index < 0 || index >= this.weapons.length) return;
+    this.activeIndex = index;
+    this.state.activeWeaponIndex = this.activeIndex;
+    this.state.weaponId = this.weapon.id;
+  }
+
   /** Spend HP (store purchases). Never lethal — floors at 1 (callers also gate
    *  on health > cost). Direct state edit: no knockback/death, unlike takeDamage. */
   spendHp(amount: number): void {

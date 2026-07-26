@@ -112,6 +112,10 @@ export class GameRoom extends Room<GameState> {
       this.players.get(client.sessionId)?.switchWeapon(msg?.delta ?? 0);
     });
 
+    this.onMessage("selectWeapon", (client, msg: { index: number }) => {
+      this.players.get(client.sessionId)?.selectWeapon(msg?.index ?? -1);
+    });
+
     // The three loot interactions. Validation and granting live in LootDirector;
     // GameRoom only resolves the sender to a Player.
     this.onMessage("buy", (client, msg: { roomId: string; itemIndex: number }) => {
