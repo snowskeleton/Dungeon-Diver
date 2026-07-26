@@ -115,6 +115,21 @@ export function holdWeaponIconAtRest(
   icon.setVisible(true);
 }
 
+/** Pose the weapon icon at the first keyframe of a swing's strip — the "cocked
+ *  back" wind-up position — without playing the strip. Used to hold the pose while
+ *  a deferred melee attack is charging, so the wind-up is visually obvious. */
+export function poseWeaponIconWindup(
+  icon: Phaser.GameObjects.Image,
+  fxType: StripFXType,
+  px: number,
+  py: number,
+  facing: Facing,
+  iconAngle: number,
+  mirrored = false,
+) {
+  applyIconKeyframe(icon, ICON_KEYFRAMES[fxType][0], px, py, facing, iconAngle, mirrored);
+}
+
 // Active-swing state per FX sprite, so syncAttackFX() can re-anchor the strip
 // and icon to the entity's current position every frame while it moves.
 type ActiveSwing = { facing: Facing; kf: IconKeyframe; iconAngle: number; mirrored: boolean };

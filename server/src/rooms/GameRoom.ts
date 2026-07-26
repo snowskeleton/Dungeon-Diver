@@ -1,6 +1,6 @@
 import { Room, Client } from "colyseus";
 import {
-  InputMessage, SERVER_TICK_MS, MAX_CLIENTS, TILE, DEFAULT_COMBO_WINDOW_MS,
+  InputMessage, SERVER_TICK_MS, MAX_CLIENTS, TILE, DEFAULT_COMBO_WINDOW_MS, DEFAULT_CHARGE_HOLD_MS,
   generateDungeon, DungeonResult, DungeonOptions, FloorChangeMessage,
   MAP_SEED, AMMO_REGISTRY, RoomType,
   TRAP_MIN_FLOORS, TRAP_MAX_FLOORS,
@@ -116,10 +116,13 @@ export class GameRoom extends Room<GameState> {
       this.players.get(client.sessionId)?.selectWeapon(msg?.index ?? -1);
     });
 
-    // Per-player melee combo grace window, from the sender's client Options. Sent
-    // on join and whenever the option changes; the Player clamps it.
-    this.onMessage("comboWindow", (client, msg: { ms: number }) => {
-      this.players.get(client.sessionId)?.setComboWindow(msg?.ms ?? DEFAULT_COMBO_WINDOW_MS);
+    // Per-player melee tuning (combo grace window + charge-hold threshold), from the
+    // sender's client Options. Sent on join; the Player clamps both.
+    this.onMessage("meleeTuning", (client, msg: { comboWindowMs: number; chargeHoldMs: number }) => {
+      this.players.get(client.sessionId)?.setMeleeTuning(
+        msg?.comboWindowMs ?? DEFAULT_COMBO_WINDOW_MS,
+        msg?.chargeHoldMs ?? DEFAULT_CHARGE_HOLD_MS,
+      );
     });
 
     // The three loot interactions. Validation and granting live in LootDirector;

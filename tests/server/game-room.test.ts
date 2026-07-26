@@ -465,7 +465,10 @@ describe("the tick", () => {
     h.tick(1);
     enemy.teleport(p.state.x + 12, p.state.y);
     p.state.facing = "right";
+    // Deferred melee: press to start the wind-up, then release to fire the swing.
     p.lastInput = { dx: 0, dy: 0, attack: true };
+    h.tick(1);
+    p.lastInput = { dx: 0, dy: 0, attack: false };
     h.clearBroadcasts();
 
     h.tick(15);

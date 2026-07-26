@@ -129,17 +129,26 @@ export function physicsTick(physics: PhysicsWorld, bodies: Array<Player | Enemy>
   for (const b of bodies) b.syncFromBody();
 }
 
-/** Hold an attack until the enemy's health drops, returning how many ticks it
- *  took. Melee swings genuinely wind up (the FX strip's leading frames are
- *  empty), so "attack once and assert" is not a thing a test can do. */
+/** Tap the attack once and let the swing play out until the enemy's health drops,
+ *  returning how many ticks it took. Melee is DEFERRED (a press holds a wind-up
+ *  that fires on release), so this presses for the first tick then releases — a
+ *  short tap, i.e. a regular swing, not a charged one. And swings genuinely wind
+ *  up (the FX strip's leading frames are empty), so a hit lands several ticks in,
+ *  never on the release tick itself. */
 export function swingUntilHit(a: Arena, playerId: string, enemyId: string, maxTicks = 25): number {
   const enemy = a.enemies.get(enemyId)!;
   const hp0 = enemy.state.health;
   for (let t = 1; t <= maxTicks; t++) {
-    a.stepWithInput(playerId, 0, 0, true);
+    a.stepWithInput(playerId, 0, 0, t === 1); // tap: press once, then release
     if (enemy.state.health !== hp0) return t;
   }
   return -1;
+}
+
+/** Tap the attack once and step `ticks` times, letting the (regular) swing play
+ *  through its window — for tests that assert on the world AFTER a full swing. */
+export function tapSwing(a: Arena, playerId: string, ticks = 15): void {
+  for (let t = 0; t < ticks; t++) a.stepWithInput(playerId, 0, 0, t === 0);
 }
 
 export { SERVER_TICK_MS };

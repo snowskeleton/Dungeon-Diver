@@ -134,6 +134,7 @@ export class WeaponInstance implements WeaponView {
   get isAoe(): boolean { return this.template.isAoe; }
   get getHurtbox(): GetHurtbox { return this.template.getHurtbox; }
   get comboSwings(): ComboSwing[] { return this.template.comboSwings; }
+  get hardSwing(): ComboSwing { return this.template.hardSwing; }
   comboHurtbox(
     swing: ComboSwing,
     px: number,

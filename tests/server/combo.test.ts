@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { WEAPON_REGISTRY, longFxVariant, DEFAULT_COMBO_WINDOW_MS, SERVER_TICK_MS } from "shared";
+import {
+  WEAPON_REGISTRY,
+  longFxVariant,
+  DEFAULT_COMBO_WINDOW_MS,
+  DEFAULT_CHARGE_HOLD_MS,
+  SERVER_TICK_MS,
+} from "shared";
 import { Player } from "../../server/src/entities/Player";
 import { GooGreen } from "../../server/src/entities/enemies/goos";
 import { arena } from "../helpers/world";
@@ -23,8 +29,9 @@ function chain(
   const steps: number[] = [];
   let lastSeq = p.state.attackSeq;
   for (let t = 0; t < idleTicksBefore; t++) a.stepWithInput(id, 0, 0, false);
-  // Toggle attack each tick; a rising edge that lands while the weapon is ready
-  // is accepted and bumps attackSeq. Cap the loop generously.
+  // Toggle attack each tick: a press starts a wind-up and the very next tick
+  // releases it — a hold of one tick (50ms), well under the hard threshold, so
+  // every release is a regular swing that advances the combo. Cap the loop.
   for (let t = 0; steps.length < n && t < 400; t++) {
     a.stepWithInput(id, 0, 0, t % 2 === 0);
     if (p.state.attackSeq !== lastSeq) {
@@ -50,6 +57,13 @@ describe("the melee combo definition", () => {
     expect(combo[1].damageMult).toBe(1);
     expect(combo[2].damageMult).toBeGreaterThan(1);
     expect(combo[2].knockbackMult).toBeGreaterThan(1);
+  });
+
+  it("the hard (charged) swing defaults to the finisher's shape", () => {
+    const hard = WEAPON_REGISTRY["broadsword"].hardSwing;
+    expect(hard.fxType).toBe(combo[2].fxType);
+    expect(hard.damageMult).toBe(combo[2].damageMult);
+    expect(hard.knockbackMult).toBe(combo[2].knockbackMult);
   });
 });
 
@@ -84,7 +98,7 @@ describe("a player swinging in sequence", () => {
 
     const wideA = arena();
     const wideP = wideA.addPlayer("p1", new Player(wideA.physics, 300, 300, "knight", "guy", "broadsword"));
-    wideP.setComboWindow(2000);
+    wideP.setMeleeTuning(2000, DEFAULT_CHARGE_HOLD_MS);
     chain(wideA, "p1", 1);
     expect(chain(wideA, "p1", 1, pauseTicks)).toEqual([1]); // still chaining
   });
@@ -104,6 +118,59 @@ describe("a player swinging in sequence", () => {
       }
     }
     expect([...seen]).toEqual([0]);
+  });
+});
+
+/** Hold the attack for `holdTicks`, then release for one tick; return the player. */
+function holdRelease(a: ReturnType<typeof arena>, id: string, holdTicks: number) {
+  for (let t = 0; t < holdTicks; t++) a.stepWithInput(id, 0, 0, true);
+  a.stepWithInput(id, 0, 0, false); // release fires the swing
+  return a.players.get(id)!;
+}
+
+describe("deferred melee: tap vs hold", () => {
+  const holdTicksFor = (ms: number) => Math.ceil(ms / SERVER_TICK_MS) + 1;
+
+  it("holding past the threshold releases a hard swing; a tap does not", () => {
+    const a = arena();
+    a.addPlayer("p1", new Player(a.physics, 300, 300, "knight", "guy", "broadsword"));
+
+    // A one-tick tap: regular swing, not hard.
+    const tapped = holdRelease(a, "p1", 1);
+    expect(tapped.state.hardSwing).toBe(false);
+
+    // Idle to drop the combo, then hold well past the threshold: hard swing.
+    for (let t = 0; t < 20; t++) a.stepWithInput("p1", 0, 0, false);
+    const held = holdRelease(a, "p1", holdTicksFor(DEFAULT_CHARGE_HOLD_MS));
+    expect(held.state.hardSwing).toBe(true);
+    expect(held.state.comboStep).toBe(0); // a heavy resets the tap combo
+  });
+
+  it("nothing fires until release — the wind-up just charges", () => {
+    const a = arena();
+    const p = a.addPlayer("p1", new Player(a.physics, 300, 300, "knight", "guy", "broadsword"));
+    const seq0 = p.state.attackSeq;
+    // Hold well past the hard threshold WITHOUT releasing: still charging, unfired.
+    for (let t = 0; t < holdTicksFor(DEFAULT_CHARGE_HOLD_MS) + 3; t++) {
+      a.stepWithInput("p1", 0, 0, true);
+    }
+    expect(p.state.charging).toBe(true);
+    expect(p.state.chargeHard).toBe(true); // heavy is armed
+    expect(p.state.attackSeq).toBe(seq0); // but nothing has fired
+    // Release: now it fires exactly once.
+    a.stepWithInput("p1", 0, 0, false);
+    expect(p.state.attackSeq).not.toBe(seq0);
+    expect(p.state.charging).toBe(false);
+    expect(p.state.hardSwing).toBe(true);
+  });
+
+  it("the charge threshold is tunable per player", () => {
+    const a = arena();
+    const p = a.addPlayer("p1", new Player(a.physics, 300, 300, "knight", "guy", "broadsword"));
+    p.setMeleeTuning(DEFAULT_COMBO_WINDOW_MS, 3000); // very long hold to go hard
+    // A hold that would be hard by default is only a regular swing now.
+    const held = holdRelease(a, "p1", holdTicksFor(DEFAULT_CHARGE_HOLD_MS));
+    expect(held.state.hardSwing).toBe(false);
   });
 });
 

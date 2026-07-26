@@ -19,6 +19,9 @@ export const WEAPON_SHEET: SheetConfig = {
     { key: "combo1KnockbackMult", label: "Combo1 KB×", unit: "" },
     { key: "combo2KnockbackMult", label: "Combo2 KB×", unit: "" },
     { key: "combo3KnockbackMult", label: "Combo3 KB×", unit: "" },
+    // Hard (charged / held) swing multipliers; default to the combo finisher's.
+    { key: "hardDamageMult", label: "Hard Dmg×", unit: "" },
+    { key: "hardKnockbackMult", label: "Hard KB×", unit: "" },
   ],
   noCategoryGroup: "other",
 };

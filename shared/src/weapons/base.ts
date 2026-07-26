@@ -135,6 +135,25 @@ export abstract class Weapon {
     ];
   }
 
+  // ── Hard (charged) swing ─────────────────────────────────────────────────────
+  // A held attack releases a single heavy swing instead of a combo step. Its knobs
+  // mirror the combo's — plain numeric getters the weapon-balance tool edits, so a
+  // weapon or category can tune the payoff. Defaults match the combo finisher.
+  get hardDamageMult(): number { return this.combo3DamageMult; }
+  get hardKnockbackMult(): number { return this.combo3KnockbackMult; }
+
+  /** The heavy swing a hold releases: the wider finisher strip, scaled by the
+   *  hard multipliers. Overridable wholesale for a bespoke heavy attack. */
+  get hardSwing(): ComboSwing {
+    const base: StripFXType = isStripFx(this.fxType) ? this.fxType : "slash";
+    return {
+      fxType: longFxVariant(base),
+      mirrored: false,
+      damageMult: this.hardDamageMult,
+      knockbackMult: this.hardKnockbackMult,
+    };
+  }
+
   /**
    * If set, this is a ranged weapon: attacking spawns a projectile using this
    * ammo id (see AMMO_REGISTRY) instead of a melee hitbox. Ranged weapons deal

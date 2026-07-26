@@ -7,6 +7,7 @@ import {
   playAttackFX,
   syncAttackFX,
   holdWeaponIconAtRest,
+  poseWeaponIconWindup,
   WEAPON_ICON_DISPLAY_SIZE,
 } from "./AttackFXSprites";
 import { NovaFX } from "./NovaFX";
@@ -32,6 +33,10 @@ export interface WeaponVisual {
    *  optional combo swing selects which strip to draw and whether to mirror it;
    *  omitted (or unsupported) means the weapon's default first swing. */
   playAttack(x: number, y: number, facing: Facing, swing?: ComboSwing | null): void;
+  /** Hold the wind-up pose while a deferred melee attack is charging (the weapon
+   *  cocked back at the swing's first keyframe). No-op for weapons that don't
+   *  charge. `swing` hints which swing is being wound up (hard vs combo). */
+  showWindup(x: number, y: number, facing: Facing, swing?: ComboSwing | null): void;
   destroy(): void;
 }
 
@@ -105,6 +110,14 @@ class HeldWeaponVisual implements WeaponVisual {
     playAttackFX(sprite, fx, x, y, facing, this.icon, this.iconAngle, swing?.mirrored ?? false);
   }
 
+  showWindup(x: number, y: number, facing: Facing, swing?: ComboSwing | null): void {
+    const fx = swing?.fxType ?? this.fxType;
+    if (!this.icon || !fx) return;
+    // No strip during the wind-up — just the icon cocked back at its first keyframe.
+    if (this.activeSprite?.visible) this.activeSprite.setVisible(false);
+    poseWeaponIconWindup(this.icon, fx, x, y, facing, this.iconAngle, swing?.mirrored ?? false);
+  }
+
   destroy(): void {
     for (const s of this.fxSprites.values()) s.destroy();
     this.icon?.destroy();
@@ -139,6 +152,8 @@ class HeldBowVisual implements WeaponVisual {
     playBowFX(this.bowSprite, this.weaponId, x, y, facing);
   }
 
+  showWindup(): void {} // ranged weapons don't charge
+
   destroy(): void {
     this.bowSprite.destroy();
   }
@@ -161,6 +176,8 @@ class HeldStaffVisual implements WeaponVisual {
     playCastFX(this.castSprite, x, y, facing);
   }
 
+  showWindup(): void {} // staves cast, they don't charge a melee swing
+
   destroy(): void {
     this.castSprite.destroy();
   }
@@ -182,6 +199,8 @@ class NovaVisual implements WeaponVisual {
     this.novaFx.play(x, y);
   }
 
+  showWindup(): void {}
+
   destroy(): void {
     this.novaFx.destroy();
   }
@@ -192,6 +211,7 @@ class NovaVisual implements WeaponVisual {
 class NoVisual implements WeaponVisual {
   sync(): void {}
   playAttack(): void {}
+  showWindup(): void {}
   destroy(): void {}
 }
 
