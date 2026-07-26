@@ -153,11 +153,20 @@ class Tile {
   }
 }
 
+/** splitmix32. A plain LCG was too weak here: seeded per floor variant with a
+ *  linear progression, its Nth output came out nearly linear in the seed, so the
+ *  8 large-stone variants all rotated the same way (clockwise). splitmix's
+ *  avalanche decorrelates sequential seeds, so jitter and rotation are properly
+ *  random in both directions. */
 function rng(seed) {
   let s = seed >>> 0;
   return () => {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    return s / 0x100000000;
+    s = (s + 0x9e3779b9) >>> 0;
+    let z = s;
+    z = Math.imul(z ^ (z >>> 16), 0x21f0aaad);
+    z = Math.imul(z ^ (z >>> 15), 0x735a2d97);
+    z = z ^ (z >>> 15);
+    return (z >>> 0) / 0x100000000;
   };
 }
 
@@ -345,7 +354,7 @@ function drawLargeQuads(seed) {
   const surf = new Tile(64);
   surf.fill(MORTAR);
   const g = stoneRng(seed);
-  stampStone(surf, 32 + g.j(3), 32 + g.j(3), g.range(52, 57), g.range(52, 57), g.j(3.5), 7);
+  stampStone(surf, 32 + g.j(3.5), 32 + g.j(3.5), g.range(39, 44), g.range(39, 44), g.j(4), 6);
   return [surf.quadrant(0, 0), surf.quadrant(32, 0), surf.quadrant(0, 32), surf.quadrant(32, 32)];
 }
 
