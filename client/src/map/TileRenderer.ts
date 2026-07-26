@@ -145,19 +145,24 @@ export function buildMap(scene: Phaser.Scene, dungeon: DungeonResult): Phaser.Ga
 
     let size = sizeAt(plan, ic, ir);
     if (size === "large") {
-      // The 2×2 block this cell belongs to, anchored to the interior grid.
-      const bic = ic - (ic % 2);
-      const bir = ir - (ir % 2);
-      const blockComplete =
-        bic + 1 < IW &&
-        bir + 1 < IH &&
-        sizeAt(plan, bic, bir) === "large" &&
-        sizeAt(plan, bic + 1, bir) === "large" &&
-        sizeAt(plan, bic, bir + 1) === "large" &&
-        sizeAt(plan, bic + 1, bir + 1) === "large";
+      // A large stone is 48px and tiles on a 3×3-cell block. The block this cell
+      // belongs to is anchored to the interior grid; it must be fully inside the
+      // interior AND entirely `large`, or a partial block would show clipped
+      // stones — so those cells fall back to a regular stone instead.
+      const bic = ic - (ic % 3);
+      const bir = ir - (ir % 3);
+      let blockComplete = bic + 2 < IW && bir + 2 < IH;
+      for (let dy = 0; dy < 3 && blockComplete; dy++) {
+        for (let dx = 0; dx < 3; dx++) {
+          if (sizeAt(plan, bic + dx, bir + dy) !== "large") {
+            blockComplete = false;
+            break;
+          }
+        }
+      }
       if (blockComplete) {
         const set = FLOOR_FRAMES.large[hash2(bic, bir) % FLOOR_FRAMES.large.length];
-        const quadrant = (ir % 2) * 2 + (ic % 2);
+        const quadrant = (ir % 3) * 3 + (ic % 3);
         return set[quadrant];
       }
       size = "regular";

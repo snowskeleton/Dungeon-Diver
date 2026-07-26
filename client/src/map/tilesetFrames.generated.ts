@@ -3,23 +3,23 @@
 // Overhead Adventure 2 dungeon sheet). Regenerate with:
 //   npm run assets:tiles
 
-/** Flagstone floor frames at three sizes. `large` entries are 2×2 quadrant sets
- *  [topLeft, topRight, bottomLeft, bottomRight] laid across a 2×2 cell block; the
- *  others are single 32px cells (`tiny` = a 2×2 of small stones in one cell). The
- *  renderer picks a size per cell from a per-room plan and scatters the variants.
- *  One colour set for now, so there is no per-room-type palette. */
+/** Flagstone floor frames at three sizes. `large` entries are 9-frame sets — a
+ *  3×3 cell block (row-major) holding a 2×2 grid of 48px stones — that the
+ *  renderer lays as a group; the others are single 32px cells (`tiny` = a 2×2 of
+ *  small stones in one cell). The renderer picks a size per cell from a per-room
+ *  plan and scatters the variants. One colour set for now, no per-type palette. */
 export const FLOOR_FRAMES = {
   tiny: [61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74],
   regular: [47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60],
   large: [
-    [75, 76, 77, 78],
-    [79, 80, 81, 82],
-    [83, 84, 85, 86],
-    [87, 88, 89, 90],
-    [91, 92, 93, 94],
-    [95, 96, 97, 98],
-    [99, 100, 101, 102],
-    [103, 104, 105, 106],
+    [75, 76, 77, 78, 79, 80, 81, 82, 83],
+    [84, 85, 86, 87, 88, 89, 90, 91, 92],
+    [93, 94, 95, 96, 97, 98, 99, 100, 101],
+    [102, 103, 104, 105, 106, 107, 108, 109, 110],
+    [111, 112, 113, 114, 115, 116, 117, 118, 119],
+    [120, 121, 122, 123, 124, 125, 126, 127, 128],
+    [129, 130, 131, 132, 133, 134, 135, 136, 137],
+    [138, 139, 140, 141, 142, 143, 144, 145, 146],
   ],
 } as const;
 
@@ -46,16 +46,16 @@ export const WALL_FRAME_BY_MASK: readonly number[] = [
 ];
 
 export const SPECIAL_FRAMES = {
-  stairs: 115,
-  trap: 116,
-  bossFloor: 117,
-  fire: 118,
-  slime: 119,
-  wallShadow: 120,
-  barrier: 121,
+  stairs: 155,
+  trap: 156,
+  bossFloor: 157,
+  fire: 158,
+  slime: 159,
+  wallShadow: 160,
+  barrier: 161,
 } as const;
 
 /** Interior obstacle blocks (the in-room "cover" / tetris pieces). The renderer
  *  uses these for wall tiles that sit inside a room's interior, instead of the
  *  brick autotiling it uses for the room's structural walls. */
-export const BLOCK_FRAMES: readonly number[] = [107, 108, 109, 110, 111, 112, 113, 114];
+export const BLOCK_FRAMES: readonly number[] = [147, 148, 149, 150, 151, 152, 153, 154];
