@@ -25,6 +25,7 @@ Concretely, and non-negotiably:
 | [docs/lobby.md](docs/lobby.md) | Touching menus, the room browser, the lobby, matchmaking, or the pause menu |
 | [docs/upgrades.md](docs/upgrades.md) | Touching player stats, weapon modifiers, damage numbers, or reward pedestals |
 | [docs/enemies.md](docs/enemies.md) | Adding or balancing an enemy |
+| [docs/pathfinding.md](docs/pathfinding.md) | Touching enemy chase movement, the flow field, aggro/threat, or flyer-vs-cover collision |
 | [docs/bosses.md](docs/bosses.md) | Designing or building a boss moveset (per-boss abilities spec + bestiary text) |
 | [docs/boss-implementation-plan.md](docs/boss-implementation-plan.md) | Sequencing the boss/layers build — what to implement in what order |
 | [docs/layers.md](docs/layers.md) | Touching collision, projectile targeting, friendly fire, or hit resolution |

@@ -1,4 +1,4 @@
-import { AiState, SERVER_TICK_MS, EnemyType, EnemyFacingMode, ENEMY_BODY_PROFILE, ENEMY_ATTACK_AFFECTS , ENEMY_HURT_BOUNDS, PLAYER_HURT_BOUNDS, HurtBounds, ENEMY_SPAWN_EMERGE_MS } from "shared";
+import { AiState, SERVER_TICK_MS, EnemyType, EnemyFacingMode, ENEMY_BODY_PROFILE, AIRBORNE_ENEMY_BODY_PROFILE, ENEMY_ATTACK_AFFECTS , ENEMY_HURT_BOUNDS, PLAYER_HURT_BOUNDS, HurtBounds, ENEMY_SPAWN_EMERGE_MS, FOOT_OFFSET } from "shared";
 import { EnemyState } from "../schema/EnemyState";
 import { PlayerState } from "../schema/PlayerState";
 import { Entity } from "./Entity";
@@ -9,7 +9,37 @@ import type { AttackStats } from "../spells/Spell";
 /** The interior box an enemy is confined to — see Enemy.confineTo. */
 export type RoomBounds = { xMin: number; xMax: number; yMin: number; yMax: number };
 
+/** What an enemy needs from the flow-field pathfinder to navigate its room. The
+ *  interface (rather than importing FlowFieldSystem directly) keeps Enemy testable
+ *  with a hand-rolled navigator, and mirrors how bosses take injected behaviours. */
+export interface EnemyNavigator {
+  /** Downhill tile-delta toward `sessionId`, or null (no field / already adjacent). */
+  sample(
+    kind: "ground" | "air",
+    roomId: string,
+    sessionId: string,
+    x: number,
+    y: number,
+  ): { dx: number; dy: number } | null;
+  /** Is the straight line to (x1,y1) unobstructed for `kind`? */
+  lineOfSight(kind: "ground" | "air", roomId: string, x0: number, y0: number, x1: number, y1: number): boolean;
+}
+
 const PATROL_RANGE = 64;
+
+// ── Aggro tuning ──────────────────────────────────────────────────────────────
+// A player's pull on an enemy blends proximity with accumulated recent-damage
+// THREAT. Score = PROX_WEIGHT·(1 − dist/aggroRadius) + THREAT_WEIGHT·threat. The
+// proximity term is in [0,1]; THREAT_WEIGHT is small so it takes a real chunk of
+// damage to pull an enemy off a much closer player — but focus-fire eventually
+// wins. With zero threat everywhere this is exactly "chase the nearest player".
+const AGGRO_PROX_WEIGHT = 1;
+const AGGRO_THREAT_WEIGHT = 0.02;
+// Threat is a leaky bucket: it halves every THREAT_HALF_LIFE_MS, so a player who
+// stops dealing damage loses the enemy's attention over a few seconds.
+const THREAT_HALF_LIFE_MS = 3000;
+// Below this the decayed threat is dropped from the table (housekeeping).
+const THREAT_EPSILON = 0.5;
 
 /** Per-spawn overrides for a projectile a boss emits. `lifetimeMs` lets a timed
  *  ground hazard (tremor shards) clear a whole staggered batch on one tick.
@@ -119,7 +149,15 @@ export abstract class Enemy extends Entity {
     this.state.attackRadius = this.attackRadius;
     this.patrolOriginX = startX;
     this.patrolOriginY = startY;
-    this.attachBody(physics, startX, startY, ENEMY_BODY_PROFILE);
+    // A flyer (cruiseHeight > 0) uses the airborne body profile so it collides
+    // with structural walls but flies OVER interior cover blocks. cruiseHeight is
+    // a constant getter, so it's safe to read here during construction.
+    this.attachBody(
+      physics,
+      startX,
+      startY,
+      this.cruiseHeight > 0 ? AIRBORNE_ENEMY_BODY_PROFILE : ENEMY_BODY_PROFILE,
+    );
   }
 
   get isDying(): boolean {
@@ -191,6 +229,44 @@ export abstract class Enemy extends Entity {
   }
 
   private homeBounds: RoomBounds | null = null;
+
+  // ── Navigation + aggro ──────────────────────────────────────────────────────
+  // The flow-field navigator and this enemy's home room id, both set by
+  // SpawnDirector alongside confineTo. Null for an enemy built directly against a
+  // PhysicsWorld (unit tests) or spawned outside a room — such an enemy simply
+  // beelines, which is why the bare-world tests still pass.
+  private nav: EnemyNavigator | null = null;
+  private homeRoomId: string | null = null;
+  // Per-player accumulated threat (recent damage this enemy took from each), the
+  // aggro system's memory. Decays every tick — see decayThreat.
+  private threat = new Map<string, number>();
+
+  /** Wire this enemy to the floor's flow-field pathfinder and record which room's
+   *  field it should read. Called at the SpawnDirector.addEnemy choke point. */
+  setNavigation(nav: EnemyNavigator, roomId: string): void {
+    this.nav = nav;
+    this.homeRoomId = roomId;
+  }
+
+  /** Record damage this enemy took from a player, raising that player's threat.
+   *  Fed from the combat resolver's HitEvents (GameRoom), so any source — melee,
+   *  projectile, AOE — contributes; pickTarget() reads the result. */
+  registerThreat(sessionId: string, damage: number): void {
+    if (damage <= 0) return;
+    this.threat.set(sessionId, (this.threat.get(sessionId) ?? 0) + damage);
+  }
+
+  /** Leak every player's threat toward zero (half-life THREAT_HALF_LIFE_MS) so a
+   *  player who stops attacking gradually loses this enemy's attention. */
+  private decayThreat(dtMs: number): void {
+    if (this.threat.size === 0) return;
+    const factor = Math.pow(0.5, dtMs / THREAT_HALF_LIFE_MS);
+    for (const [id, v] of this.threat) {
+      const next = v * factor;
+      if (next < THREAT_EPSILON) this.threat.delete(id);
+      else this.threat.set(id, next);
+    }
+  }
 
   /** Movement intent is clipped at the room edge so a wandering or chasing enemy
    *  can't leave. Per-axis so an enemy sliding along the boundary still slides
@@ -295,27 +371,76 @@ export abstract class Enemy extends Entity {
     if (this.updateStun(dtMs)) return;
 
     if (this.attackCooldown > 0) this.attackCooldown -= dtMs;
+    this.decayThreat(dtMs);
 
-    const closest = this.closestPlayer(players);
-    if (!closest) {
+    // Aggro-weighted target selection is separate from HOW we reach it: pickTarget
+    // chooses whom to chase (proximity + threat), pathToward navigates there.
+    const target = this.pickTarget(players);
+    if (!target) {
+      this.transition("patrol");
+      this.state.targetId = "";
       this.patrol(dtMs);
       return;
     }
 
-    const { id, dist, dx, dy } = closest;
-
-    if (dist <= this.attackRadius) {
+    if (target.dist <= this.attackRadius) {
       this.transition("attack");
-      this.state.targetId = id;
-    } else if (dist <= this.aggroRadius) {
-      this.transition("chase");
-      this.state.targetId = id;
-      this.chase(dx, dy);
+      this.state.targetId = target.id;
     } else {
-      this.transition("patrol");
-      this.state.targetId = "";
-      this.patrol(dtMs);
+      this.transition("chase");
+      this.state.targetId = target.id;
+      this.pathToward(target);
     }
+  }
+
+  /** The player this enemy should go after: the highest aggro score among players
+   *  within aggroRadius, or null (none in range → patrol). Score blends proximity
+   *  with accumulated threat (see the aggro tuning constants), so it reduces to
+   *  "nearest player" until someone builds threat by dealing damage. */
+  protected pickTarget(
+    players: Map<string, PlayerState>,
+  ): { id: string; dist: number; dx: number; dy: number } | null {
+    let best: { id: string; dist: number; dx: number; dy: number } | null = null;
+    let bestScore = -Infinity;
+    players.forEach((p, id) => {
+      const dx = p.x - this.state.x;
+      const dy = p.y - this.state.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > this.aggroRadius) return;
+      const prox = 1 - dist / this.aggroRadius;
+      const score = AGGRO_PROX_WEIGHT * prox + AGGRO_THREAT_WEIGHT * (this.threat.get(id) ?? 0);
+      if (score > bestScore) {
+        bestScore = score;
+        best = { id, dist, dx, dy };
+      }
+    });
+    return best;
+  }
+
+  /** Move toward the chosen target, routing around obstacles. With a clear line of
+   *  sight we beeline (precise tracking of a moving player); when a wall or cover
+   *  block is in the way we follow the flow-field gradient around it. Without a
+   *  navigator (test-built enemy) it's always a beeline. */
+  protected pathToward(target: { id: string; dx: number; dy: number }): void {
+    const kind = this.cruiseHeight > 0 ? "air" : "ground";
+    if (this.nav && this.homeRoomId) {
+      // Navigate the COLLISION body, which sits at the feet (FOOT_OFFSET below the
+      // sprite centre) — that's what actually squeezes past a wall. Sampling on the
+      // sprite centre would send an enemy through a gap its feet don't fit through
+      // (a 1-tile corridor is a foot-tall slit once the offset is applied).
+      const fx = this.state.x;
+      const fy = this.state.y + FOOT_OFFSET;
+      const tx = this.state.x + target.dx;
+      const ty = this.state.y + target.dy + FOOT_OFFSET;
+      if (!this.nav.lineOfSight(kind, this.homeRoomId, fx, fy, tx, ty)) {
+        const heading = this.nav.sample(kind, this.homeRoomId, target.id, fx, fy);
+        if (heading) {
+          this.chase(heading.dx, heading.dy);
+          return;
+        }
+      }
+    }
+    this.chase(target.dx, target.dy);
   }
 
   // Reusable movement helpers subclasses (e.g. bosses) can call.

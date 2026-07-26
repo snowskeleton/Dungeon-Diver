@@ -14,6 +14,9 @@ export enum Layer {
   PICKUP        = 1 << 6, // 0x40  dropped items, hearts
   HAZARD        = 1 << 7, // 0x80  lingering fire / poison ground tiles
   BARRIER_EXIT  = 1 << 8, // 0x100 a locked room's ONE-WAY exit barrier (see below)
+  COVER         = 1 << 9, // 0x200 a room's INTERIOR designer-placed cover block —
+                          //       a wall for ground movement, but flown OVER by
+                          //       airborne enemies (see AIRBORNE_ENEMY_BODY_PROFILE)
 }
 
 // One-way barriers (playtest G1). A locked room's exit barrier must let a
@@ -26,7 +29,7 @@ export enum Layer {
 // Commitment flips on the room INTERIOR, which is inset a tile past the doorway
 // the barrier sits in — so a player can never gain the bit while overlapping the
 // body and get squeezed out to an arbitrary side.
-export const PLAYER_COMMITTED_SOLID_MASK = Layer.WALL | Layer.PLAYER | Layer.ENEMY | Layer.BARRIER_EXIT;
+export const PLAYER_COMMITTED_SOLID_MASK = Layer.WALL | Layer.COVER | Layer.PLAYER | Layer.ENEMY | Layer.BARRIER_EXIT;
 
 // The three masks any interacting thing may carry. Solid bodies use layer +
 // solidMask; hit sources (projectiles, swings, AOE) use layer + affects;
@@ -48,9 +51,11 @@ export function canAffect(sourceAffects: number, targetLayer: number): boolean {
 }
 
 // ── Default body profiles (solid entities) ────────────────────────────────────
-// Every entity pair currently collides, so both player and enemy bodies block
-// against WALL|PLAYER|ENEMY.
-const ALL_SOLID = Layer.WALL | Layer.PLAYER | Layer.ENEMY;
+// Every ground entity pair currently collides, so both player and (ground) enemy
+// bodies block against WALL|COVER|PLAYER|ENEMY. COVER is the interior cover blocks
+// — ground movement treats them exactly like walls; only airborne enemies drop the
+// bit (see AIRBORNE_ENEMY_BODY_PROFILE) so they fly over cover.
+const ALL_SOLID = Layer.WALL | Layer.COVER | Layer.PLAYER | Layer.ENEMY;
 
 export const PLAYER_BODY_PROFILE: InteractionProfile = {
   layer: Layer.PLAYER,
@@ -66,8 +71,20 @@ export const ENEMY_BODY_PROFILE: InteractionProfile = {
   blockedBy: 0,
 };
 
-/** A dead corpse still respects walls but neither shoves nor is shoved. */
-export const CORPSE_SOLID_MASK = Layer.WALL;
+/** An airborne enemy (bat/floater/flying boss — any Enemy with cruiseHeight > 0)
+ *  flies OVER interior cover blocks: same as the ground profile but with COVER
+ *  dropped from the solid mask, so it still collides with structural walls, the
+ *  room perimeter, players, and other enemies. Height itself stays purely visual;
+ *  this only changes which walls stop it. */
+export const AIRBORNE_ENEMY_BODY_PROFILE: InteractionProfile = {
+  layer: Layer.ENEMY,
+  solidMask: Layer.WALL | Layer.PLAYER | Layer.ENEMY,
+  affects: 0,
+  blockedBy: 0,
+};
+
+/** A dead corpse still respects walls (and cover) but neither shoves nor is shoved. */
+export const CORPSE_SOLID_MASK = Layer.WALL | Layer.COVER;
 
 // ── Attack affect-masks (directional) ─────────────────────────────────────────
 // What each team's hit sources (melee swings, projectiles, AOE) are allowed to

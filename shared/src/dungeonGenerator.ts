@@ -156,6 +156,29 @@ export function roomInteriorRect(room: RoomData): { xMin: number; xMax: number; 
   };
 }
 
+/**
+ * Classify a WALL tile as STRUCTURAL (room perimeter ring or the void between
+ * rooms) or COVER (a designer-placed block inside a room's interior). Non-wall
+ * tiles are `null` (walkable). This is the single source of truth both the
+ * physics wall-body split (PhysicsWorld.buildWallBodies) and the flow-field
+ * traversability grids call, so collision and pathing can never disagree about
+ * what "cover" is — a walker treats both classes as solid, while an airborne
+ * enemy passes over cover but not structure.
+ *
+ * The rule mirrors roomInteriorRect: every room occupies a fixed ROOM_W×ROOM_H
+ * grid slot with a 1-tile border ring, and the map is exactly gridCols·ROOM_W ×
+ * gridRows·ROOM_H, so a tile's position WITHIN its slot is `col % ROOM_W`,
+ * `row % ROOM_H`. A wall strictly inside that ring is cover; anything on the ring
+ * (or the inter-room void, which is always on some slot's ring) is structural.
+ */
+export function wallKind(col: number, row: number, tile: TileId): null | "cover" | "structural" {
+  if (tile !== TILE.WALL) return null;
+  const localCol = ((col % ROOM_W) + ROOM_W) % ROOM_W;
+  const localRow = ((row % ROOM_H) + ROOM_H) % ROOM_H;
+  const interior = localCol >= 1 && localCol <= ROOM_W - 2 && localRow >= 1 && localRow <= ROOM_H - 2;
+  return interior ? "cover" : "structural";
+}
+
 export interface BarrierRect {
   cx: number; cy: number;   // pixel center
   w: number; h: number;     // pixel dimensions

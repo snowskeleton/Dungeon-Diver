@@ -13,6 +13,7 @@ import { REGULAR_ENEMIES } from "../entities/enemies";
 import { BOSSES } from "../entities/bosses";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
 import { FloorManager } from "../floor/FloorManager";
+import { FlowFieldSystem } from "../pathfinding/FlowFieldSystem";
 
 // Room types that never get rank-and-file enemies: the boss room has its boss, and
 // the rest are reward rooms whose whole point is being safe to walk into. A debug
@@ -32,6 +33,7 @@ export class SpawnDirector {
   private dungeon!: DungeonResult;
   private physics!: PhysicsWorld;
   private floorManager!: FloorManager;
+  private flowField!: FlowFieldSystem;
   // Deferred spawning: the floor pass constructs every enemy up front (so its room
   // locks and party-scaling is fixed at start) but holds each unspawned, keyed by
   // its home room. `spawnRoom` reveals a room's whole batch at once the first time
@@ -48,10 +50,16 @@ export class SpawnDirector {
 
   /** Point at the newly generated floor. Called from GameRoom.initFloor, after the
    *  physics world and FloorManager for that floor exist. */
-  setFloor(dungeon: DungeonResult, physics: PhysicsWorld, floorManager: FloorManager) {
+  setFloor(
+    dungeon: DungeonResult,
+    physics: PhysicsWorld,
+    floorManager: FloorManager,
+    flowField: FlowFieldSystem,
+  ) {
     this.dungeon = dungeon;
     this.physics = physics;
     this.floorManager = floorManager;
+    this.flowField = flowField;
     this.pendingByRoom.clear();
   }
 
@@ -197,7 +205,12 @@ export class SpawnDirector {
     // Creatures stay in the room they spawned in (playtest B6/B14) — no wandering
     // out through a doorway, and no chasing a player into the next room.
     const home = this.floorManager.roomAt(x, y);
-    if (home) enemy.confineTo(roomInteriorRect(home));
+    if (home) {
+      enemy.confineTo(roomInteriorRect(home));
+      // Wire the enemy to the flow-field pathfinder for its home room, so chasing
+      // routes around cover/walls instead of beelining into them.
+      enemy.setNavigation(this.flowField, home.id);
+    }
 
     // Deferred spawn: hide it until its room is entered. Anything with no home room
     // (a summon dropped outside a room, say) can't be keyed for reveal, so it spawns

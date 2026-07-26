@@ -31,6 +31,7 @@ import { PlayerState } from "../schema/PlayerState";
 import { CombatSystem, HitSource } from "../combat";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
 import { FloorManager } from "../floor/FloorManager";
+import { FlowFieldSystem } from "../pathfinding/FlowFieldSystem";
 
 export class GameRoom extends Room<GameState> {
   maxClients = MAX_CLIENTS;
@@ -48,6 +49,7 @@ export class GameRoom extends Room<GameState> {
   private tickInterval!: ReturnType<typeof setInterval>;
   private physics!: PhysicsWorld;
   private floorManager!: FloorManager;
+  private flowField!: FlowFieldSystem;
   private loot!: LootDirector;
   private spawner!: SpawnDirector;
   // Active room objectives keyed by room id, mirrored to state.challenges.
@@ -307,12 +309,15 @@ export class GameRoom extends Room<GameState> {
 
     if (this.floorManager) this.floorManager.dispose();
     this.floorManager = new FloorManager(rooms, connections, this.physics);
+    // Fresh floor = new geometry, so a fresh set of traversability grids. Built
+    // from the same mapData + wallKind classification the physics walls use.
+    this.flowField = new FlowFieldSystem(mapData, rooms);
     this.stairsActive = false;
     // Commitment is per-floor room state; the new floor's rooms are all unlocked.
     this.committedRoom.clear();
 
     this.loot.setFloor(this.currentDungeon, this.physics);
-    this.spawner.setFloor(this.currentDungeon, this.physics, this.floorManager);
+    this.spawner.setFloor(this.currentDungeon, this.physics, this.floorManager, this.flowField);
 
     this.loot.spawnShops();
     this.loot.spawnShrineOffers();
@@ -636,11 +641,18 @@ export class GameRoom extends Room<GameState> {
     //     not exist yet, so nothing needs to freeze it. Once revealed it ticks
     //     normally, confined to its home room, so it still can't chase across the
     //     floor (see Enemy.confineTo — a SEPARATE concern that stays).
-    const playerPositions: Array<{ x: number; y: number }> = [];
-    this.players.forEach((p) => playerPositions.push({ x: p.state.x, y: p.state.y }));
-    for (const roomId of this.floorManager.occupiedRoomIds(playerPositions)) {
+    const playerPositions: Array<{ id: string; x: number; y: number }> = [];
+    this.players.forEach((p, id) => playerPositions.push({ id, x: p.state.x, y: p.state.y }));
+    const occupiedRoomIds = this.floorManager.occupiedRoomIds(playerPositions);
+    for (const roomId of occupiedRoomIds) {
       this.spawner.spawnRoom(roomId);
     }
+
+    // 1c. Rebuild the flow fields for every occupied room from the players standing
+    //     in them. One BFS flood per (room, player) this tick; enemies then read the
+    //     gradient in O(1) during their AI pass below. Always fresh (targets move),
+    //     so there is no replan-interval bookkeeping.
+    this.flowField.rebuild(occupiedRoomIds, playerPositions);
 
     // 1b. One-way barriers (playtest B1/G1). A player inside a locked room is
     //     COMMITTED — their body starts colliding with that room's exit barrier —
@@ -680,7 +692,13 @@ export class GameRoom extends Room<GameState> {
     const summons: { ownerId: string; effect: Extract<PendingEffect, { kind: "summon" }> }[] = [];
     const drain = (ownerId: string, affects: number, effects: PendingEffect[]) => {
       for (const e of effects) {
-        if (e.kind === "hit") sources.push(e.source);
+        if (e.kind === "hit") {
+          // Stamp the attacker so the resolver reports it in the HitEvent (for aggro
+          // threat below). Harmless to resolution: a player source only affects
+          // ENEMY|PROP, so its owner id can never match a target and self-exclude.
+          if (e.source.ownerId === undefined) e.source.ownerId = ownerId;
+          sources.push(e.source);
+        }
         else if (e.kind === "summon") summons.push({ ownerId, effect: e });
         else this.spawnProjectile(e.ammoId, e.x, e.y, e.angle, ownerId, affects, e.opts);
       }
@@ -705,6 +723,14 @@ export class GameRoom extends Room<GameState> {
       { layer: Layer.PLAYER, targets: this.players },
       { layer: Layer.ENEMY, targets: this.enemies },
     ]);
+
+    // Aggro: every hit an enemy took feeds its threat table, keyed by the attacker.
+    // Reads the resolver's output directly (no per-attack bookkeeping), so melee,
+    // projectiles, and AOE all raise threat identically — see Enemy.pickTarget.
+    for (const h of hits) {
+      if (!h.ownerId || h.damage <= 0) continue;
+      this.enemies.get(h.targetId)?.registerThreat(h.ownerId, h.damage);
+    }
 
     // Impact feedback: tell clients where hits landed so they can play the spark.
     // Filtered to hits ON enemies, which is exactly "a player connected" — melee

@@ -10,6 +10,7 @@ import {
   CORPSE_SOLID_MASK,
   PLAYER_BODY_PROFILE,
   PLAYER_COMMITTED_SOLID_MASK,
+  wallKind,
 } from "shared";
 
 // ---- Coordinate mapping (defined here and nowhere else) ----
@@ -40,20 +41,26 @@ export function syncStateFromBody(
   state.y = body.position.y - FOOT_OFFSET;
 }
 
-function buildWallBodies(
-  mapData: TileId[][],
+type WallRect = { col: number; row: number; cols: number; rows: number };
+
+// Greedy rectangle decomposition of every tile matching `accept`: scan each row
+// into horizontal runs, then merge vertically-aligned equal-width runs into taller
+// rectangles. Extracted from buildWallBodies so it can run once per wall CLASS —
+// a run breaks whenever the class changes, so a single body never spans structural
+// and cover tiles (an airborne enemy must be stopped by the perimeter but not by
+// the cover block beside it, and that requires them to be distinct bodies).
+function mergeWallRects(
   mapCols: number,
   mapRows: number,
-): Matter.Body[] {
-  type Rect = { col: number; row: number; cols: number; rows: number };
-  const runs: Rect[] = [];
+  accept: (col: number, row: number) => boolean,
+): WallRect[] {
+  const runs: WallRect[] = [];
   for (let row = 0; row < mapRows; row++) {
     let col = 0;
     while (col < mapCols) {
-      const tile = mapData[row][col] as TileId;
-      if (!TILE_PROPS[tile].walkable) {
+      if (accept(col, row)) {
         const start = col;
-        while (col < mapCols && !TILE_PROPS[mapData[row][col] as TileId].walkable) col++;
+        while (col < mapCols && accept(col, row)) col++;
         runs.push({ col: start, row, cols: col - start, rows: 1 });
       } else {
         col++;
@@ -61,7 +68,7 @@ function buildWallBodies(
     }
   }
 
-  const merged: Rect[] = [];
+  const merged: WallRect[] = [];
   const consumed = new Set<number>();
   for (let i = 0; i < runs.length; i++) {
     if (consumed.has(i)) continue;
@@ -82,24 +89,53 @@ function buildWallBodies(
     }
     merged.push(rect);
   }
+  return merged;
+}
 
-  const bodies = merged.map(r =>
-    Matter.Bodies.rectangle(
-      r.col * TILE_SIZE + (r.cols * TILE_SIZE) / 2,
-      r.row * TILE_SIZE + (r.rows * TILE_SIZE) / 2,
-      r.cols * TILE_SIZE,
-      r.rows * TILE_SIZE,
-      {
-        isStatic: true,
-        label: "wall",
-        collisionFilter: { category: Layer.WALL, mask: WALL_SOLID_MASK },
-      },
-    ),
+// Collision-only corner rounding for cover blocks. The flow field is tile-granular
+// but bodies are round (ENTITY_RADIUS): a body steered diagonally past a block's 90°
+// corner clips it and matter shoves it straight back, so the enemy re-picks the same
+// heading next tick and deadlocks on the corner. Chamfering the COLLISION corner a
+// touch wider than the body radius lets it slide off instead of catching. The chamfer
+// is invisible — the rendered tile stays a hard square; only the physics corner is
+// clipped. Kept small so a body can't cut THROUGH a block, only skim its corner.
+const COVER_CHAMFER = ENTITY_RADIUS + 3;
+
+function rectToBody(r: WallRect, label: string, category: number, chamferRadius = 0): Matter.Body {
+  return Matter.Bodies.rectangle(
+    r.col * TILE_SIZE + (r.cols * TILE_SIZE) / 2,
+    r.row * TILE_SIZE + (r.rows * TILE_SIZE) / 2,
+    r.cols * TILE_SIZE,
+    r.rows * TILE_SIZE,
+    {
+      isStatic: true,
+      label,
+      collisionFilter: { category, mask: WALL_SOLID_MASK },
+      ...(chamferRadius > 0 ? { chamfer: { radius: chamferRadius } } : {}),
+    },
   );
+}
+
+function buildWallBodies(
+  mapData: TileId[][],
+  mapCols: number,
+  mapRows: number,
+): Matter.Body[] {
+  const kindAt = (col: number, row: number) => wallKind(col, row, mapData[row][col] as TileId);
+
+  // Two separate passes, one per class, so cover and structure become distinct
+  // bodies with distinct collision categories — the walker's mask carries both,
+  // the airborne enemy's mask drops COVER (see AIRBORNE_ENEMY_BODY_PROFILE).
+  const bodies = [
+    ...mergeWallRects(mapCols, mapRows, (c, r) => kindAt(c, r) === "structural")
+      .map(r => rectToBody(r, "wall", Layer.WALL)),
+    ...mergeWallRects(mapCols, mapRows, (c, r) => kindAt(c, r) === "cover")
+      .map(r => rectToBody(r, "cover", Layer.COVER, COVER_CHAMFER)),
+  ];
 
   const w = mapCols * TILE_SIZE;
   const h = mapRows * TILE_SIZE;
-  // Explicit filter — don't rely on Matter's default category happening to equal CAT.WALL.
+  // The world edges are structural — nothing flies past the map bounds.
   const edge = {
     isStatic: true,
     label: "world-edge",
