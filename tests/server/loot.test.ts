@@ -357,24 +357,13 @@ describe("room-clear rewards", () => {
     expect(state.rewards.get("r")).toBe(reward); // untouched
   });
 
-  it("keeps a weapon reward's mods server-side, off the wire", () => {
-    // mods are deliberately UNDECORATED on RewardState — same reason as an offer.
-    const { reward } = rewardOfKind("weapon");
-    expect(reward.mods.length).toBeGreaterThan(0);
-    const synced = JSON.parse(JSON.stringify(reward.toJSON()));
-    expect(synced.mods).toBeUndefined();
-  });
-
-  it("hands over a weapon reward, mods and all, and consumes the pedestal", () => {
-    const { reward, loot, physics } = rewardOfKind("weapon");
-    const p = playerAt(physics, RX, RY);
-
-    loot.claimReward(p, { roomId: "r" });
-
-    const got = p.weapons[p.weapons.length - 1];
-    expect(got.id).toBe(reward.weapon.weaponId);
-    expect(got.modLabels).toEqual(reward.mods.map(m => m.label));
-    expect(reward.claimed).toBe(true);
+  // Room-clear pedestals no longer roll weapons (they flooded the run — see
+  // ROOM_REWARD_WEIGHTS). Weapons come from shops, offer pedestals, and maze
+  // chests now, so this path only ever hands out an upgrade or gold.
+  it("never rolls a weapon from a room-clear pedestal", () => {
+    for (let i = 0; i < 300; i++) {
+      expect(rewardFloor().reward.kind).not.toBe("weapon");
+    }
   });
 
   it("adds a gold reward to the shared purse", () => {
@@ -395,7 +384,7 @@ describe("room-clear rewards", () => {
   });
 
   it("is claimed exactly once, however many players reach for it", () => {
-    const { reward, loot, physics } = rewardOfKind("weapon");
+    const { reward, loot, physics } = rewardOfKind("upgrade");
     const a = playerAt(physics, RX, RY);
     const b = playerAt(physics, RX, RY);
     loot.claimReward(a, { roomId: "r" });
@@ -404,8 +393,8 @@ describe("room-clear rewards", () => {
     loot.claimReward(a, { roomId: "r" });
 
     expect(reward.claimed).toBe(true);
-    expect(a.weapons).toHaveLength(1);
-    expect(b.weapons).toHaveLength(0);
+    expect(a.upgrades).toHaveLength(1);
+    expect(b.upgrades).toHaveLength(0);
   });
 
   it("refuses a player standing away from it", () => {
@@ -414,10 +403,10 @@ describe("room-clear rewards", () => {
     expect(reward.claimed).toBe(false);
   });
 
-  it("rolls all three kinds over many drops", () => {
+  it("rolls both non-weapon kinds over many drops", () => {
     const kinds = new Set<string>();
     for (let i = 0; i < 300; i++) kinds.add(rewardFloor().reward.kind);
-    expect(kinds).toEqual(new Set(["weapon", "upgrade", "gold"]));
+    expect(kinds).toEqual(new Set(["upgrade", "gold"]));
   });
 
   it("shrugs off a malformed claim message", () => {
