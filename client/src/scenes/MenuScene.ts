@@ -3,6 +3,7 @@ import { DebugConfig } from "shared";
 import { Party, JoinError } from "../net/Party";
 import { showFieldPanel } from "../ui/FieldPanel";
 import { showKeybindMenu } from "../ui/KeybindMenu";
+import { showChangelog } from "../ui/ChangelogViewer";
 import { DEBUG_FIELDS, DEBUG_PRESETS, loadDebugConfig, saveDebugConfig } from "../debug/debugFields";
 import { GameOptions, OPTION_FIELDS, loadOptions, saveOptions } from "../options/gameOptions";
 import { loadProfile, profileLoadout } from "../options/profile";
@@ -198,6 +199,7 @@ export class MenuScene extends Phaser.Scene {
         fields: OPTION_FIELDS,
         initial,
         buttons: [
+          { id: "changelog", label: "Changelog" },
           { id: "keys", label: "Key Bindings" },
           { id: "cancel", label: "Back" },
           { id: "save", label: "Save", primary: true },
@@ -208,6 +210,11 @@ export class MenuScene extends Phaser.Scene {
       if (result.button === "keys") {
         initial = result.values;
         await showKeybindMenu();
+        continue;
+      }
+      if (result.button === "changelog") {
+        initial = result.values;
+        await showChangelog();
         continue;
       }
       if (result.button === "save") saveOptions(result.values);
