@@ -6,7 +6,7 @@ import {
   TILE_SIZE,
   SERVER_TICK_MS,
   WEAPON_REGISTRY,
-  CHARACTER_REGISTRY,
+  getCharacter,
   CHARACTER_TYPES,
   RoomMetadata,
   isRoomCode,
@@ -152,15 +152,15 @@ describe("the lobby", () => {
 
   it("falls back to the knight for an unknown characterClass", async () => {
     // This used to throw: the class id was CAST rather than resolved, so an
-    // unknown one produced an undefined CharacterConfig and the Player
-    // constructor died on `charConfig.maxHp` — taking the whole join with it.
+    // unknown one produced an undefined Character and the Player constructor
+    // died on `character.maxHp` — taking the whole join with it.
     const h = await createRoom();
 
     expect(() => h.join("s0", { characterClass: "wizard" })).not.toThrow();
 
     const p = h.state.players.get("s0")!;
     expect(p.characterClass).toBe("knight");
-    expect(p.maxHp).toBe(CHARACTER_REGISTRY.knight.maxHp);
+    expect(p.maxHp).toBe(getCharacter("knight").maxHp);
     h.dispose();
   });
 
@@ -211,8 +211,8 @@ describe("the lobby", () => {
   });
 
   it("rebuilds a player around a new class, with its new stats", async () => {
-    // Stats come from the CharacterConfig at construction, so a class change is
-    // a new Player rather than a mutated one.
+    // Stats come from the Character at construction, so a class change is a new
+    // Player rather than a mutated one.
     const h = await createRoom();
     const c = h.join("s0", { characterClass: "knight" });
     const knightHp = h.state.players.get("s0")!.maxHp;

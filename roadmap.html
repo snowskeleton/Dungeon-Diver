@@ -769,7 +769,7 @@
         <div class="phase-body">
           <div class="phase-milestone"><strong>Milestone:</strong> All four classes are playable with distinct-feeling weapons.</div>
           <ul class="task-list">
-            <li><span class="tm done">&#10003;</span> Character + weapon pickers before floor 1 loads; per-class stats wired in (class &times; skin as separate axes)</li>
+            <li><span class="tm done">&#10003;</span> Character picker before floor 1 loads; per-class stats wired in (class &times; skin as separate axes). <em>(The join-time weapon picker was later removed &mdash; players now spawn empty-handed and claim their first weapon at the floor-1 supply room; the weapon picker survives only in the Debug menu.)</em></li>
             <li><span class="tm done">&#10003;</span> <code>ProjectileState</code> schema + <code>GameState.projectiles</code> MapSchema; server ticks all active projectiles (kinematic, no matter-js body)</li>
             <li><span class="tm done">&#10003;</span> Rogue: fast thrown dagger/star, 1 hit, despawns on wall hit</li>
             <li><span class="tm done">&#10003;</span> Ranger: traveling arrow, 1 hit, despawns on wall hit</li>
@@ -816,10 +816,10 @@
           <span class="phase-chevron">&#9654;</span>
         </summary>
         <div class="phase-body">
-          <div class="phase-milestone"><strong>Milestone:</strong> Two rooms in a row that feel completely different. <em>Met</em> &mdash; a floor now mixes combat, maze, shop, shrine and chest rooms, with traps as a cross-cutting hazard. Called done on chests + traps; puzzle rooms deferred rather than rushed.</div>
+          <div class="phase-milestone"><strong>Milestone:</strong> Two rooms in a row that feel completely different. <em>Met</em> &mdash; a floor now mixes combat, maze, shop, shrine, wave, timed and dark rooms, with traps as a cross-cutting hazard. Called done on rewards + traps; puzzle rooms deferred rather than rushed.</div>
           <ul class="task-list">
-            <li><span class="tm done">&#10003;</span> Chest rooms: 7% spawn weight, no combat. One chest at room center; interact for a guaranteed weapon &mdash; no choice, no cost, contents never previewed. Brown rolls 1 modifier, the 15%-rare gold rolls 2</li>
-            <li><span class="tm done">&#10003;</span> Trap tiles: 1% roll per eligible room (never boss/shop/shrine/chest, never the start room); warps the whole party 1&ndash;3 floors forward. Rendered as a violet tile in plain sight, kept off doorways and room centers, so it's always avoidable</li>
+            <li><span class="tm done">&#10003;</span> Treasure chests &mdash; interact for a guaranteed weapon, no choice, no cost, contents never previewed. Brown rolls 1 modifier, the 15%-rare gold rolls 2. <em>(The standalone "chest room" type was retired: every non-reward room now drops a single reward pedestal on clear, and maze rooms additionally hide a chest at their deepest tile &mdash; so loot isn't gated to one rare room type.)</em></li>
+            <li><span class="tm done">&#10003;</span> Trap tiles: 1% roll per eligible room (never boss/shop/shrine, never the start room); warps the whole party 1&ndash;3 floors forward. Rendered as a violet tile in plain sight, kept off doorways and room centers, so it's always avoidable</li>
             <li><span class="tm">&mdash;</span> Puzzle rooms: <strong>deferred out of Floor 4</strong> &mdash; lever/switch objects trigger environmental changes (fire, wall tiles, doors). Needs a dedicated design pass before any code: what a switch targets, how state syncs, and whether a puzzle can ever softlock a room. <strong>Picked up in Floor 5</strong>, where the class movement abilities give them something to be built around and the "small, optional, multiple solutions" scope makes the softlock question moot</li>
           </ul>
           <div class="phase-art-note">
@@ -907,7 +907,7 @@
           <ul class="task-list">
             <li><span class="tm">&mdash;</span> <strong>Weapon categories restricted per class</strong> &mdash; Knight: hammers + maces (6) &middot; Mage: staves (6) &middot; Ranger: bows + crossbows (3) &middot; Rogue: daggers + thrown (6). Swords, axes, spears and rapiers (31) stay open to everyone, so ~74% of the pool is shared and loot stays varied</li>
             <li><span class="tm">&mdash;</span> Restriction is <strong>one-way</strong>: weapons are restricted to classes, classes aren't restricted to weapons. A staff is Mage-only; the Mage may still swing a broadsword. Reversible if classes read too weakly</li>
-            <li><span class="tm">&mdash;</span> <strong>Type-based, never string-based</strong> &mdash; each class declares its usable weapon <em>categories</em> as a compiler-checked list on its <code>CharacterConfig</code>. Adding a category without assigning it is a build error, not a silent "nobody can use this"</li>
+            <li><span class="tm">&mdash;</span> <strong>Type-based, never string-based</strong> &mdash; each class declares its usable weapon <em>categories</em> as a compiler-checked getter on its <code>Character</code> subclass. Adding a category without assigning it is a build error, not a silent "nobody can use this"</li>
             <li><span class="tm">&mdash;</span> <strong>Loot rolls filtered by party composition</strong> &mdash; no staves drop without a Mage present. A filter on the roll, not a post-hoc reject, so the odds stay correct</li>
             <li><span class="tm">&mdash;</span> <strong>Movement ability per class</strong>, on its own cooldown: Blink (through bars/grates, over gaps) &middot; Jump (over gaps) &middot; Charge (through breakable walls) &middot; Dash (distance). Never through locked barriers</li>
             <li><span class="tm">&mdash;</span> <strong>Class special power</strong> &mdash; Knight first: a <strong>regenerating shield</strong>, so the melee class can hold the front line without paying HP for it. Build it as the pattern; Rogue/Ranger/Mage powers get designed once we've seen it work</li>
@@ -1035,7 +1035,7 @@
           <li><span class="adot done"></span> Weapon overlays — sword, daggers/stars, bow, staff (+ ammo icons)</li>
           <li><span class="adot done"></span> 29 enemy sheets — goos, bats, floaters, critters, directional, flyers</li>
           <li><span class="adot done"></span> 8 boss sprites (3 with full movesets so far)</li>
-          <li><span class="adot done"></span> Character + weapon picker UI</li>
+          <li><span class="adot done"></span> Character picker UI (class + skin)</li>
           <li><span class="adot done"></span> Floor / dungeon tiles <span class="note">(dungeon-tiles.png tileset)</span></li>
         </ul>
       </div>

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  CHARACTER_REGISTRY,
+  CHARACTER_CLASSES,
+  getCharacter,
   CharacterClass,
   WEAPON_REGISTRY,
   WeaponId,
@@ -16,7 +17,7 @@ import {
 // (usableCategories) — these query helpers derive everything from those lists, so a
 // class's identity and the loot filter can't drift from what it declares.
 
-const CLASSES = Object.keys(CHARACTER_REGISTRY) as CharacterClass[];
+const CLASSES: CharacterClass[] = CHARACTER_CLASSES;
 const anyWeaponOfCategory = (cat: string): WeaponId =>
   (Object.keys(WEAPON_REGISTRY) as WeaponId[]).find((id) => WEAPON_REGISTRY[id].category === cat)!;
 
@@ -37,7 +38,7 @@ describe("class weapon access", () => {
 
   it("matches canClassUseCategory to the class's declared list", () => {
     for (const cls of CLASSES) {
-      for (const cat of CHARACTER_REGISTRY[cls].usableCategories) {
+      for (const cat of getCharacter(cls).usableCategories) {
         expect(canClassUseCategory(cls, cat), `${cls}/${cat}`).toBe(true);
       }
     }

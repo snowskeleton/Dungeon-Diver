@@ -1,4 +1,4 @@
-import { CHARACTER_REGISTRY, CharacterClass, CharacterType, MAX_PLAYER_NAME_LEN } from "shared";
+import { getCharacter, resolveCharacterClass, CharacterClass, CharacterType, MAX_PLAYER_NAME_LEN } from "shared";
 import { el, button, menuPanel, MenuPanel } from "./menuDom";
 
 /** One line in the roster, flattened from the room's PlayerState. */
@@ -102,7 +102,7 @@ export class LobbyPanel {
   }
 
   private seatRow(seat: LobbySeat): HTMLElement {
-    const charName = CHARACTER_REGISTRY[seat.characterClass]?.name ?? seat.characterClass;
+    const charName = getCharacter(resolveCharacterClass(seat.characterClass)).name;
     const isLocal = seat.localIndex >= 0;
 
     const badges: HTMLElement[] = [];

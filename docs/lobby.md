@@ -96,24 +96,25 @@ sees everything" rule as before.
 ## One stylesheet, six panels later
 
 `menuDom.ts` arrived with the lobby and at first dressed only its own three
-screens, while six older overlays — the character and weapon pickers, the
-inventory, the offer picker, the confirm dialog, `FieldPanel` — each carried a
-near-identical private copy of the same overlay/modal/button CSS. They are all on
-it now.
+screens, while the older overlays — the character picker, the inventory, the offer
+picker, the confirm dialog, `FieldPanel` — each carried a near-identical private
+copy of the same overlay/modal/button CSS. They are all on it now. (The join-time
+**weapon picker** was one of them, but it was removed entirely when players went
+empty-handed-at-spawn — its tab-paged CSS is gone with it.)
 
 The rule that keeps it that way: **a panel's own file styles only what makes that
-panel different.** Three things genuinely did — the character portraits are one
-frame cropped out of a walk sheet, the weapon picker pages its content with tabs,
-and the confirm dialog is red because it is the one overlay that asks you to
-destroy something. Everything else (overlay, panel, row, tile, card, chip, badge,
-input, button) is a class in `menuDom`, injected once through `addStyle`.
+panel different.** Two things genuinely do — the character portraits are one frame
+cropped out of a walk sheet, and the confirm dialog is red because it is the one
+overlay that asks you to destroy something. Everything else (overlay, panel, row,
+tile, card, chip, badge, input, button) is a class in `menuDom`, injected once
+through `addStyle`.
 
 Two things to know if you add a panel:
 
 - **`.m-tile.bare` is declared before the hover/selected rules on purpose.**
   Equal-specificity CSS resolves by source order, so a `bare` tile written after
-  `.m-tile.selected` silently eats its highlight — which it did, and the weapon
-  picker showed no selection at all until the order was fixed.
+  `.m-tile.selected` silently eats its highlight — a real bug once hit by a tile
+  grid whose selection stopped showing until the order was fixed.
 - **Escape is not always the panel's to handle.** `menuPanel({ onEscape })` grabs
   the key on the window in capture, so a panel that opts in takes it away from
   whoever else wants it. The inventory and offer pickers deliberately pass no
@@ -132,10 +133,10 @@ Two things to know if you add a panel:
   `floor_change` and so describes a map the client hasn't built yet. Deltas are
   fine for changes *during* play; the snapshot is what makes the starting picture
   right.
-- **Changing class in the lobby rebuilds the `Player`.** Stats fold off
-  `charConfig`, which is set at construction — so `setLoadout` constructs a new
-  Player and swaps it into the map. That is only safe because no client is
-  rendering the world yet.
+- **Changing class in the lobby rebuilds the `Player`.** Stats fold off the
+  `Player`'s `character` (its `Character`), which is set at construction — so
+  `setLoadout` constructs a new Player and swaps it into the map. That is only
+  safe because no client is rendering the world yet.
 - **Phaser's keyboard listens on the window.** The lobby's name field is a DOM
   input over the canvas, so the `P` (add couch player) binding has to ignore key
   presses while an input has focus, or typing a name would open a picker.

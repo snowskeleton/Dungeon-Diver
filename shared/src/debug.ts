@@ -36,6 +36,13 @@ export interface DebugConfig {
    */
   startingUpgrades: string[];
   /**
+   * The debug-menu weapon picker: the weapon id that drops at the floor-1 supply
+   * pedestal instead of the random first-weapon roll. "" = roll normally. A player
+   * whose class can't equip the chosen weapon falls back to the random roll, so
+   * this never leaves someone empty-handed. See LootDirector.spawnSupply.
+   */
+  firstWeaponId: string;
+  /**
    * Respawn dead players at the floor's spawn point instead of leaving them
    * dead. The shipping game is permadeath; respawn is a test affordance, so it
    * lives here and defaults off. Read by GameRoom's death check.
@@ -59,6 +66,7 @@ export const DEFAULT_DEBUG_CONFIG: DebugConfig = {
   enemyTypes: [],
   enemiesPerRoom: -1,
   startingUpgrades: [],
+  firstWeaponId: "",
   respawnOnDeath: false,
   cameraZoom: 2,
 };

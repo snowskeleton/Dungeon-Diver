@@ -8,11 +8,11 @@
  * builders they all share.
  *
  * **A panel's own file should only add CSS for what makes that panel different**
- * — the character portraits' spritesheet cropping, the weapon-category tabs, the
- * confirm dialog's red framing. Anything an overlay, a panel, a row, a button, a
- * tile, a card, a chip or an input looks like belongs here, or the six near-
- * identical copies this file replaced grow back one panel at a time. Per-file
- * additions go through `addStyle()`, which keys on an id so it injects once.
+ * — the character portraits' spritesheet cropping, the confirm dialog's red
+ * framing. Anything an overlay, a panel, a row, a button, a tile, a card, a chip
+ * or an input looks like belongs here, or the near-identical copies this file
+ * replaced grow back one panel at a time. Per-file additions go through
+ * `addStyle()`, which keys on an id so it injects once.
  */
 
 const CSS = `

@@ -1,5 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { generateDungeon, WEAPON_REGISTRY, RoomType, DungeonResult, TILE, TILE_SIZE, mazeDeepestTile, CharacterClass } from "shared";
+import {
+  generateDungeon,
+  WEAPON_REGISTRY,
+  WeaponId,
+  RoomType,
+  DungeonResult,
+  TILE,
+  TILE_SIZE,
+  mazeDeepestTile,
+  CharacterClass,
+  DEFAULT_DEBUG_CONFIG,
+} from "shared";
 import { LootDirector, WRONG_CLASS_MSG } from "../../server/src/rooms/LootDirector";
 import { GameState } from "../../server/src/schema/GameState";
 import { Player } from "../../server/src/entities/Player";
@@ -572,6 +583,39 @@ describe("supply pedestals (floor-1 first weapon)", () => {
     const mage = new Player(s.physics, reward.x, reward.y, "mage", "guy");
     expect(s.loot.claimSupply(mage, { supplyId })).toBeNull();
     expect(mage.weapons).toHaveLength(1);
+  });
+
+  // The debug-menu "First weapon" picker: force the supply pedestal weapon.
+  function debugSupplyFloor(cls: CharacterClass, firstWeaponId: string) {
+    const dungeon = generateDungeon(1, { showcaseRoomType: "supply" });
+    const physics = new PhysicsWorld(dungeon.mapData, dungeon.cols, dungeon.rows);
+    const state = new GameState();
+    state.floor = 1;
+    const players = new Map<string, Player>();
+    players.set("p0", new Player(physics, x0, y0, cls, "guy"));
+    const loot = new LootDirector(state, players, { ...DEFAULT_DEBUG_CONFIG, enabled: true, firstWeaponId });
+    loot.setFloor(dungeon, physics);
+    loot.spawnSupply();
+    return { state, supplies: state.supplies };
+  }
+
+  const anyWeaponOfCategory = (cat: string): WeaponId =>
+    (Object.keys(WEAPON_REGISTRY) as WeaponId[]).find((id) => WEAPON_REGISTRY[id].category === cat)!;
+
+  it("forces the debug-picked first weapon when the class can equip it", () => {
+    const hammer = anyWeaponOfCategory("hammer"); // knight-only, so canEquip passes
+    const { supplies } = debugSupplyFloor("knight", hammer);
+    expect(supplies.size).toBe(1);
+    expect([...supplies.values()][0].weapon.weaponId).toBe(hammer);
+  });
+
+  it("ignores the debug pick a class can't use and rolls from its own pool instead", () => {
+    const staff = anyWeaponOfCategory("staff"); // mage-only, a knight can't equip it
+    const { supplies } = debugSupplyFloor("knight", staff);
+    const rolled = [...supplies.values()][0].weapon.weaponId;
+    expect(rolled).not.toBe(staff);
+    // Fell back to the knight's unique first-weapon pool (hammer/mace).
+    expect(["hammer", "mace"]).toContain(WEAPON_REGISTRY[rolled].category);
   });
 });
 

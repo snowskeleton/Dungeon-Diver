@@ -110,8 +110,8 @@ describe("upgrades folded into a player", () => {
 
   it("leaves a player with none exactly at their class's stats", () => {
     const p = player();
-    expect(p.maxHp).toBe(p.charConfig.maxHp);
-    expect(p.speed).toBe(p.charConfig.speed);
+    expect(p.maxHp).toBe(p.character.maxHp);
+    expect(p.speed).toBe(p.character.speed);
   });
 
   it("mirrors each held upgrade onto the wire, descriptively", () => {

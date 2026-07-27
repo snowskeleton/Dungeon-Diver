@@ -93,7 +93,7 @@ export class GameRoom extends Room<GameState> {
     // onCreate resolves, so a code allocated later could be missed by a lookup.
     await this.setPrivate(this.state.isPrivate);
     await this.publishMetadata();
-    this.loot = new LootDirector(this.state, this.players);
+    this.loot = new LootDirector(this.state, this.players, this.debug);
     this.spawner = new SpawnDirector(
       this.state,
       this.enemies,
@@ -253,8 +253,8 @@ export class GameRoom extends Room<GameState> {
 
   /** Rebuild a lobby player around a new class/skin/weapon.
    *
-   *  A Player's stats come from its CharacterConfig at construction (charConfig
-   *  is readonly and maxHp/speed fold off it), so changing class is a new Player,
+   *  A Player's stats come from its Character at construction (`character` is
+   *  readonly and maxHp/speed fold off it), so changing class is a new Player,
    *  not a mutated one. Safe only in the lobby: no client is rendering the world
    *  yet, so swapping the schema instance can't strip a live entity's callbacks. */
   private replacePlayer(sessionId: string, loadout: SetLoadoutMessage) {

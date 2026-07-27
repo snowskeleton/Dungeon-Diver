@@ -1,5 +1,5 @@
 import {
-  InputMessage, CharacterClass, CharacterType, CharacterConfig, getCharacterConfig,
+  InputMessage, CharacterClass, CharacterType, Character, getCharacter,
   Weapon, WeaponInstance, WeaponMod, WEAPON_REGISTRY, AMMO_REGISTRY,
   PLAYER_BODY_PROFILE, PLAYER_ATTACK_AFFECTS, Facing, Attack, foldStat,
   ComboSwing, DEFAULT_COMBO_WINDOW_MS, DEFAULT_CHARGE_HOLD_MS,
@@ -12,7 +12,7 @@ import { Spell, SpellCaster, Caster, AimPoint, AttackStats, weaponSpell } from "
 import { Upgrade, StatContributor } from "../upgrades";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
 
-/** A player's folded stats: base character config + every StatContributor it holds.
+/** A player's folded stats: base Character stats + every StatContributor it holds.
  *  Recomputed on change, never per tick — the fold is cheap but it is not free, and
  *  more importantly a cached value is one obvious number to inspect when balancing. */
 interface PlayerStats {
@@ -27,7 +27,7 @@ interface PlayerStats {
 
 export class Player extends Entity implements Caster {
   state: PlayerState;
-  readonly charConfig: CharacterConfig;
+  readonly character: Character;
   // Wielded weapon INSTANCES (not registry templates): each carries its own
   // modifiers, so two players — or two slots — holding "a broadsword" can differ.
   // Named `weapons` rather than `inventory` because other item lists are coming.
@@ -77,7 +77,7 @@ export class Player extends Entity implements Caster {
     characterType: CharacterType = "guy",
   ) {
     super();
-    this.charConfig = getCharacterConfig(characterClass);
+    this.character = getCharacter(characterClass);
     this.state = new PlayerState();
     this.state.x = startX;
     this.state.y = startY;
@@ -98,7 +98,7 @@ export class Player extends Entity implements Caster {
   /** Whether this player's class is allowed to equip the given weapon (D9/D18).
    *  The permission lives on the class; this just asks it. */
   canEquip(weaponId: string): boolean {
-    return canClassUseWeapon(this.charConfig.id, weaponId);
+    return canClassUseWeapon(this.character.id, weaponId);
   }
 
   // ── Folded stats (base + every contributor) ──────────────────────────────────
@@ -113,8 +113,8 @@ export class Player extends Entity implements Caster {
       this.contributors.reduce((acc, c) => acc + pick(c), 0);
 
     return {
-      maxHp: Math.max(1, Math.round(foldStat(this.charConfig.maxHp, sum(c => c.maxHpFlat), sum(c => c.maxHpPct)))),
-      speed: foldStat(this.charConfig.speed, sum(c => c.speedFlat), sum(c => c.speedPct)),
+      maxHp: Math.max(1, Math.round(foldStat(this.character.maxHp, sum(c => c.maxHpFlat), sum(c => c.maxHpPct)))),
+      speed: foldStat(this.character.speed, sum(c => c.speedFlat), sum(c => c.speedPct)),
       damageFlat: sum(c => c.damageFlat),
       damagePct: sum(c => c.damagePct),
       armorFlat: sum(c => c.armorFlat),

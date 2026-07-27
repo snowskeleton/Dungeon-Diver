@@ -1,4 +1,4 @@
-import { CHARACTER_REGISTRY, CharacterClass, CharacterType, MAX_PLAYER_NAME_LEN } from "shared";
+import { resolveCharacterClass, CharacterClass, CharacterType, MAX_PLAYER_NAME_LEN } from "shared";
 import { Loadout } from "../launch";
 
 /**
@@ -29,13 +29,11 @@ export const DEFAULT_PROFILE: Profile = {
 
 let cached: Profile | null = null;
 
-/** Anything read back from storage is validated against the registries: a skin
- *  or weapon we since renamed would otherwise be sent to the server as a real
- *  choice and quietly fall back to a knight with a broadsword. */
+/** Anything read back from storage is validated: a class we since renamed would
+ *  otherwise be sent to the server as a real choice and quietly fall back to a
+ *  knight. `resolveCharacterClass` is the same validator the server applies. */
 function sanitize(raw: Partial<Profile>): Profile {
-  const characterClass = raw.characterClass && CHARACTER_REGISTRY[raw.characterClass]
-    ? raw.characterClass
-    : DEFAULT_PROFILE.characterClass;
+  const characterClass = resolveCharacterClass(raw.characterClass);
   const name = (raw.name ?? "").trim().slice(0, MAX_PLAYER_NAME_LEN);
   return {
     name: name.length > 0 ? name : DEFAULT_PROFILE.name,

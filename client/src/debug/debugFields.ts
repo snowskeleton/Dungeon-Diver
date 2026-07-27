@@ -1,4 +1,4 @@
-import { DebugConfig, DEFAULT_DEBUG_CONFIG, EnemyType, RoomType, UPGRADE_IDS } from "shared";
+import { DebugConfig, DEFAULT_DEBUG_CONFIG, EnemyType, RoomType, UPGRADE_IDS, WEAPON_REGISTRY, WeaponId } from "shared";
 import { CLIENT_ENEMY_REGISTRY } from "../enemies";
 import { FieldSpec, Preset } from "../ui/FieldPanel";
 
@@ -33,6 +33,17 @@ const ROOM_TYPE_CHOICES = [
 // Ids only — the human-readable name lives on the server-side Upgrade class, and
 // this is a debug knob, so the id is a fine label.
 const UPGRADE_CHOICES = UPGRADE_IDS.map((id) => ({ value: id, label: id }));
+
+// The debug weapon picker: "" rolls a random first weapon (the shipping rule),
+// or force a specific one to drop at the floor-1 supply pedestal. Grouped by
+// category and labelled `category / id` — ids are fine labels for a debug knob.
+const WEAPON_CHOICES = [
+  { value: "", label: "Random (normal)" },
+  ...(Object.keys(WEAPON_REGISTRY) as WeaponId[])
+    .sort((a, b) =>
+      WEAPON_REGISTRY[a].category.localeCompare(WEAPON_REGISTRY[b].category) || a.localeCompare(b))
+    .map((id) => ({ value: id, label: `${WEAPON_REGISTRY[id].category} / ${id}` })),
+];
 
 const ENEMY_CHOICES = (Object.keys(CLIENT_ENEMY_REGISTRY) as EnemyType[])
   .map((id) => {
@@ -70,6 +81,10 @@ export const DEBUG_FIELDS: FieldSpec<DebugConfig>[] = [
   {
     kind: "multiselect", key: "startingUpgrades", label: "Starting upgrades", options: UPGRADE_CHOICES,
     help: "Granted to every player on join, for testing stat folding",
+  },
+  {
+    kind: "select", key: "firstWeaponId", label: "First weapon", options: WEAPON_CHOICES,
+    help: "Forces the floor-1 supply pedestal weapon. A class that can't use it still rolls randomly.",
   },
   {
     kind: "toggle", key: "respawnOnDeath", label: "Respawn on death",

@@ -1,4 +1,4 @@
-import { CHARACTER_REGISTRY, CharacterClass, CharacterType, firstRollCategories } from "shared";
+import { CHARACTER_CLASSES, getCharacter, CharacterClass, CharacterType, firstRollCategories } from "shared";
 import { CLIENT_CHARACTER_VISUAL_REGISTRY } from "../characters";
 import { addStyle, button, el, menuPanel, selectOne } from "./menuDom";
 
@@ -29,7 +29,7 @@ const CSS = `
   }
 `;
 
-const CLASS_IDS = Object.keys(CHARACTER_REGISTRY) as CharacterClass[];
+const CLASS_IDS: CharacterClass[] = CHARACTER_CLASSES;
 const SKIN_IDS = Object.keys(CLIENT_CHARACTER_VISUAL_REGISTRY) as CharacterType[];
 
 const skinLabel = (id: CharacterType) =>
@@ -54,14 +54,14 @@ export class CharacterPicker {
 
       const classRow = el("div", { className: "m-tiles" });
       for (const id of CLASS_IDS) {
-        const cfg = CHARACTER_REGISTRY[id];
+        const character = getCharacter(id);
         const tile = el("div", { className: `m-tile grow${id === chosenClass ? " selected" : ""}` }, [
-          el("div", { className: "m-tile-name", text: cfg.name }),
+          el("div", { className: "m-tile-name", text: character.name }),
           el("div", {
             className: "m-tile-detail",
             // The class's UNIQUE weapon categories are its identity and its
             // first-weapon roll pool (the shared melee categories are omitted).
-            text: `${cfg.maxHp} HP · ${cfg.speed} spd\n${firstRollCategories(id).join(", ")}`,
+            text: `${character.maxHp} HP · ${character.speed} spd\n${firstRollCategories(id).join(", ")}`,
           }),
         ]);
         tile.addEventListener("click", () => {
@@ -90,7 +90,7 @@ export class CharacterPicker {
         el("h2", { className: "m-title", text: `${playerLabel} — Choose a Character` }),
         el("p", {
           className: "m-sub",
-          text: "Class sets your stats and starting weapon; skin is cosmetic.",
+          text: "Class sets your stats and which weapons you can wield; skin is cosmetic.",
         }),
         el("h3", { className: "m-heading", text: "Class" }),
         classRow,

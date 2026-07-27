@@ -124,7 +124,7 @@ export class LobbyScene extends Phaser.Scene {
     this.party.setName(trimmed);
   }
 
-  /** Re-run the character + weapon pickers for one local seat. */
+  /** Re-run the character picker (class + skin) for one local seat. */
   private async changeLoadout(index: number) {
     if (this.picking) return;
     this.picking = true;

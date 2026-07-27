@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import { Room } from "colyseus.js";
 import {
-  InputMessage, CharacterClass, CharacterType, CharacterConfig, getCharacterConfig,
+  InputMessage, CharacterClass, CharacterType, Character, getCharacter,
   WeaponId, Weapon, WeaponSlotView, UpgradeSlotView, WEAPON_REGISTRY, Facing,
   GameStateView, PlayerStateView, ShopStateView, ShopItemStateView, OfferStateView, RewardStateView, ChestStateView,
   PLAYER_HURT_BOUNDS,
@@ -27,7 +27,7 @@ export class LocalPlayer extends Entity implements DebugDrawable {
    *  reading undefined here. One cast, at the boundary. */
   private readonly roomState: GameStateView;
   readonly inputSource: InputSource;
-  readonly charConfig: CharacterConfig;
+  readonly character: Character;
   // The active weapon, swapped when the server reports an activeWeaponIndex change.
   weapon?: Weapon;
   private activeWeaponId: string;
@@ -92,15 +92,15 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     characterClass: CharacterClass = "knight",
     characterType: CharacterType = "guy",
   ) {
-    const cfg = getCharacterConfig(characterClass);
+    const character = getCharacter(characterClass);
     const visualDef = CLIENT_CHARACTER_VISUAL_REGISTRY[characterType];
-    super(scene, x, y, 0x63b3ed, cfg.maxHp);
-    this.charConfig = cfg;
+    super(scene, x, y, 0x63b3ed, character.maxHp);
+    this.character = character;
     // Empty-handed at spawn — the first weapon is claimed from a supply pedestal,
     // so no weapon FX render until syncFromServer swaps one in.
     this.weapon = undefined;
     this.activeWeaponId = "";
-    this.hp = cfg.maxHp;
+    this.hp = character.maxHp;
     this.room = room;
     this.roomState = room.state as GameStateView;
     this.inputSource = inputSource;

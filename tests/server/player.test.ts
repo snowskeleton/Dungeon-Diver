@@ -4,7 +4,8 @@ import {
   DEFAULT_CHARGE_HOLD_MS,
   WEAPON_REGISTRY,
   AMMO_REGISTRY,
-  CHARACTER_REGISTRY,
+  CHARACTER_CLASSES,
+  getCharacter,
   CharacterClass,
   viewFromSlot,
   WeaponMod,
@@ -12,8 +13,8 @@ import {
 import { Player, slotStateFor, resolveTemplate } from "../../server/src/entities/Player";
 import { flatWorld } from "../helpers/world";
 
-// The player's own layer: character config, the weapon list, the input cadence,
-// and what it puts on the wire.
+// The player's own layer: the Character it wraps, the weapon list, the input
+// cadence, and what it puts on the wire.
 
 // Players spawn empty-handed now, so a test that needs a weapon arms one. The
 // helper arms `weaponId` (broadsword by default) so the weapon-list and cadence
@@ -26,16 +27,16 @@ const newPlayer = (cls: CharacterClass = "knight", weaponId: string = "broadswor
 
 describe("character configuration", () => {
   it("takes its stats from the chosen class", () => {
-    for (const cls of Object.keys(CHARACTER_REGISTRY) as CharacterClass[]) {
+    for (const cls of CHARACTER_CLASSES) {
       const p = newPlayer(cls);
-      expect(p.maxHp).toBe(CHARACTER_REGISTRY[cls].maxHp);
-      expect(p.speed).toBe(CHARACTER_REGISTRY[cls].speed);
+      expect(p.maxHp).toBe(getCharacter(cls).maxHp);
+      expect(p.speed).toBe(getCharacter(cls).speed);
       expect(p.state.health).toBe(p.maxHp);
     }
   });
 
   it("starts empty-handed — the first weapon comes from a supply pedestal", () => {
-    for (const cls of Object.keys(CHARACTER_REGISTRY) as CharacterClass[]) {
+    for (const cls of CHARACTER_CLASSES) {
       const p = new Player(flatWorld(), 300, 300, cls, "guy");
       expect(p.weapons).toHaveLength(0);
       expect(p.weapon).toBeUndefined();

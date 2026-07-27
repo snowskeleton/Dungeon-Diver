@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import {
-  CharacterClass, CharacterType, getCharacterConfig, WeaponId, Weapon, WEAPON_REGISTRY,
+  CharacterClass, CharacterType, getCharacter, WeaponId, Weapon, WEAPON_REGISTRY,
   Facing, PlayerStateView, PLAYER_HURT_BOUNDS,
 } from "shared";
 import { Entity } from "./Entity";
@@ -31,15 +31,15 @@ export class RemotePlayer extends Entity implements DebugDrawable {
     characterType: CharacterType = "guy",
     weaponId?: string,
   ) {
-    const cfg = getCharacterConfig(characterClass);
+    const character = getCharacter(characterClass);
     const visualDef = CLIENT_CHARACTER_VISUAL_REGISTRY[characterType];
     // May be empty until the player claims their first supply-room weapon — then
     // `weapon` is undefined and setupCharacter renders no weapon (NoVisual).
     const weapon = weaponId ? WEAPON_REGISTRY[weaponId as WeaponId] : undefined;
-    super(scene, x, y, 0x9f7aea, cfg.maxHp);
+    super(scene, x, y, 0x9f7aea, character.maxHp);
     this.targetX = x;
     this.targetY = y;
-    this.currentHp = cfg.maxHp;
+    this.currentHp = character.maxHp;
     this.weapon = weapon;
     this.activeWeaponId = weapon?.id;
     this.setupCharacter(visualDef.spriteConfig, weapon?.fxType ?? null, weapon?.id, weapon?.rangedStyle);

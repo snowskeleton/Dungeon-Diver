@@ -1,7 +1,9 @@
 import { Schema, type } from "@colyseus/schema";
 import { WeaponMod, WeaponId, ChestStateView } from "shared";
 
-// A chest room's treasure chest, keyed in GameState.chests by room id.
+// A maze room's treasure chest, at its deepest tile, keyed in GameState.chests by
+// room id. (There is no "chest room" type — that was retired; chests now reward
+// solving a maze.)
 //
 // A chest is deliberately the least interactive reward in the game: no picker, no
 // cost, no choice. You walk up, press interact, and the weapon is yours. That's

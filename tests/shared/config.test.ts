@@ -10,9 +10,10 @@ import {
   TRAP_MAX_FLOORS,
   ENTITY_RADIUS,
   FOOT_OFFSET,
-  CHARACTER_REGISTRY,
+  CHARACTERS,
+  CHARACTER_CLASSES,
   CharacterClass,
-  getCharacterConfig,
+  getCharacter,
   WEAPON_REGISTRY,
   firstRollCategories,
   firstRollWeaponIds,
@@ -93,19 +94,21 @@ describe("cross-cutting constants", () => {
 });
 
 describe("character classes", () => {
-  const classes = Object.keys(CHARACTER_REGISTRY) as CharacterClass[];
+  const classes: CharacterClass[] = CHARACTER_CLASSES;
 
-  it("registers all four classes under their own id", () => {
+  it("exposes all four classes under their own id, derived from the roster", () => {
     expect(classes).toHaveLength(4);
+    expect(CHARACTERS).toHaveLength(4);
     for (const cls of classes) {
-      expect(CHARACTER_REGISTRY[cls].id).toBe(cls);
-      expect(getCharacterConfig(cls)).toBe(CHARACTER_REGISTRY[cls]);
+      expect(getCharacter(cls).id).toBe(cls);
+      // Singleton per class: the lookup returns the same instance from the roster.
+      expect(getCharacter(cls)).toBe(CHARACTERS.find((c) => c.id === cls));
     }
   });
 
   it("gives every class a name, a viable stat line, and a first-weapon pool", () => {
     for (const cls of classes) {
-      const c = CHARACTER_REGISTRY[cls];
+      const c = getCharacter(cls);
       expect(c.name.length, cls).toBeGreaterThan(0);
       expect(c.maxHp, cls).toBeGreaterThan(0);
       expect(c.speed, cls).toBeGreaterThan(0);
@@ -119,8 +122,8 @@ describe("character classes", () => {
   });
 
   it("differentiates the roster — they are not four reskins", () => {
-    const hp = new Set(classes.map(c => CHARACTER_REGISTRY[c].maxHp));
-    const speed = new Set(classes.map(c => CHARACTER_REGISTRY[c].speed));
+    const hp = new Set(classes.map(c => getCharacter(c).maxHp));
+    const speed = new Set(classes.map(c => getCharacter(c).speed));
     // Each class owns a DISTINCT set of unique weapon categories (its identity).
     const firstRoll = new Set(classes.map(c => firstRollCategories(c).slice().sort().join(",")));
     expect(hp.size + speed.size).toBeGreaterThan(2);
@@ -128,7 +131,7 @@ describe("character classes", () => {
   });
 
   it("gives the tank more HP than the glass cannon", () => {
-    expect(CHARACTER_REGISTRY.knight.maxHp).toBeGreaterThan(CHARACTER_REGISTRY.mage.maxHp);
+    expect(getCharacter("knight").maxHp).toBeGreaterThan(getCharacter("mage").maxHp);
   });
 });
 

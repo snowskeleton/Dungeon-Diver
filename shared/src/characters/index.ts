@@ -1,31 +1,46 @@
-import { CharacterClass, CharacterConfig, CharacterType, CHARACTER_TYPES } from "./base";
-import { KNIGHT_CONFIG } from "./Knight";
-import { ROGUE_CONFIG } from "./Rogue";
-import { RANGER_CONFIG } from "./Ranger";
-import { MAGE_CONFIG } from "./Mage";
+import { Character, CharacterClass, CharacterType, CHARACTER_TYPES } from "./base";
+import { Knight } from "./Knight";
+import { Rogue } from "./Rogue";
+import { Ranger } from "./Ranger";
+import { Mage } from "./Mage";
 import { WEAPON_REGISTRY, WeaponId } from "../weapons";
 import type { WeaponCategory } from "../weapons/base";
 
-export const CHARACTER_REGISTRY: Record<CharacterClass, CharacterConfig> = {
-  knight: KNIGHT_CONFIG,
-  rogue:  ROGUE_CONFIG,
-  ranger: RANGER_CONFIG,
-  mage:   MAGE_CONFIG,
-};
+/** The playable roster, as a plain array of `Character` instances — mirrors
+ *  `REGULAR_ENEMIES` / `WEAPONS`. This is the authoritative list; everything else
+ *  is DERIVED from it. Add a class by writing its subclass and appending it here. */
+export const CHARACTERS: Character[] = [
+  new Knight(),
+  new Rogue(),
+  new Ranger(),
+  new Mage(),
+];
 
-export function getCharacterConfig(cls: CharacterClass): CharacterConfig {
-  return CHARACTER_REGISTRY[cls];
+/** id → the one shared `Character` instance, DERIVED from `CHARACTERS`. This is
+ *  the character-side counterpart of `WEAPON_REGISTRY` (a genuine id→object
+ *  lookup, because the class id crosses the wire) — not a hand-authored config
+ *  object. */
+const CHARACTER_BY_CLASS = Object.fromEntries(
+  CHARACTERS.map((c) => [c.id, c]),
+) as Record<CharacterClass, Character>;
+
+/** Every class id, DERIVED from the roster. */
+export const CHARACTER_CLASSES: CharacterClass[] = CHARACTERS.map((c) => c.id);
+
+/** The `Character` for a class id. */
+export function getCharacter(cls: CharacterClass): Character {
+  return CHARACTER_BY_CLASS[cls];
 }
 
 /** The class for an id that came off the wire, or the knight if it isn't one.
  *
  *  A class id is UNTRUSTED input — it arrives as a join option and again in
  *  `setLoadout` — and casting it instead of checking it is not a cosmetic
- *  mistake: an unknown class yields an undefined `CharacterConfig` and the
- *  `Player` constructor throws on `charConfig.maxHp`, taking the join down with
- *  it. This is the character-side counterpart of `resolveTemplate` for weapons. */
+ *  mistake: an unknown class yields an undefined `Character` and the `Player`
+ *  constructor throws on `character.maxHp`, taking the join down with it. This is
+ *  the character-side counterpart of `resolveTemplate` for weapons. */
 export function resolveCharacterClass(id: string | undefined): CharacterClass {
-  return id !== undefined && id in CHARACTER_REGISTRY
+  return id !== undefined && id in CHARACTER_BY_CLASS
     ? (id as CharacterClass)
     : "knight";
 }
@@ -39,12 +54,9 @@ export function resolveCharacterType(id: string | undefined): CharacterType {
     : "guy";
 }
 
-const ALL_CLASSES: CharacterClass[] = ["knight", "rogue", "ranger", "mage"];
-
-/** True when `cls` may wield weapons of `category` — a membership test against the
- *  class's own declared capability, not a lookup table. */
+/** True when `cls` may wield weapons of `category` — asks the class itself. */
 export function canClassUseCategory(cls: CharacterClass, category: WeaponCategory): boolean {
-  return CHARACTER_REGISTRY[cls].usableCategories.includes(category);
+  return getCharacter(cls).canUseCategory(category);
 }
 
 /** True when `cls` may equip the weapon with this id. Reads only the weapon's
@@ -60,11 +72,11 @@ export function canClassUseWeapon(cls: CharacterClass, weaponId: string): boolea
  *  there is no separate "exclusive" list to keep in sync. */
 export function firstRollCategories(cls: CharacterClass): WeaponCategory[] {
   const othersUse = new Set<WeaponCategory>();
-  for (const other of ALL_CLASSES) {
-    if (other === cls) continue;
-    for (const cat of CHARACTER_REGISTRY[other].usableCategories) othersUse.add(cat);
+  for (const other of CHARACTERS) {
+    if (other.id === cls) continue;
+    for (const cat of other.usableCategories) othersUse.add(cat);
   }
-  return CHARACTER_REGISTRY[cls].usableCategories.filter((cat) => !othersUse.has(cat));
+  return getCharacter(cls).usableCategories.filter((cat) => !othersUse.has(cat));
 }
 
 /** Weapon ids in `cls`'s unique categories — the concrete first-weapon roll pool. */
@@ -87,7 +99,7 @@ export function partyRollableWeaponIds(classes: CharacterClass[]): WeaponId[] {
  *  first-weapon roll pool would be empty. Mirrors assertUpgradesCoverAllIds — a
  *  cheap invariant, not a lookup table. */
 export function assertClassesHaveFirstRollPool(): void {
-  for (const cls of ALL_CLASSES) {
+  for (const cls of CHARACTER_CLASSES) {
     if (firstRollWeaponIds(cls).length === 0) {
       throw new Error(`Class "${cls}" has no unique weapon category to roll a first weapon from.`);
     }
@@ -95,7 +107,7 @@ export function assertClassesHaveFirstRollPool(): void {
 }
 
 export * from "./base";
-export * from "./Knight";
-export * from "./Rogue";
-export * from "./Ranger";
-export * from "./Mage";
+export { Knight } from "./Knight";
+export { Rogue } from "./Rogue";
+export { Ranger } from "./Ranger";
+export { Mage } from "./Mage";

@@ -1,6 +1,5 @@
-// Type-only: erased at runtime, so declaring the categories a class can wield
-// here creates no import cycle with the weapons package (which never imports
-// characters).
+// Type-only: erased at runtime, so referencing the weapon categories here creates
+// no import cycle with the weapons package (which never imports characters).
 import type { WeaponCategory } from "../weapons/base";
 
 /** Every humanoid skin, as a VALUE — the union below is derived from it, so the
@@ -25,15 +24,28 @@ export const CHARACTER_TYPES = [
 export type CharacterType = typeof CHARACTER_TYPES[number];
 export type CharacterClass = "knight" | "rogue" | "ranger" | "mage";
 
-export interface CharacterConfig {
-  id: CharacterClass;
-  name: string;
-  maxHp: number;
-  speed: number;
+/**
+ * A playable class, OO like {@link Enemy} / {@link Weapon} / {@link Upgrade} —
+ * NOT a flat config record. Each class is its own `Character` subclass whose
+ * stats are compiler-checked getters resolved up this `extends` chain, and the
+ * roster is a plain array of instances (`CHARACTERS` in ./index.ts). There is no
+ * `CHARACTER_REGISTRY` config object: the id→instance lookup used for wire
+ * validation is DERIVED from that array, the same way `WEAPON_REGISTRY` derives
+ * from `WEAPONS`.
+ *
+ * Add a class by subclassing this and appending it to `CHARACTERS`.
+ */
+export abstract class Character {
+  /** The wire id for this class. Typed `CharacterClass`, so a typo is a compile error. */
+  abstract get id(): CharacterClass;
+  abstract get name(): string;
+  abstract get maxHp(): number;
+  abstract get speed(): number;
+
   /**
    * Every weapon CATEGORY this class may wield — its full capability, declared
    * on the class itself (D9/D18). The restriction lives here, not in a central
-   * category→class table: loot rolls and the equip check QUERY these lists (see
+   * category→class table: loot rolls and the equip check QUERY the classes (see
    * canClassUseWeapon / firstRollCategories / partyRollableWeaponIds in index.ts)
    * rather than consulting a lookup that could drift from the classes.
    *
@@ -43,5 +55,11 @@ export interface CharacterConfig {
    * shared backbone. Players no longer start holding a weapon; a class's first
    * weapon is rolled from its unique categories at the floor-1 supply room.
    */
-  usableCategories: readonly WeaponCategory[];
+  abstract get usableCategories(): readonly WeaponCategory[];
+
+  /** True when this class may wield weapons of `category`. A membership test
+   *  against the class's own declared capability, not a lookup table. */
+  canUseCategory(category: WeaponCategory): boolean {
+    return this.usableCategories.includes(category);
+  }
 }

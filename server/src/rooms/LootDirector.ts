@@ -5,6 +5,7 @@ import {
   AMMO_REGISTRY,
   SHOP_TIERS,
   CharacterClass, partyRollableWeaponIds, firstRollWeaponIds,
+  DebugConfig,
 } from "shared";
 import { GameState } from "../schema/GameState";
 import { ShopState, ShopItemState } from "../schema/ShopState";
@@ -65,13 +66,16 @@ export class LootDirector {
     // The live player map — read for party composition (D10 loot filter) and for
     // laying one supply pedestal per player.
     private readonly players: Map<string, Player>,
+    // The active debug config, or null in the real game. Only spawnSupply reads it
+    // (the debug-menu first-weapon override).
+    private readonly debug: DebugConfig | null = null,
   ) {}
 
   /** The classes present in the party right now — the D10 loot filter reads these
    *  so a weapon nobody can use never rolls. */
   private partyClasses(): CharacterClass[] {
     const classes: CharacterClass[] = [];
-    this.players.forEach((p) => classes.push(p.charConfig.id));
+    this.players.forEach((p) => classes.push(p.character.id));
     return classes;
   }
 
@@ -201,14 +205,24 @@ export class LootDirector {
     sessionIds.forEach((sid, i) => {
       const player = this.players.get(sid);
       if (!player) return;
-      const pool = firstRollWeaponIds(player.charConfig.id);
-      const weaponId = pickDistinct(pool, 1)[0];
+      const weaponId = this.firstSupplyWeaponFor(player);
       if (!weaponId) return;
       const col = this.freeShopCol(startCol + i * spacing, room.centerRow);
       const pos = tileCenter(col, room.centerRow);
       const reward = this.buildWeaponReward(`supply:${i}`, pos.x, pos.y, weaponId);
       this.state.supplies.set(`supply:${i}`, reward);
     });
+  }
+
+  /** Which weapon drops at a player's supply pedestal. The debug menu's first-weapon
+   *  picker forces it when set AND the player's class can equip it; otherwise (and in
+   *  the real game) it rolls from the class's unique first-weapon pool. */
+  private firstSupplyWeaponFor(player: Player): WeaponId | undefined {
+    const forced = this.debug?.firstWeaponId;
+    if (forced && forced in WEAPON_REGISTRY && player.canEquip(forced)) {
+      return forced as WeaponId;
+    }
+    return pickDistinct(firstRollWeaponIds(player.character.id), 1)[0];
   }
 
   /** Drop a single-reward pedestal where a room's last enemy fell. Called once, on
