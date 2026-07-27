@@ -84,7 +84,7 @@ describe("determinism", () => {
     // room (it no longer draws the combat room's cover-block rng), which shifts
     // every seed's layout. This is the documented "re-run and paste" case.
     const checksum = SEEDS.map(s => fingerprint(generateDungeon(s))).join("|");
-    expect(hash(checksum)).toMatchInlineSnapshot(`"d47b90b5"`);
+    expect(hash(checksum)).toMatchInlineSnapshot(`"c5cc4c10"`);
   });
 });
 

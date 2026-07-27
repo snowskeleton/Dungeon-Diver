@@ -26,9 +26,13 @@ const BUY_RADIUS = 40;
 // upgrades are the meat; gold is the consolation that still feels earned. Balance
 // is deliberately rough for now — tune these three numbers, nothing else.
 const ROOM_REWARD_WEIGHTS: { kind: "weapon" | "upgrade" | "gold"; weight: number }[] = [
-  { kind: "weapon",  weight: 40 },
-  { kind: "upgrade", weight: 40 },
-  { kind: "gold",    weight: 20 },
+  // Weapons no longer drop from room-clear pedestals — they flooded the run
+  // (shops + offer pedestals + maze chests already supply plenty), so a cleared
+  // room now yields an upgrade or gold. Weapon acquisition lives in shops,
+  // offer pedestals, and maze chests only.
+  { kind: "weapon",  weight:  0 },
+  { kind: "upgrade", weight: 70 },
+  { kind: "gold",    weight: 30 },
 ];
 // Gold handed out when a room-clear reward rolls gold — one cheap shop item's
 // worth, so it reads as a small windfall rather than a jackpot.

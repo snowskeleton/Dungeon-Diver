@@ -67,12 +67,12 @@ export interface DungeonOptions {
 const ROOM_TYPE_WEIGHTS: { type: RoomType; weight: number }[] = [
   // Every non-reward room now drops a single reward pedestal on clear, so the
   // chest room type was retired — its weight folded into plain combat.
-  { type: "combat", weight: 44 },
+  { type: "combat", weight: 52 },
   { type: "timed",  weight:  6 },
   { type: "dark",   weight:  4 },
   { type: "wave",   weight:  8 },
   { type: "maze",   weight: 16 },
-  { type: "shop",   weight: 15 },
+  { type: "shop",   weight:  7 },
   { type: "shrine", weight:  7 },
 ];
 const ROOM_TYPE_WEIGHT_TOTAL = ROOM_TYPE_WEIGHTS.reduce((n, e) => n + e.weight, 0);
