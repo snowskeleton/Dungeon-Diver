@@ -47,6 +47,10 @@ export class LocalPlayer extends Entity implements DebugDrawable {
   // the acquire flourish. Populated on the first sync (which carries the starting
   // weapon), with `sawFirstSync` suppressing the flourish for that batch.
   private knownWeaponUids = new Set<string>();
+  // Upgrades are append-only and carry no uid, so a newly-appeared one is any slot
+  // past this many — the count seen on the last sync. Same first-sync suppression
+  // as weapons, sharing `sawFirstSync`.
+  private knownUpgradeCount = 0;
   private sawFirstSync = false;
   // While now < this, the player's input is frozen (Zelda item-get beat).
   private inputLockedUntil = 0;
@@ -375,7 +379,7 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     this.reviveProgress = state.reviveProgress;
     this.setDowned(state.downed);
     this.serverAttacking = state.isAttacking;
-    this.checkAcquired(Array.from(state.weapons));
+    this.checkAcquired(Array.from(state.weapons), Array.from(state.upgrades) as UpgradeSlotView[]);
     // A new attackSeq means the server accepted a fresh attack — restart the
     // swing/bow clip even if isAttacking never dropped (held-fire).
     if (attackSeq !== this.lastAttackSeq) {
@@ -407,23 +411,37 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     this.updateHpBar(state.health);
   }
 
-  // Fire the Zelda-style acquire flourish for any weapon that's newly held since
-  // the last sync, and briefly freeze the player.
+  // Fire the Zelda-style acquire flourish for any weapon or upgrade that's newly
+  // held since the last sync, and briefly freeze the player.
   //
-  // Keyed on the per-instance uid, NOT the weapon id: two broadswords with
-  // different rolls are two different weapons, and an id-based diff would silently
-  // swallow the second pickup. Pruning to the current set also means a future
-  // drop-weapon would re-flourish if you picked the same one back up.
-  private checkAcquired(weapons: WeaponSlotView[]) {
+  // Weapons are keyed on the per-instance uid, NOT the weapon id: two broadswords
+  // with different rolls are two different weapons, and an id-based diff would
+  // silently swallow the second pickup. Pruning to the current set also means a
+  // future drop-weapon would re-flourish if you picked the same one back up.
+  //
+  // Upgrades have no uid but their array is append-only, so anything past
+  // `knownUpgradeCount` is new — this handles duplicate ids (two Ferocitys) that a
+  // Set would swallow. An upgrade flourish carries the buff's description so the
+  // player learns what it does at the moment of the pick.
+  private checkAcquired(weapons: WeaponSlotView[], upgrades: UpgradeSlotView[]) {
     for (const slot of weapons) {
       if (this.knownWeaponUids.has(slot.uid)) continue;
       this.knownWeaponUids.add(slot.uid);
       // The starting weapon is already in the first sync — don't flourish it.
       if (!this.sawFirstSync) continue;
-      new AcquireFX(this.scene, this.sprite, slot);
+      AcquireFX.weapon(this.scene, this.sprite, slot);
       this.inputLockedUntil = performance.now() + ACQUIRE_MS;
     }
     this.knownWeaponUids = new Set(weapons.map(w => w.uid));
+
+    for (let i = this.knownUpgradeCount; i < upgrades.length; i++) {
+      // Any upgrades in the first sync are pre-owned — don't flourish them.
+      if (!this.sawFirstSync) continue;
+      AcquireFX.upgrade(this.scene, this.sprite, upgrades[i]);
+      this.inputLockedUntil = performance.now() + ACQUIRE_MS;
+    }
+    this.knownUpgradeCount = upgrades.length;
+
     this.sawFirstSync = true;
   }
 
