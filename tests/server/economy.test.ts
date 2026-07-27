@@ -184,7 +184,11 @@ function lootFloor(type: RoomType, floorNumber = 1) {
   const physics = new PhysicsWorld(dungeon.mapData, dungeon.cols, dungeon.rows);
   const state = new GameState();
   state.floor = floorNumber;
-  const loot = new LootDirector(state);
+  // A knight party so the D10 filter rolls knight-usable weapons and the knight
+  // buyers/pickers below can equip whatever a pedestal offers.
+  const players = new Map<string, Player>();
+  players.set("party", new Player(physics, 100, 100, "knight", "guy"));
+  const loot = new LootDirector(state, players);
   loot.setFloor(dungeon, physics);
   const room = dungeon.rooms.find(r => r.type === type)!;
   return { dungeon, physics, state, loot, room };

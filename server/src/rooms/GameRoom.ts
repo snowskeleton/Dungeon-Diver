@@ -9,12 +9,12 @@ import {
   CreateRoomOptions, JoinRoomOptions, RoomMetadata,
   SetNameMessage, SetLoadoutMessage, SetReadyMessage,
   MAX_ROOM_NAME_LEN, MAX_PLAYER_NAME_LEN,
-  WeaponId, resolveCharacterClass, resolveCharacterType,
+  resolveCharacterClass, resolveCharacterType,
   coinDenominations,
 } from "shared";
 import { allocateRoomCode } from "./roomCodes";
 import { GameState } from "../schema/GameState";
-import { Player, resolveTemplate } from "../entities/Player";
+import { Player } from "../entities/Player";
 import { upgradeById } from "../upgrades";
 import { RoomChallengeState } from "../schema/RoomChallengeState";
 import { RoomChallenge, ChallengeContext } from "./challenges/RoomChallenge";
@@ -93,7 +93,7 @@ export class GameRoom extends Room<GameState> {
     // onCreate resolves, so a code allocated later could be missed by a lookup.
     await this.setPrivate(this.state.isPrivate);
     await this.publishMetadata();
-    this.loot = new LootDirector(this.state);
+    this.loot = new LootDirector(this.state, this.players);
     this.spawner = new SpawnDirector(
       this.state,
       this.enemies,
@@ -116,21 +116,36 @@ export class GameRoom extends Room<GameState> {
       this.players.get(client.sessionId)?.selectWeapon(msg?.index ?? -1);
     });
 
-    // The three loot interactions. Validation and granting live in LootDirector;
-    // GameRoom only resolves the sender to a Player.
+    // The loot interactions. Validation and granting live in LootDirector; GameRoom
+    // only resolves the sender to a Player and relays any user-facing error (e.g. a
+    // weapon the player's class can't use) back to that one client as `loot_error`.
+    const relayError = (client: Client, error: string | null) => {
+      if (error) client.send("loot_error", { reason: error });
+    };
+
     this.onMessage("buy", (client, msg: { roomId: string; itemIndex: number }) => {
       const player = this.players.get(client.sessionId);
-      if (player) this.loot.buy(player, msg);
+      if (player) relayError(client, this.loot.buy(player, msg));
     });
 
     this.onMessage("offerPick", (client, msg: { roomId: string; choiceIndex: number }) => {
       const player = this.players.get(client.sessionId);
-      if (player) this.loot.offerPick(client.sessionId, player, msg);
+      if (player) relayError(client, this.loot.offerPick(client.sessionId, player, msg));
+    });
+
+    this.onMessage("claimReward", (client, msg: { roomId: string }) => {
+      const player = this.players.get(client.sessionId);
+      if (player) relayError(client, this.loot.claimReward(player, msg));
+    });
+
+    this.onMessage("claimSupply", (client, msg: { supplyId: string }) => {
+      const player = this.players.get(client.sessionId);
+      if (player) relayError(client, this.loot.claimSupply(player, msg));
     });
 
     this.onMessage("chestOpen", (client, msg: { roomId: string }) => {
       const player = this.players.get(client.sessionId);
-      if (player) this.loot.chestOpen(player, msg);
+      if (player) relayError(client, this.loot.chestOpen(player, msg));
     });
 
     // Inventory/stats menu pause. Handlers still run while paused, so the menu
@@ -247,16 +262,15 @@ export class GameRoom extends Room<GameState> {
   }
 
   /** The one place a Player is constructed. Every id arriving from a client is
-   *  resolved through a validator, never cast: an unknown weapon id would leave
-   *  the player holding nothing at all, and an unknown CLASS is worse — the
-   *  config lookup returns undefined and the Player constructor throws, taking
-   *  the whole join down with it. Both ids reach here from two directions, the
-   *  join options and the `setLoadout` lobby message. */
+   *  resolved through a validator, never cast: an unknown CLASS returns undefined
+   *  from the config lookup and the Player constructor throws, taking the whole
+   *  join down with it. The class/skin ids reach here from two directions, the
+   *  join options and the `setLoadout` lobby message. Players carry no starting
+   *  weapon — the first one is claimed from a floor-1 supply pedestal. */
   private buildPlayer(x: number, y: number, options?: JoinRoomOptions): Player {
     const characterClass = resolveCharacterClass(options?.characterClass);
     const characterType = resolveCharacterType(options?.characterType);
-    const weaponId = resolveTemplate(options?.weaponId)?.id as WeaponId | undefined;
-    const player = new Player(this.physics, x, y, characterClass, characterType, weaponId);
+    const player = new Player(this.physics, x, y, characterClass, characterType);
     // Debug-only: pre-grant upgrades so stat folding can be exercised (and balanced)
     // without walking to a shrine. Unknown ids are ignored rather than fatal.
     for (const id of this.debug?.startingUpgrades ?? []) {
@@ -291,6 +305,11 @@ export class GameRoom extends Room<GameState> {
       player.teleport(spawn.x, spawn.y);
     });
 
+    // Now that the party is settled, roll this floor's loot (filtered to what the
+    // present classes can use) and lay the floor-1 supply pedestals.
+    this.placeFloorLoot();
+    this.loot.spawnSupply();
+
     this.spawner.spawnFloorEnemies();
     const parentUnlocked = this.floorManager.finalizeEmptyRooms();
     if (parentUnlocked.length > 0) {
@@ -322,10 +341,20 @@ export class GameRoom extends Room<GameState> {
 
     this.loot.setFloor(this.currentDungeon, this.physics);
     this.spawner.setFloor(this.currentDungeon, this.physics, this.floorManager, this.flowField);
+    // Loot placement is deferred to placeFloorLoot(), run from startRun/advanceFloor
+    // — NOT here — because the D10 party filter needs the settled party, which
+    // doesn't exist yet at onCreate (initFloor runs before anyone joins).
+  }
 
+  /** Roll and place this floor's loot. Split out of initFloor so it runs only once
+   *  the party is known: the weapon rolls filter to what the present classes can use
+   *  (LootDirector.partyClasses), which is empty at room creation. */
+  private placeFloorLoot() {
     this.loot.spawnShops();
     this.loot.spawnShrineOffers();
     this.loot.spawnChests();
+    this.loot.resetRoomRewards();
+    this.loot.resetSupplies();
     this.initChallenges();
   }
 
@@ -362,7 +391,7 @@ export class GameRoom extends Room<GameState> {
       case "boss":
       case "shop":
       case "shrine":
-      case "chest":
+      case "supply":
         return null;
     }
   }
@@ -482,6 +511,8 @@ export class GameRoom extends Room<GameState> {
 
     this.respawnAll([...this.players.values()]);
 
+    // Party is known here (a descent, not room creation), so loot filters correctly.
+    this.placeFloorLoot();
     this.spawner.spawnFloorEnemies();
     const preCleared = this.floorManager.finalizeEmptyRooms();
     if (preCleared.length > 0) {
@@ -791,9 +822,22 @@ export class GameRoom extends Room<GameState> {
         }
       }
 
+      // Captured before the clear check so we can spot the room's clearing tick.
+      const wasCleared = roomId ? this.floorManager.isRoomCleared(roomId) : true;
+
       const { parentUnlocked, childUnlocked } = this.floorManager.onEnemyMaybeCleared(
         id, (eid) => this.enemies.get(eid)?.isDying ?? true,
       );
+
+      // Every room drops a single reward on the tick it clears, EXCEPT one that
+      // already granted its own (a boss dropped its offer above, a timed clear its
+      // challenge reward). The offer guard catches both; shop/shrine rooms never
+      // reach here (they're pre-cleared with no enemies). Dropped where the last
+      // enemy fell, so the pedestal appears on the corpse.
+      if (roomId && !wasCleared && this.floorManager.isRoomCleared(roomId)
+          && !this.state.offers.has(roomId)) {
+        this.loot.dropRoomReward(roomId, enemy?.state.x ?? 0, enemy?.state.y ?? 0);
+      }
       if (parentUnlocked.length > 0) {
         this.broadcast("connections_parent_unlocked", { connectionIds: parentUnlocked });
       }

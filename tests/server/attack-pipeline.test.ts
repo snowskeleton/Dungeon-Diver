@@ -11,7 +11,7 @@ import { Player } from "../../server/src/entities/Player";
 import { GooGreen } from "../../server/src/entities/enemies/goos";
 import { Projectile } from "../../server/src/entities/Projectile";
 import { Upgrade } from "../../server/src/upgrades";
-import { arena, flatWorld, swingUntilHit } from "../helpers/world";
+import { arena, flatWorld, swingUntilHit, armedPlayer } from "../helpers/world";
 
 // End-to-end: a real player, a real enemy, the real physics world, and the exact
 // gather-and-resolve step GameRoom runs. These are the tests that prove the four
@@ -42,7 +42,7 @@ class Lifesteal extends Upgrade {
 describe("a melee swing, start to finish", () => {
   it("winds up before it can damage anything", () => {
     const a = arena();
-    const p = a.addPlayer("p1", new Player(a.physics, 300, 300, "knight", "guy", "broadsword"));
+    const p = a.addPlayer("p1", armedPlayer(a.physics, 300, 300, "knight", "guy", "broadsword"));
     p.state.facing = "right";
     const e = a.addEnemy("e1", new GooGreen(a.physics, 312, 300));
     const hp0 = e.state.health;
@@ -56,7 +56,7 @@ describe("a melee swing, start to finish", () => {
 
   it("then lands for exactly the weapon's damage", () => {
     const a = arena();
-    const p = a.addPlayer("p1", new Player(a.physics, 300, 300, "knight", "guy", "broadsword"));
+    const p = a.addPlayer("p1", armedPlayer(a.physics, 300, 300, "knight", "guy", "broadsword"));
     p.state.facing = "right";
     const e = a.addEnemy("e1", new GooGreen(a.physics, 312, 300));
     const hp0 = e.state.health;
@@ -69,7 +69,7 @@ describe("a melee swing, start to finish", () => {
 
   it("hits once per swing, however many frames the hitbox lingers", () => {
     const a = arena();
-    const p = a.addPlayer("p1", new Player(a.physics, 300, 300, "knight", "guy", "broadsword"));
+    const p = a.addPlayer("p1", armedPlayer(a.physics, 300, 300, "knight", "guy", "broadsword"));
     p.state.facing = "right";
     const e = a.addEnemy("e1", new GooGreen(a.physics, 312, 300));
 
@@ -81,7 +81,7 @@ describe("a melee swing, start to finish", () => {
 
   it("knocks the enemy back and staggers it", () => {
     const a = arena();
-    const p = a.addPlayer("p1", new Player(a.physics, 300, 300, "knight", "guy", "broadsword"));
+    const p = a.addPlayer("p1", armedPlayer(a.physics, 300, 300, "knight", "guy", "broadsword"));
     p.state.facing = "right";
     const e = a.addEnemy("e1", new GooGreen(a.physics, 312, 300));
 
@@ -91,7 +91,7 @@ describe("a melee swing, start to finish", () => {
 
   it("misses an enemy standing behind the player", () => {
     const a = arena();
-    const p = a.addPlayer("p1", new Player(a.physics, 300, 300, "knight", "guy", "broadsword"));
+    const p = a.addPlayer("p1", armedPlayer(a.physics, 300, 300, "knight", "guy", "broadsword"));
     p.state.facing = "right";
     const e = a.addEnemy("e1", new GooGreen(a.physics, 260, 300)); // to the LEFT
     const hp0 = e.state.health;
@@ -104,7 +104,7 @@ describe("a melee swing, start to finish", () => {
     // The regression that gave creatures measured hurt bounds: with a bare point
     // target, a swing had to cross the exact centre pixel to land.
     const a = arena();
-    const p = a.addPlayer("p1", new Player(a.physics, 300, 300, "knight", "guy", "broadsword"));
+    const p = a.addPlayer("p1", armedPlayer(a.physics, 300, 300, "knight", "guy", "broadsword"));
     p.state.facing = "right";
     const e = a.addEnemy("e1", new GooGreen(a.physics, 330, 300)); // beyond the blade tip
     const hp0 = e.state.health;
@@ -115,7 +115,7 @@ describe("a melee swing, start to finish", () => {
 
   it("never damages another player", () => {
     const a = arena();
-    const p = a.addPlayer("p1", new Player(a.physics, 300, 300, "knight", "guy", "broadsword"));
+    const p = a.addPlayer("p1", armedPlayer(a.physics, 300, 300, "knight", "guy", "broadsword"));
     p.state.facing = "right";
     const ally = a.addPlayer("p2", new Player(a.physics, 312, 300));
     const hp0 = ally.state.health;
@@ -128,7 +128,7 @@ describe("a melee swing, start to finish", () => {
 describe("upgrades reach every attack through the one seam", () => {
   it("scales a melee swing", () => {
     const a = arena();
-    const p = a.addPlayer("p1", new Player(a.physics, 300, 300, "knight", "guy", "broadsword"));
+    const p = a.addPlayer("p1", armedPlayer(a.physics, 300, 300, "knight", "guy", "broadsword"));
     p.state.facing = "right";
     p.addUpgrade(new FlatDamage(3));
     p.addUpgrade(new PctDamage(0.2));
@@ -143,7 +143,7 @@ describe("upgrades reach every attack through the one seam", () => {
 
   it("scales a bow shot the same way, with no bow-specific code", () => {
     const a = arena();
-    const p = a.addPlayer("p1", new Player(a.physics, 200, 300, "ranger", "guy", "longbow"));
+    const p = a.addPlayer("p1", armedPlayer(a.physics, 200, 300, "ranger", "guy", "longbow"));
     p.state.facing = "right";
     p.addUpgrade(new FlatDamage(3));
     const e = a.addEnemy("e1", new GooGreen(a.physics, 300, 300));
@@ -151,14 +151,14 @@ describe("upgrades reach every attack through the one seam", () => {
 
     for (let i = 0; i < 15 && e.state.health === hp0; i++) a.stepWithInput("p1", 0, 0, true);
 
-    const bow = p.weapon;
+    const bow = p.weapon!;
     const ammo = AMMO_REGISTRY[bow.ammoId!];
     expect(hp0 - e.state.health).toBeCloseTo(ammo.damage + bow.damage + 3, 6);
   });
 
   it("scales a staff bolt too — the damage rides on the ammo", () => {
     const a = arena();
-    const p = a.addPlayer("p1", new Player(a.physics, 300, 300, "mage", "guy", "oak-staff"));
+    const p = a.addPlayer("p1", armedPlayer(a.physics, 300, 300, "mage", "guy", "oak-staff"));
     p.state.facing = "right";
     const e = a.addEnemy("e1", new GooGreen(a.physics, 390, 300));
     const hp0 = e.state.health;
@@ -174,7 +174,7 @@ describe("upgrades reach every attack through the one seam", () => {
 
   it("feeds lifesteal from the damage actually landed on the enemy", () => {
     const a = arena();
-    const p = a.addPlayer("p1", new Player(a.physics, 300, 300, "knight", "guy", "broadsword"));
+    const p = a.addPlayer("p1", armedPlayer(a.physics, 300, 300, "knight", "guy", "broadsword"));
     p.state.facing = "right";
     p.addUpgrade(new Lifesteal());
     p.state.health = 10;
@@ -303,8 +303,8 @@ describe("projectiles in the real resolve step", () => {
 describe("two players in the same world", () => {
   it("each swing independently, with their own weapons and dedupe state", () => {
     const a = arena(flatWorld());
-    const p1 = a.addPlayer("p1", new Player(a.physics, 300, 300, "knight", "guy", "broadsword"));
-    const p2 = a.addPlayer("p2", new Player(a.physics, 300, 500, "knight", "guy", "hatchet"));
+    const p1 = a.addPlayer("p1", armedPlayer(a.physics, 300, 300, "knight", "guy", "broadsword"));
+    const p2 = a.addPlayer("p2", armedPlayer(a.physics, 300, 500, "knight", "guy", "hatchet"));
     p1.state.facing = "right";
     p2.state.facing = "right";
     const e1 = a.addEnemy("e1", new GooGreen(a.physics, 312, 300));
@@ -326,8 +326,8 @@ describe("two players in the same world", () => {
 
   it("can both hit the SAME enemy in one swing window", () => {
     const a = arena();
-    const p1 = a.addPlayer("p1", new Player(a.physics, 280, 300, "knight", "guy", "broadsword"));
-    const p2 = a.addPlayer("p2", new Player(a.physics, 340, 300, "knight", "guy", "broadsword"));
+    const p1 = a.addPlayer("p1", armedPlayer(a.physics, 280, 300, "knight", "guy", "broadsword"));
+    const p2 = a.addPlayer("p2", armedPlayer(a.physics, 340, 300, "knight", "guy", "broadsword"));
     p1.state.facing = "right";
     p2.state.facing = "left";
     const e = a.addEnemy("e1", new GooGreen(a.physics, 310, 300));

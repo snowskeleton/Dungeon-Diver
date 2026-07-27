@@ -5,5 +5,5 @@ export const ROGUE_CONFIG: CharacterConfig = {
   name: "Rogue",
   maxHp: 70,
   speed: 190,
-  defaultWeaponId: "kris",
+  usableCategories: ["sword", "axe", "spear", "rapier", "dagger", "thrown"],
 };

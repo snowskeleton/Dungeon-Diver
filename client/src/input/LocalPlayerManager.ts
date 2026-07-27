@@ -39,7 +39,6 @@ export class LocalPlayerManager {
       this.inputSourceFor(index),
       member.loadout.characterClass,
       member.loadout.characterType,
-      member.loadout.weaponId,
     );
     this.localPlayers.push(player);
     return player;

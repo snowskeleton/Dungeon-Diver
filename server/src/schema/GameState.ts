@@ -4,6 +4,7 @@ import { EnemyState } from "./EnemyState";
 import { ProjectileState } from "./ProjectileState";
 import { ShopState } from "./ShopState";
 import { OfferState } from "./OfferState";
+import { RewardState } from "./RewardState";
 import { ChestState } from "./ChestState";
 import { CoinState } from "./CoinState";
 import { RoomChallengeState } from "./RoomChallengeState";
@@ -18,7 +19,17 @@ export class GameState extends Schema implements GameStateView {
   // Reward pedestals keyed by room id — one per shrine room, plus one dropped in
   // the boss room when the boss dies.
   @type({ map: OfferState }) offers = new MapSchema<OfferState>();
-  // Treasure chests keyed by room id — one per chest room, rebuilt per floor.
+  // Single-reward pedestals keyed by room id — one dropped where each non-reward
+  // room's last enemy fell, rebuilt per floor.
+  @type({ map: RewardState }) rewards = new MapSchema<RewardState>();
+  // Floor-1 supply-room weapon pedestals, keyed by a per-pedestal id (one per
+  // player). Reuses RewardState (kind "weapon") — a supply pedestal IS a single
+  // free weost reward; the only difference is several per room. Class-gated on
+  // free weapon reward; the only difference is several per room. Class-gated on
+  // claim like every weapon pickup, not owner-locked.
+  @type({ map: RewardState }) supplies = new MapSchema<RewardState>();
+  // Treasure chests keyed by room id — one at the deep end of every maze room,
+  // placed at floor generation and openable anytime, rebuilt per floor.
   @type({ map: ChestState }) chests = new MapSchema<ChestState>();
   // Active room objectives keyed by room id — one per room whose type carries a
   // RoomChallenge, rebuilt per floor.

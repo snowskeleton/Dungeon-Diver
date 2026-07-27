@@ -103,9 +103,10 @@ describe("creating a room", () => {
     const h = await createRoom({ debug: debug({ seed: 4242, roomType: "maze", gridCols: 2, gridRows: 2 }) });
     expect(h.state.seed).toBe(4242);
     expect(JSON.parse(h.state.dungeonOpts).forceRoomType).toBe("maze");
-    // Every room but the boss room, which `includeBoss` still reserves.
+    // Every room but the boss room (which `includeBoss` reserves) and the start
+    // room (always the supply room now).
     const rooms = guts(h).currentDungeon.rooms;
-    expect(rooms.filter(r => r.type !== "boss").every(r => r.type === "maze")).toBe(true);
+    expect(rooms.filter(r => r.type !== "boss" && r.type !== "supply").every(r => r.type === "maze")).toBe(true);
     h.dispose();
   });
 
@@ -127,23 +128,25 @@ describe("the lobby", () => {
 
   it("gives a joining player a spawn point, a name, and a character", async () => {
     const h = await createRoom();
-    h.join("s0", { playerName: "Snow", characterClass: "mage", characterType: "gal", weaponId: "longbow" });
+    h.join("s0", { playerName: "Snow", characterClass: "mage", characterType: "gal" });
     const p = h.state.players.get("s0")!;
 
     expect(p.name).toBe("Snow");
     expect(p.characterClass).toBe("mage");
     expect(p.characterType).toBe("gal");
-    expect(p.weaponId).toBe("longbow");
+    // Players start empty-handed — the first weapon is claimed from a supply pedestal.
+    expect(p.weaponId).toBe("");
     h.dispose();
   });
 
-  it("falls back to defaults for a junk name or weapon id sent at join", async () => {
+  it("falls back to defaults for a junk name sent at join", async () => {
     const h = await createRoom();
-    h.join("s0", { playerName: "  ", weaponId: "not-a-weapon" });
+    h.join("s0", { playerName: "  " });
     const p = h.state.players.get("s0")!;
 
     expect(p.name.length).toBeGreaterThan(0);
-    expect(WEAPON_REGISTRY[p.weaponId]).toBeDefined();
+    // No starting weapon regardless of what's sent.
+    expect(p.weaponId).toBe("");
     h.dispose();
   });
 
@@ -176,13 +179,11 @@ describe("the lobby", () => {
     expect(() => h.send(c, "setLoadout", {
       characterClass: "necromancer",
       characterType: "eldritch-horror",
-      weaponId: "not-a-weapon",
     })).not.toThrow();
 
     const p = h.state.players.get("s0")!;
     expect(p.characterClass).toBe("knight");
     expect(CHARACTER_TYPES).toContain(p.characterType);
-    expect(WEAPON_REGISTRY[p.weaponId]).toBeDefined();
     h.dispose();
   });
 
@@ -216,11 +217,12 @@ describe("the lobby", () => {
     const c = h.join("s0", { characterClass: "knight" });
     const knightHp = h.state.players.get("s0")!.maxHp;
 
-    h.send(c, "setLoadout", { characterClass: "mage", characterType: "guy", weaponId: "oak-staff" });
+    h.send(c, "setLoadout", { characterClass: "mage", characterType: "guy" });
 
     const after = h.state.players.get("s0")!;
     expect(after.characterClass).toBe("mage");
-    expect(after.weaponId).toBe("oak-staff");
+    // Still empty-handed after a class change — no starting weapon.
+    expect(after.weaponId).toBe("");
     expect(after.maxHp).not.toBe(knightHp);
     h.dispose();
   });
@@ -230,7 +232,7 @@ describe("the lobby", () => {
     const host = h.join("s0");
     const c = h.join("s1", { playerName: "Keep" });
     h.send(c, "setReady", { ready: true });
-    h.send(c, "setLoadout", { characterClass: "rogue", characterType: "guy", weaponId: "kris" });
+    h.send(c, "setLoadout", { characterClass: "rogue", characterType: "guy" });
 
     const after = h.state.players.get("s1")!;
     expect(after.name).toBe("Keep");
@@ -458,6 +460,8 @@ describe("the tick", () => {
     const h = await startedRoom(1, { debug: debug({ enemiesPerRoom: 3, enemyTypes: ["goo-green"] }) });
     const g = guts(h);
     const p = g.players.get("s0")!;
+    // Players start empty-handed now — arm this one so it can actually swing.
+    p.addWeapon(WEAPON_REGISTRY["broadsword"]);
     // Walk the player into the enemy's room so its deferred batch spawns, then park
     // it right in front of the player and swing.
     const enemy = [...g.enemies.values()][0];
@@ -798,7 +802,8 @@ describe("loot messages reach the directors", () => {
     h.send(h.clients[0], "buy", { roomId: shopRoom.id, itemIndex: 0 });
 
     expect(item!.purchased).toBe(true);
-    expect(h.state.players.get("s0")!.weapons).toHaveLength(2);
+    // Started empty-handed, so the bought weapon is the player's first.
+    expect(h.state.players.get("s0")!.weapons).toHaveLength(1);
     h.dispose();
   });
 
@@ -816,28 +821,45 @@ describe("loot messages reach the directors", () => {
     h.dispose();
   });
 
-  it("opens a chest", async () => {
-    const h = await startedRoom(1, { debug: debug({ gridCols: 1, gridRows: 1, roomType: "chest", enemiesPerRoom: 0 }) });
+  it("claims a room-clear reward pedestal", async () => {
+    const h = await startedRoom(1, { debug: debug({ enemiesPerRoom: 0 }) });
     const g = guts(h);
-    const chestRoom = g.currentDungeon.rooms.find(r => r.type === "chest")!;
-    const chest = h.state.chests.get(chestRoom.id)!;
+    const p = g.players.get("s0")!;
+    // Drop a pedestal on the player and claim it. The reward kind is a weighted
+    // roll, so assert on the pedestal (which every kind consumes), not the grant.
+    g.loot.dropRoomReward("start", p.state.x, p.state.y);
+
+    h.send(h.clients[0], "claimReward", { roomId: "start" });
+
+    expect(h.state.rewards.get("start")!.claimed).toBe(true);
+    h.dispose();
+  });
+
+  it("opens a maze chest at the maze's deep end", async () => {
+    const h = await startedRoom(1, { debug: debug({ gridCols: 1, gridRows: 1, roomType: "maze", enemiesPerRoom: 0 }) });
+    const g = guts(h);
+    const mazeRoom = g.currentDungeon.rooms.find(r => r.type === "maze")!;
+    const chest = h.state.chests.get(mazeRoom.id)!;
     g.players.get("s0")!.teleport(chest.x, chest.y);
 
-    h.send(h.clients[0], "chestOpen", { roomId: chestRoom.id });
+    h.send(h.clients[0], "chestOpen", { roomId: mazeRoom.id });
 
     expect(chest.opened).toBe(true);
-    expect(h.state.players.get("s0")!.weapons).toHaveLength(2);
+    // Started empty-handed, so the chest weapon is the player's first.
+    expect(h.state.players.get("s0")!.weapons).toHaveLength(1);
     h.dispose();
   });
 
   it("switches the active weapon", async () => {
     const h = await startedRoom(1, { debug: debug({ enemiesPerRoom: 0 }) });
     const p = guts(h).players.get("s0")!;
+    // Two weapons so the switch has somewhere to go (players start empty-handed).
+    p.addWeapon(WEAPON_REGISTRY["broadsword"]);
     p.addWeapon(WEAPON_REGISTRY["longbow"]);
 
     h.send(h.clients[0], "switchWeapon", { delta: 1 });
 
-    expect(p.weapon.id).toBe("longbow");
+    expect(p.weapon!.id).toBe("longbow");
     h.dispose();
   });
 
@@ -847,6 +869,7 @@ describe("loot messages reach the directors", () => {
     expect(() => {
       h.send(ghost, "buy", { roomId: "0,0", itemIndex: 0 });
       h.send(ghost, "offerPick", { roomId: "0,0", choiceIndex: 0 });
+      h.send(ghost, "claimReward", { roomId: "0,0" });
       h.send(ghost, "chestOpen", { roomId: "0,0" });
       h.send(ghost, "switchWeapon", { delta: 1 });
       h.send(ghost, "input", { dx: 1, dy: 0, attack: false });
@@ -894,7 +917,7 @@ describe("a boss floor, end to end", () => {
 
 describe("a whole floor, ticked hard", () => {
   it("runs hundreds of ticks with a full party and every room type without throwing", async () => {
-    for (const roomType of ["combat", "maze", "wave", "timed", "dark", "shop", "shrine", "chest"] as RoomType[]) {
+    for (const roomType of ["combat", "maze", "wave", "timed", "dark", "shop", "shrine"] as RoomType[]) {
       const h = await startedRoom(4, { debug: debug({ gridCols: 2, gridRows: 2, roomType, enemiesPerRoom: 2 }) });
       const g = guts(h);
       let i = 0;

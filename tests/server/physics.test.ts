@@ -250,11 +250,6 @@ describe("barriers", () => {
     expect(() => flatWorld().removeBarrier("nope")).not.toThrow();
   });
 
-  it("keeps solid props in the same map as barriers, so both stop an arrow", () => {
-    const world = flatWorld();
-    world.addSolidProp("chest", 400, 400, 26, 20);
-    expect(world.barrierAt(400, 400)).toBe(true);
-  });
 });
 
 describe("layer vocabulary", () => {

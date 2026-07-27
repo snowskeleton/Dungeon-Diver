@@ -3,7 +3,7 @@ import { Room } from "colyseus.js";
 import {
   InputMessage, CharacterClass, CharacterType, CharacterConfig, getCharacterConfig,
   WeaponId, Weapon, WeaponSlotView, UpgradeSlotView, WEAPON_REGISTRY, Facing,
-  GameStateView, PlayerStateView, ShopStateView, ShopItemStateView, OfferStateView, ChestStateView,
+  GameStateView, PlayerStateView, ShopStateView, ShopItemStateView, OfferStateView, RewardStateView, ChestStateView,
   PLAYER_HURT_BOUNDS,
 } from "shared";
 import { Entity } from "./Entity";
@@ -28,7 +28,7 @@ export class LocalPlayer extends Entity implements DebugDrawable {
   readonly inputSource: InputSource;
   readonly charConfig: CharacterConfig;
   // The active weapon, swapped when the server reports an activeWeaponIndex change.
-  weapon: Weapon;
+  weapon?: Weapon;
   private activeWeaponId: string;
   private prevActions: InputActions = { prevSlot: false, nextSlot: false, toggleMenu: false, interact: false };
   private menuOpen = false;
@@ -53,8 +53,18 @@ export class LocalPlayer extends Entity implements DebugDrawable {
   // store stats card and the interact-to-buy action. Must match server BUY_RADIUS.
   nearbyShopItem: { roomId: string; itemIndex: number; weaponId: string; cost: number } | null = null;
 
-  // The unopened chest this player is standing on (if any). Carries only the room
-  // id — a chest's contents are never synced, so there is nothing to preview.
+  // The unclaimed room-clear reward pedestal this player is standing on (if any).
+  // Carries only the room id — the reward key into state.rewards — since a single
+  // claim consumes the whole pedestal (no per-card choice like an offer).
+  nearbyReward: { roomId: string } | null = null;
+
+  // The unclaimed floor-1 supply pedestal this player is standing on (if any).
+  // Keyed by pedestal id into state.supplies. Not owner-locked — the server
+  // class-gates the claim and flashes an error if this class can't use it.
+  nearbySupply: { supplyId: string } | null = null;
+
+  // The unopened maze chest this player is standing on (if any). Carries only the
+  // room id — a chest's contents are never synced, so there is nothing to preview.
   nearbyChest: { roomId: string } | null = null;
   private lastInput: InputMessage = { dx: 0, dy: 0, attack: false };
   private facing: Facing = "down";
@@ -80,21 +90,20 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     inputSource: InputSource,
     characterClass: CharacterClass = "knight",
     characterType: CharacterType = "guy",
-    weaponId?: WeaponId,
   ) {
     const cfg = getCharacterConfig(characterClass);
     const visualDef = CLIENT_CHARACTER_VISUAL_REGISTRY[characterType];
-    const resolvedWeaponId = weaponId ?? cfg.defaultWeaponId;
-    const weapon = WEAPON_REGISTRY[resolvedWeaponId] ?? WEAPON_REGISTRY["broadsword"];
     super(scene, x, y, 0x63b3ed, cfg.maxHp);
     this.charConfig = cfg;
-    this.weapon = weapon;
-    this.activeWeaponId = weapon.id;
+    // Empty-handed at spawn — the first weapon is claimed from a supply pedestal,
+    // so no weapon FX render until syncFromServer swaps one in.
+    this.weapon = undefined;
+    this.activeWeaponId = "";
     this.hp = cfg.maxHp;
     this.room = room;
     this.roomState = room.state as GameStateView;
     this.inputSource = inputSource;
-    this.setupCharacter(visualDef.spriteConfig, weapon.fxType, weapon.id, weapon.rangedStyle);
+    this.setupCharacter(visualDef.spriteConfig, null, undefined, undefined);
   }
 
   update() {
@@ -105,6 +114,8 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     if (!locked) {
       this.updateShopProximity();
       this.updateOfferProximity();
+      this.updateRewardProximity();
+      this.updateSupplyProximity();
       this.updateChestProximity();
       this.handleActions();
     }
@@ -123,7 +134,7 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     // (after the first frame) so strafing keeps your aim; movement still turns
     // you otherwise.
     const risingEdge = input.attack && !this.prevAttack;
-    const facingLocked = this.weapon.isRanged && input.attack && !risingEdge;
+    const facingLocked = !!this.weapon?.isRanged && input.attack && !risingEdge;
     if (!facingLocked) {
       if (input.dx > 0) this.facing = "right";
       else if (input.dx < 0) this.facing = "left";
@@ -146,10 +157,15 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     if (a.prevSlot && !this.prevActions.prevSlot) this.room.send("switchWeapon", { delta: -1 });
     if (a.toggleMenu && !this.prevActions.toggleMenu) this.toggleInventoryMenu();
     if (a.interact && !this.prevActions.interact) {
-      // A room is only ever one of shop / shrine / chest, so the order here is
-      // just a tiebreak; the reward is the more consequential interaction anyway.
+      // A room may hold a shrine offer, a shop, AND a room-clear reward pedestal,
+      // so the order here is a tiebreak; the reward pedestal is claimed first as the
+      // more consequential, free interaction.
       if (this.nearbyOffer) {
         this.openOfferPicker();
+      } else if (this.nearbyReward) {
+        this.room.send("claimReward", { roomId: this.nearbyReward.roomId });
+      } else if (this.nearbySupply) {
+        this.room.send("claimSupply", { supplyId: this.nearbySupply.supplyId });
       } else if (this.nearbyChest) {
         this.room.send("chestOpen", { roomId: this.nearbyChest.roomId });
       } else if (this.nearbyShopItem) {
@@ -273,7 +289,48 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     this.nearbyOffer = best;
   }
 
-  // Nearest unopened chest within range. Same radius again, so every in-world
+  // Nearest unclaimed room-clear reward pedestal within range. Same radius again,
+  // so every in-world interaction in the game shares one reach.
+  private updateRewardProximity() {
+    const rewards = this.roomState.rewards;
+    if (!rewards) { this.nearbyReward = null; return; }
+    let best: LocalPlayer["nearbyReward"] = null;
+    let bestDist = SHOP_BUY_RADIUS * SHOP_BUY_RADIUS;
+    rewards.forEach((reward: RewardStateView, roomId: string) => {
+      if (reward.claimed) return;
+      const dx = this.sprite.x - reward.x;
+      const dy = this.sprite.y - reward.y;
+      const d = dx * dx + dy * dy;
+      if (d <= bestDist) {
+        bestDist = d;
+        best = { roomId };
+      }
+    });
+    this.nearbyReward = best;
+  }
+
+  // Nearest unclaimed supply pedestal within range. Same radius again. Not filtered
+  // by class here — the prompt shows for anyone, and the server refuses (with an
+  // on-screen error) if this class can't use the weapon.
+  private updateSupplyProximity() {
+    const supplies = this.roomState.supplies;
+    if (!supplies) { this.nearbySupply = null; return; }
+    let best: LocalPlayer["nearbySupply"] = null;
+    let bestDist = SHOP_BUY_RADIUS * SHOP_BUY_RADIUS;
+    supplies.forEach((reward: RewardStateView, supplyId: string) => {
+      if (reward.claimed) return;
+      const dx = this.sprite.x - reward.x;
+      const dy = this.sprite.y - reward.y;
+      const d = dx * dx + dy * dy;
+      if (d <= bestDist) {
+        bestDist = d;
+        best = { supplyId };
+      }
+    });
+    this.nearbySupply = best;
+  }
+
+  // Nearest unopened maze chest within range. Same radius again, so every in-world
   // interaction in the game shares one reach.
   private updateChestProximity() {
     const chests = this.roomState.chests;
@@ -359,7 +416,9 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     return [
       this.bodyDebugCircle(DEBUG_COLORS.playerBody),
       hurtBoxShape(PLAYER_HURT_BOUNDS, this.sprite.x, this.sprite.y),
-      ...meleeHurtboxShapes(this.weapon, this.sprite.x, this.sprite.y, this.facing, performance.now() - this.swingStartedAt),
+      ...(this.weapon
+        ? meleeHurtboxShapes(this.weapon, this.sprite.x, this.sprite.y, this.facing, performance.now() - this.swingStartedAt)
+        : []),
     ];
   }
 }

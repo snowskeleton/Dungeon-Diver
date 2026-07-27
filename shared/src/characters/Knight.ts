@@ -5,5 +5,5 @@ export const KNIGHT_CONFIG: CharacterConfig = {
   name: "Knight",
   maxHp: 100,
   speed: 156,
-  defaultWeaponId: "broadsword",
+  usableCategories: ["sword", "axe", "spear", "rapier", "hammer", "mace"],
 };

@@ -219,11 +219,11 @@ export class PhysicsWorld {
       : PLAYER_BODY_PROFILE.solidMask;
   }
 
-  /** A solid piece of room furniture — today just the chest, which you could
-   *  previously walk straight through (playtest B8). Same static-rect machinery
-   *  as a barrier, and deliberately in the same map: both are "solid rectangles
-   *  that aren't tiles", both must be cleared when the floor is rebuilt, and both
-   *  should stop an arrow. */
+  /** A solid piece of room furniture — the chest at a maze's deep end, which you
+   *  could otherwise walk straight through (playtest B8). Same static-rect
+   *  machinery as a barrier, and deliberately in the same map: both are "solid
+   *  rectangles that aren't tiles", both must be cleared when the floor is rebuilt,
+   *  and both should stop an arrow. */
   addSolidProp(id: string, cx: number, cy: number, w: number, h: number): void {
     this.addBarrier(`prop_${id}`, cx, cy, w, h);
   }

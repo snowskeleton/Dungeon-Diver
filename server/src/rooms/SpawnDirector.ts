@@ -22,7 +22,9 @@ const NO_RABBLE_ROOM_TYPES: RoomType[] = [
   "boss",
   "shop",
   "shrine",
-  "chest",
+  // The start/supply room is never populated — players must not be jumped on load,
+  // and it hosts the floor-1 weapon pedestals. finalizeEmptyRooms then unlocks it.
+  "supply",
 ];
 
 /** Everything that puts a creature on the floor: the per-room rabble pass, the

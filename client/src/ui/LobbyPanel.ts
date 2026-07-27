@@ -1,4 +1,4 @@
-import { CHARACTER_REGISTRY, WEAPON_REGISTRY, CharacterClass, CharacterType, MAX_PLAYER_NAME_LEN } from "shared";
+import { CHARACTER_REGISTRY, CharacterClass, CharacterType, MAX_PLAYER_NAME_LEN } from "shared";
 import { el, button, menuPanel, MenuPanel } from "./menuDom";
 
 /** One line in the roster, flattened from the room's PlayerState. */
@@ -7,7 +7,6 @@ export interface LobbySeat {
   name: string;
   characterClass: CharacterClass;
   characterType: CharacterType;
-  weaponId: string;
   ready: boolean;
   isHost: boolean;
   /** Which local seat this is (0 = P1 on this machine), or -1 for someone else's. */
@@ -104,7 +103,6 @@ export class LobbyPanel {
 
   private seatRow(seat: LobbySeat): HTMLElement {
     const charName = CHARACTER_REGISTRY[seat.characterClass]?.name ?? seat.characterClass;
-    const weaponName = WEAPON_REGISTRY[seat.weaponId as never]?.name ?? seat.weaponId;
     const isLocal = seat.localIndex >= 0;
 
     const badges: HTMLElement[] = [];
@@ -118,7 +116,7 @@ export class LobbyPanel {
 
     const info = el("div", { className: "m-grow" }, [
       el("div", { className: "m-row-name", text: seat.name }),
-      el("div", { className: "m-row-detail", text: `${charName} · ${weaponName}` }),
+      el("div", { className: "m-row-detail", text: charName }),
     ]);
 
     const row = el("div", { className: `m-row${isLocal ? " you" : ""}` }, [info, ...badges]);

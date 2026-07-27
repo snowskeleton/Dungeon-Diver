@@ -11,7 +11,7 @@ export const ROOM_H = 16;
 const DEFAULT_NEIGHBOR_CHANCE = 60;
 const DEFAULT_MIN_ROOMS = 4;
 // Room types that place objects on their floor tiles — never put the stairs there.
-const STAIRS_AVOID_TYPES: RoomType[] = ["shop", "shrine", "chest"];
+const STAIRS_AVOID_TYPES: RoomType[] = ["shop", "shrine"];
 // Percent chance that each eligible room hides a trap tile. Deliberately low: a
 // trap should be a rare gut-punch, not a tax on exploring.
 const TRAP_ROOM_CHANCE = 1;
@@ -21,7 +21,6 @@ const TRAP_AVOID_TYPES: RoomType[] = [
   "boss",
   "shop",
   "shrine",
-  "chest",
 ];
 // Keep traps this far inside a room's border (so they're never on a doorway) and
 // this far from its center (so one never lands on the stairs or a pedestal).
@@ -66,14 +65,15 @@ export interface DungeonOptions {
 // Room type spawn weights for non-boss rooms. Plain weights, summed at module
 // load — editing one no longer means recomputing every row below it.
 const ROOM_TYPE_WEIGHTS: { type: RoomType; weight: number }[] = [
-  { type: "combat", weight: 37 },
+  // Every non-reward room now drops a single reward pedestal on clear, so the
+  // chest room type was retired — its weight folded into plain combat.
+  { type: "combat", weight: 44 },
   { type: "timed",  weight:  6 },
   { type: "dark",   weight:  4 },
   { type: "wave",   weight:  8 },
   { type: "maze",   weight: 16 },
   { type: "shop",   weight: 15 },
   { type: "shrine", weight:  7 },
-  { type: "chest",  weight:  7 },
 ];
 const ROOM_TYPE_WEIGHT_TOTAL = ROOM_TYPE_WEIGHTS.reduce((n, e) => n + e.weight, 0);
 
@@ -538,9 +538,10 @@ function assignRoomTypes(
   const roomTypes = new Map<string, RoomType>();
 
   if (showcase) {
-    // start & exit are plain combat rooms; the middle is the room being shown off.
+    // The start room is always the supply room (cover-free, no rabble); the middle
+    // is the room being shown off, the last a plain combat exit.
     const midId = roomKey({ gx: 1, gy: 0 });
-    roomTypes.set(startId, "combat");
+    roomTypes.set(startId, "supply");
     roomTypes.set(midId, showcase);
     roomTypes.set(roomKey({ gx: 2, gy: 0 }), "combat");
     // Only a boss room if that's what's being shown off.
@@ -558,18 +559,15 @@ function assignRoomTypes(
   // All other rooms: the forced type, or a weighted roll
   for (const id of roomIds) {
     if (id === bossRoomId) continue;
+    // The roll is consumed for EVERY room including the start room, so the draw
+    // ORDER (and thus every other room's type) is independent of the start-room
+    // override below — see the determinism contract in CLAUDE.md.
     const rolled = forceRoomType ?? pickRoomType(rng);
-    // The start room never spawns enemies (players must not be jumped on load),
-    // so an objective there could never be completed: the tester saw a permanent
-    // "Wave 1 / 3" banner on the room they spawned in (playtest B4). Demote it to
-    // a plain combat room.
-    //
-    // The roll above happens either way, and combat/wave/timed carve identically,
-    // so this consumes the same rng draws in the same order and leaves every
-    // existing seed's tile map byte-for-byte unchanged — see the determinism
-    // contract in CLAUDE.md.
-    const orphanedObjective = id === startId && (rolled === "wave" || rolled === "timed");
-    roomTypes.set(id, orphanedObjective ? "combat" : rolled);
+    // The start room is always the SUPPLY room: cover-free, never populated, and
+    // on floor 1 the source of each player's first weapon. This also subsumes the
+    // old B4 fix (a "wave"/"timed" objective the start room could never complete)
+    // — a supply room carries no objective at all.
+    roomTypes.set(id, id === startId ? "supply" : rolled);
   }
   return { roomTypes, bossRoomId };
 }
@@ -834,28 +832,107 @@ function buildPlayerSpawns(
   spawnTile: { col: number; row: number },
   dims: FloorDims,
 ): Array<{ x: number; y: number }> {
-  const RING: Array<[number, number]> = [
-    [0, 0],
+  // Flood outward over connected FLOOR from the spawn tile and take the first four
+  // tiles in BFS order. This gives four DISTINCT, always-walkable spawns hugging
+  // the anchor even in a cramped maze start room — where the old 3×3 ring scan
+  // found too few open neighbours and stacked the overflow on the centre tile
+  // (three players on one tile on seed 9). For an open room the BFS visits
+  // centre → E → W → S, the same four the ring picked, so common floors are
+  // unchanged. The 4-connected neighbour ORDER is load-bearing for that match.
+  const NEIGHBOURS: Array<[number, number]> = [
     [1, 0],
     [-1, 0],
     [0, 1],
     [0, -1],
-    [1, 1],
-    [-1, -1],
-    [1, -1],
-    [-1, 1],
   ];
   const spawns: Array<{ x: number; y: number }> = [];
-  for (const [dc, dr] of RING) {
-    if (spawns.length >= 4) break;
-    const col = spawnTile.col + dc;
-    const row = spawnTile.row + dr;
+  const seen = new Set<string>();
+  const queue: Array<{ col: number; row: number }> = [spawnTile];
+  seen.add(`${spawnTile.col},${spawnTile.row}`);
+  while (queue.length > 0 && spawns.length < 4) {
+    const { col, row } = queue.shift()!;
     if (col < 0 || col >= dims.cols || row < 0 || row >= dims.rows) continue;
     if (mapData[row][col] !== TILE.FLOOR) continue;
     spawns.push(tileCenter(col, row));
+    for (const [dc, dr] of NEIGHBOURS) {
+      const key = `${col + dc},${row + dr}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      queue.push({ col: col + dc, row: row + dr });
+    }
   }
+  // Degenerate fallback (spawn tile somehow not FLOOR): keep four entries so the
+  // seat-to-spawn mapping never indexes past the end.
   while (spawns.length < 4) spawns.push(tileCenter(spawnTile.col, spawnTile.row));
   return spawns;
+}
+
+/**
+ * The interior FLOOR tile of a maze room that is hardest to reach — the tile
+ * maximizing BFS distance from the maze's doorway mouths. A chest placed here
+ * forces the party to actually solve the maze to reach the treasure.
+ *
+ * Doorways are always carved at a room's centre row/col on its outer walls (see
+ * carveDoorways), so those up-to-four border midpoints are the BFS seeds — but
+ * only the ones that are actually FLOOR, since an unconnected wall stays solid.
+ * Multi-source BFS from every real doorway means the tile chosen is far from ALL
+ * entrances, not just one. The search is confined to the room's own grid slot so
+ * it can't leak into a neighbour through a doorway corridor.
+ *
+ * Deterministic (no rng) — computed from the finished map, so calling it doesn't
+ * touch generation order or any seed's layout. Falls back to the room centre if
+ * the maze somehow has no floor seed (a disconnected room, which shouldn't occur).
+ */
+export function mazeDeepestTile(
+  mapData: TileId[][],
+  room: RoomData,
+): { col: number; row: number } {
+  const cMin = room.tileCol;
+  const cMax = room.tileCol + ROOM_W - 1;
+  const rMin = room.tileRow;
+  const rMax = room.tileRow + ROOM_H - 1;
+  const isFloor = (c: number, r: number) =>
+    c >= cMin && c <= cMax && r >= rMin && r <= rMax && mapData[r]?.[c] === TILE.FLOOR;
+
+  const candidates = [
+    { col: cMin, row: room.centerRow },
+    { col: cMax, row: room.centerRow },
+    { col: room.centerCol, row: rMin },
+    { col: room.centerCol, row: rMax },
+  ];
+  const dist = new Map<string, number>();
+  const queue: Array<{ col: number; row: number }> = [];
+  for (const s of candidates) {
+    if (!isFloor(s.col, s.row)) continue;
+    const k = `${s.col},${s.row}`;
+    if (dist.has(k)) continue;
+    dist.set(k, 0);
+    queue.push(s);
+  }
+  if (queue.length === 0) return { col: room.centerCol, row: room.centerRow };
+
+  const NB: Array<[number, number]> = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ];
+  let best = queue[0];
+  let bestD = 0;
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    const d = dist.get(`${cur.col},${cur.row}`)!;
+    if (d > bestD) { bestD = d; best = cur; }
+    for (const [dc, dr] of NB) {
+      const nc = cur.col + dc;
+      const nr = cur.row + dr;
+      const k = `${nc},${nr}`;
+      if (dist.has(k) || !isFloor(nc, nr)) continue;
+      dist.set(k, d + 1);
+      queue.push({ col: nc, row: nr });
+    }
+  }
+  return best;
 }
 
 // ── 8. Colour boss passageway tiles gold ───────────────────────────────────

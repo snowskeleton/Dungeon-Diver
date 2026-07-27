@@ -1,7 +1,8 @@
 import {
   InputMessage, CharacterClass, CharacterType, CharacterConfig, getCharacterConfig,
-  WeaponId, Weapon, WeaponInstance, WeaponMod, WEAPON_REGISTRY, AMMO_REGISTRY,
+  Weapon, WeaponInstance, WeaponMod, WEAPON_REGISTRY, AMMO_REGISTRY,
   PLAYER_BODY_PROFILE, PLAYER_ATTACK_AFFECTS, Facing, Attack, foldStat,
+  canClassUseWeapon,
 } from "shared";
 import { PlayerState, UpgradeSlotState } from "../schema/PlayerState";
 import { WeaponSlotState } from "../schema/WeaponSlotState";
@@ -55,7 +56,6 @@ export class Player extends Entity implements Caster {
     startY: number,
     characterClass: CharacterClass = "knight",
     characterType: CharacterType = "guy",
-    weaponId?: WeaponId,
   ) {
     super();
     this.charConfig = getCharacterConfig(characterClass);
@@ -70,9 +70,16 @@ export class Player extends Entity implements Caster {
     this.state.health = this.stats.maxHp;
     this.state.maxHp = this.stats.maxHp;
 
-    const startTemplate = resolveTemplate(weaponId) ?? resolveTemplate(this.charConfig.defaultWeaponId)!;
-    this.addWeapon(startTemplate);
+    // Players start EMPTY-HANDED — no default weapon, no starting weapon pick. The
+    // first weapon is claimed from a supply-room pedestal on floor 1 (see
+    // LootDirector.spawnSupply). `state.weaponId` stays "" until then.
     this.attachBody(physics, startX, startY, PLAYER_BODY_PROFILE);
+  }
+
+  /** Whether this player's class is allowed to equip the given weapon (D9/D18).
+   *  The permission lives on the class; this just asks it. */
+  canEquip(weaponId: string): boolean {
+    return canClassUseWeapon(this.charConfig.id, weaponId);
   }
 
   // ── Folded stats (base + every contributor) ──────────────────────────────────
@@ -118,8 +125,9 @@ export class Player extends Entity implements Caster {
     return this.stats.speed;
   }
 
-  /** The active weapon instance — derived from the weapon list + active slot. */
-  get weapon(): WeaponInstance {
+  /** The active weapon instance, or `undefined` when the player holds none (before
+   *  they claim their first supply-room weapon). Callers that attack must guard. */
+  get weapon(): WeaponInstance | undefined {
     return this.weapons[this.activeIndex] ?? this.weapons[0];
   }
 
@@ -167,7 +175,7 @@ export class Player extends Entity implements Caster {
     if (n <= 1) return;
     this.activeIndex = (((this.activeIndex + delta) % n) + n) % n;
     this.state.activeWeaponIndex = this.activeIndex;
-    this.state.weaponId = this.weapon.id;
+    this.state.weaponId = this.weapons[this.activeIndex].id;
   }
 
   /** Equip a specific weapon slot by index (the inventory menu clicks a row).
@@ -177,7 +185,7 @@ export class Player extends Entity implements Caster {
     if (index < 0 || index >= this.weapons.length) return;
     this.activeIndex = index;
     this.state.activeWeaponIndex = this.activeIndex;
-    this.state.weaponId = this.weapon.id;
+    this.state.weaponId = this.weapons[this.activeIndex].id;
   }
 
   /** Spend HP (store purchases). Never lethal — floors at 1 (callers also gate
@@ -275,11 +283,11 @@ export class Player extends Entity implements Caster {
 
     const risingEdge = input.attack && !this.prevAttack;
     const weapon = this.weapon;
-    const spell = this.spellFor(weapon);
+    const spell = weapon ? this.spellFor(weapon) : undefined;
 
     // Ranged weapons freeze facing while held so you can strafe under your aim —
     // except the first press frame, which still turns you to aim.
-    const facingLocked = weapon.isRanged && input.attack && !risingEdge;
+    const facingLocked = weapon?.isRanged && input.attack && !risingEdge;
     if (!facingLocked) {
       if (input.dx > 0) this.state.facing = "right";
       else if (input.dx < 0) this.state.facing = "left";
@@ -291,11 +299,13 @@ export class Player extends Entity implements Caster {
 
     // Advance an in-flight attack; then — the same tick it finishes — a held/pressed
     // attack may start the next one, so the cadence is exactly the weapon's cooldown.
+    // With no weapon (before the first supply pickup) there is nothing to cast, so the
+    // whole attack block is skipped and the player just moves.
     const aim = this.facingAim();
     if (this.spellCaster.busy) {
       this.spellCaster.update(this, dtMs, aim);
     }
-    if (!this.spellCaster.busy) {
+    if (spell && !this.spellCaster.busy) {
       const wantsToFire = spell.fireMode === "hold" ? input.attack : risingEdge;
       if (wantsToFire && spell.isReady(this.spellCaster.now)) {
         this.state.attackSeq = (this.state.attackSeq + 1) % 65536;

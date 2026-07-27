@@ -29,7 +29,6 @@ export interface JoinRoomOptions {
   playerName?: string;
   characterClass?: string;
   characterType?: string;
-  weaponId?: string;
   /** True for players 2–4 on one machine: they follow the host and are born ready. */
   couch?: boolean;
 }
@@ -60,7 +59,6 @@ export interface SetNameMessage {
 export interface SetLoadoutMessage {
   characterClass: string;
   characterType: string;
-  weaponId: string;
 }
 
 export interface SetReadyMessage {

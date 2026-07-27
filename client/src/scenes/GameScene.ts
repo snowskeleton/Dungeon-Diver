@@ -6,7 +6,7 @@ import {
   WEAPON_REGISTRY, AMMO_REGISTRY, DungeonOptions, DungeonResult, toDungeonOptions,
   RoomType, DebugConfig, DEFAULT_DEBUG_CONFIG,
   GameStateView, PlayerStateView, EnemyStateView, ProjectileStateView,
-  ShopStateView, ShopItemStateView, OfferStateView, ChestStateView, CoinStateView,
+  ShopStateView, ShopItemStateView, OfferStateView, RewardStateView, ChestStateView, CoinStateView,
 } from "shared";
 import { DarknessOverlay } from "../map/DarknessOverlay";
 import { BarrierOverlays } from "../map/BarrierOverlays";
@@ -32,6 +32,7 @@ import { Minimap } from "../ui/Minimap";
 import { UiLayer } from "../ui/UiLayer";
 import { ShopItemEntity } from "../entities/ShopItemEntity";
 import { OfferPedestalEntity } from "../entities/OfferPedestalEntity";
+import { RewardPedestalEntity } from "../entities/RewardPedestalEntity";
 import { ChestEntity, preloadChest, defineChestAnimations } from "../entities/ChestEntity";
 import { Party } from "../net/Party";
 import { PauseMenu } from "../ui/PauseMenu";
@@ -71,6 +72,8 @@ export class GameScene extends Phaser.Scene {
   private roomTypes: Map<string, RoomType> = new Map();
   private shopItems = new Map<string, ShopItemEntity>();
   private offerPedestals = new Map<string, OfferPedestalEntity>();
+  private rewardPedestals = new Map<string, RewardPedestalEntity>();
+  private supplyPedestals = new Map<string, RewardPedestalEntity>();
   private chests = new Map<string, ChestEntity>();
   private coins = new Map<string, CoinEntity>();
   private hitboxDebug!: HitboxDebug;
@@ -142,6 +145,8 @@ export class GameScene extends Phaser.Scene {
     this.projectiles.clear();
     this.shopItems.clear();
     this.offerPedestals.clear();
+    this.rewardPedestals.clear();
+    this.supplyPedestals.clear();
     this.chests.clear();
     this.coins.clear();
     this.localSessionIds.clear();
@@ -348,6 +353,15 @@ export class GameScene extends Phaser.Scene {
     this.challengeBanner = new ChallengeBanner(this, 400, 96, this.ui);
     this.darkness = new DarknessOverlay(this);
     this.hud = new GameHud(this, this.ui, options.showControlsHint);
+
+    // Loot errors (e.g. picking up a weapon this class can't use) come back to the
+    // ONE client that acted. Couch players each hold their own connection but share
+    // this HUD, so register on every local room and flash the shared HUD.
+    for (const player of this.localManager.getAll()) {
+      player.room.onMessage("loot_error", (msg: { reason: string }) => {
+        this.hud.flash(msg.reason);
+      });
+    }
 
     this.ready = true;
   }
@@ -671,8 +685,41 @@ export class GameScene extends Phaser.Scene {
       this.offerPedestals.delete(roomId);
     });
 
-    // Treasure chests: one per chest room, keyed by room id. `opened` is the only
-    // field that ever changes; floor change clears the whole map, firing onRemove.
+    // Room-clear reward pedestals: one dropped where each non-reward room's last
+    // enemy fell, keyed by room id. This map grows during play (a pedestal appears
+    // the instant a room clears); `claimed` is the only field that ever changes.
+    state.rewards.onAdd((reward: RewardStateView, roomId: string) => {
+      const view = new RewardPedestalEntity(
+        this, reward.x, reward.y, reward.kind, reward.name, reward.claimed,
+      );
+      this.rewardPedestals.set(roomId, view);
+      reward.onChange(() => view.setClaimed(reward.claimed));
+    });
+
+    state.rewards.onRemove((_: RewardStateView, roomId: string) => {
+      this.rewardPedestals.get(roomId)?.destroy();
+      this.rewardPedestals.delete(roomId);
+    });
+
+    // Floor-1 supply pedestals: one weapon per player in the start room, keyed by
+    // pedestal id. Same RewardState shape (always kind "weapon") and same view as a
+    // room-clear reward — placed at run start, `claimed` the only field that changes.
+    state.supplies.onAdd((reward: RewardStateView, supplyId: string) => {
+      const view = new RewardPedestalEntity(
+        this, reward.x, reward.y, reward.kind, reward.name, reward.claimed,
+      );
+      this.supplyPedestals.set(supplyId, view);
+      reward.onChange(() => view.setClaimed(reward.claimed));
+    });
+
+    state.supplies.onRemove((_: RewardStateView, supplyId: string) => {
+      this.supplyPedestals.get(supplyId)?.destroy();
+      this.supplyPedestals.delete(supplyId);
+    });
+
+    // Maze chests: one at the deep end of every maze room, keyed by room id. Placed
+    // at floor generation, so this fires at map build; `opened` is the only field
+    // that ever changes. Floor change clears the whole map, firing onRemove.
     state.chests.onAdd((chest: ChestStateView, roomId: string) => {
       const view = new ChestEntity(this, chest.x, chest.y, chest.gold, chest.opened);
       this.chests.set(roomId, view);
@@ -773,14 +820,20 @@ export class GameScene extends Phaser.Scene {
   private updateInteractPrompts() {
     const nearShop = new Set<string>();
     const nearOffer = new Set<string>();
+    const nearReward = new Set<string>();
+    const nearSupply = new Set<string>();
     const nearChest = new Set<string>();
     for (const p of this.localManager.getAll()) {
       if (p.nearbyShopItem) nearShop.add(`${p.nearbyShopItem.roomId}:${p.nearbyShopItem.itemIndex}`);
       if (p.nearbyOffer) nearOffer.add(p.nearbyOffer.roomId);
+      if (p.nearbyReward) nearReward.add(p.nearbyReward.roomId);
+      if (p.nearbySupply) nearSupply.add(p.nearbySupply.supplyId);
       if (p.nearbyChest) nearChest.add(p.nearbyChest.roomId);
     }
     this.shopItems.forEach((view, key) => view.setPromptShown(nearShop.has(key)));
     this.offerPedestals.forEach((view, roomId) => view.setPromptShown(nearOffer.has(roomId)));
+    this.rewardPedestals.forEach((view, roomId) => view.setPromptShown(nearReward.has(roomId)));
+    this.supplyPedestals.forEach((view, id) => view.setPromptShown(nearSupply.has(id)));
     this.chests.forEach((view, roomId) => view.setPromptShown(nearChest.has(roomId)));
   }
 

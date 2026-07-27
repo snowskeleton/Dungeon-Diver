@@ -20,8 +20,9 @@ export class PlayerState extends EntityState implements PlayerStateView {
   @type("string") characterClass: CharacterClass = "knight";
   @type("string") characterType: CharacterType = "guy";
   // weaponId is the ACTIVE weapon (updated on switch) so remote weapon-visual
-  // swaps key off it; weapons + activeWeaponIndex drive the HUD/switching.
-  @type("string") weaponId: string = "broadsword";
+  // swaps key off it; weapons + activeWeaponIndex drive the HUD/switching. Empty
+  // until the player claims their first weapon — they spawn empty-handed.
+  @type("string") weaponId: string = "";
   // Named `weapons` rather than `inventory` because other item lists (consumables,
   // key items, equipment) are expected to sit beside it as their own typed lists.
   @type([WeaponSlotState]) weapons = new ArraySchema<WeaponSlotState>();

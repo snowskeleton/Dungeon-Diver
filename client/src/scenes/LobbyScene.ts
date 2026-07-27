@@ -91,7 +91,6 @@ export class LobbyScene extends Phaser.Scene {
         name: player.name,
         characterClass: player.characterClass as CharacterClass,
         characterType: player.characterType as CharacterType,
-        weaponId: player.weaponId,
         ready: player.ready,
         isHost: sessionId === state.hostSessionId,
         localIndex: localSessionIds.indexOf(sessionId),

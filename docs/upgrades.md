@@ -165,6 +165,24 @@ once and can't be farmed.
 
 - **Shrine:** 1 weapon + 2 upgrades. **Boss:** 2 weapons + 1 upgrade, so beating a
   boss reads as loot rather than another stat bump.
+- **Room-clear pedestal (`RewardState`, `GameState.rewards`).** Every non-reward room
+  (combat/maze/dark/wave, and a timed room that missed its bonus) drops ONE reward on
+  the tick it clears, where its last enemy fell (`LootDirector.dropRoomReward`, fired
+  from `GameRoom`'s death loop when the room newly clears and holds no offer). Unlike
+  an offer there's no 1-of-3 and no pause — walk up, interact, done. `kind` is a
+  weighted roll (`ROOM_REWARD_WEIGHTS`) over a modded weapon / an upgrade / a gold
+  payout; the exhaustive `claimReward` switch grants it. Weapon `mods` ride the same
+  undecorated server-only field described below. This replaced the old chest room —
+  reward-per-room instead of loot gated to a rare room type.
+- **Maze chest (`ChestState`, `GameState.chests`).** A maze room *also* holds a
+  treasure chest at its hardest-to-reach tile (`mazeDeepestTile` — multi-source BFS
+  from the maze's doorways, so the chest is far from every entrance). Placed at floor
+  generation and openable anytime (`LootDirector.spawnChests` / `chestOpen`): solving
+  the maze is the gate, not a room clear, so a party is rewarded for the traversal
+  itself on top of the maze's ordinary clear pedestal. It's a solid prop (you can't
+  walk through it) holding a weapon-with-mods, and its contents stay on the undecorated
+  server-only field so opening it is a surprise. The chest is a *placement*, not a room
+  type — reusable later for puzzle rewards.
 - **The room pauses while the picker is open** (reusing the inventory menu's
   `setPause` handshake), unlike shops. A shop decision is reversible browsing; a
   1-of-3 is an irreversible modal choice, and the room is already cleared so pausing

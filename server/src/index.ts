@@ -2,7 +2,7 @@ import { Server } from "colyseus";
 import { createServer } from "http";
 import path from "path";
 import express from "express";
-import { ROOM_CODE_LOOKUP_PATH, isRoomCode } from "shared";
+import { ROOM_CODE_LOOKUP_PATH, isRoomCode, assertClassesHaveFirstRollPool } from "shared";
 import { GameRoom } from "./rooms/GameRoom";
 import { findRoomByCode } from "./rooms/roomCodes";
 import { assertUpgradesCoverAllIds } from "./upgrades";
@@ -10,6 +10,9 @@ import { assertUpgradesCoverAllIds } from "./upgrades";
 // Fail at boot, not silently at pick time, if the shared UpgradeId union and the
 // server's Upgrade classes have drifted apart.
 assertUpgradesCoverAllIds();
+// Likewise fail at boot if a class has no unique weapon category to roll its first
+// weapon from (its supply pedestal would be empty).
+assertClassesHaveFirstRollPool();
 
 const port = Number(process.env.PORT ?? 2567);
 const app = express();

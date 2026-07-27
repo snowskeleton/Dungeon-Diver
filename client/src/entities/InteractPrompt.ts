@@ -2,7 +2,7 @@ import Phaser from "phaser";
 import { promptKeyLabel } from "../options/keybindings";
 
 // A small world-space "press <key>" hint that floats above an interactable object
-// (shop pedestal, reward pedestal, chest, …) whenever a local player is within
+// (shop pedestal, reward pedestal, maze chest, …) whenever a local player is within
 // interaction range. One reusable component so every interactable shares the same
 // affordance instead of each growing bespoke prompt code.
 //

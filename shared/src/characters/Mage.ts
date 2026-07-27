@@ -5,5 +5,5 @@ export const MAGE_CONFIG: CharacterConfig = {
   name: "Mage",
   maxHp: 60,
   speed: 140,
-  defaultWeaponId: "oak-staff",
+  usableCategories: ["sword", "axe", "spear", "rapier", "staff"],
 };

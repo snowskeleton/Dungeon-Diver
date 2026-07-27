@@ -149,7 +149,6 @@ export class Party {
       playerName: couch ? `${this.playerName} (P${this.membersList.length + 1})` : this.playerName,
       characterClass: loadout.characterClass,
       characterType: loadout.characterType,
-      weaponId: loadout.weaponId,
       couch,
     };
   }

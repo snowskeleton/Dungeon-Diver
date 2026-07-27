@@ -54,10 +54,12 @@ export type RoomType =
   | "boss"
   | "shop"
   | "shrine"
-  | "chest"
   | "wave"
   | "timed"
-  | "dark";
+  | "dark"
+  // The run's start room: a cover-free staging room, never populated with rabble.
+  // On floor 1 it holds one weapon pedestal per player (LootDirector.spawnSupply).
+  | "supply";
 
 // Server → client messages
 export interface FloorChangeMessage {

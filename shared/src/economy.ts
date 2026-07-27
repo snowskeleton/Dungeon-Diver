@@ -34,7 +34,7 @@ export function floorGoldBudget(players: number): number {
 export const SHOP_TIERS = [50, 100, 150] as const;
 
 /** The shop is the ONLY thing gold buys. Reward pedestals (shrine, boss, timed-clear)
- *  and chests are earned, so they are always free — a shrine used to charge 50g and it
+ *  and room-clear drops are earned, so they are always free — a shrine used to charge 50g and it
  *  read as the game asking you to pay for a reward you had already won. Don't reintroduce
  *  a price on anything but a shop pedestal; add a new gold SINK as a new shop-like thing
  *  instead. */

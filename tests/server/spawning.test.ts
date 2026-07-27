@@ -136,7 +136,7 @@ describe("the rank-and-file pass", () => {
       const f = floor({ seed });
       f.spawner.spawnFloorEnemies();
       const rewardRooms = new Set(
-        f.dungeon.rooms.filter(r => ["shop", "shrine", "chest"].includes(r.type)).map(r => r.id),
+        f.dungeon.rooms.filter(r => ["shop", "shrine"].includes(r.type)).map(r => r.id),
       );
       for (const id of f.enemies.keys()) {
         expect(rewardRooms.has(f.floorManager.getEnemyRoom(id)!), `seed ${seed}`).toBe(false);
@@ -239,7 +239,7 @@ describe("enemy counts", () => {
     // The start room is the one exception that survives the override — players
     // spawn there, so it stays clear whatever the debug knob says.
     const rewardRooms = f.dungeon.rooms.filter(
-      r => ["shop", "shrine", "chest"].includes(r.type) && r.id !== f.dungeon.startRoomId,
+      r => ["shop", "shrine"].includes(r.type) && r.id !== f.dungeon.startRoomId,
     );
     expect(rewardRooms.length).toBeGreaterThan(0);
     for (const r of rewardRooms) expect(rooms.has(r.id), r.id).toBe(true);
@@ -455,14 +455,26 @@ describe("the party's own spawn points", () => {
     }
   });
 
+  it("gives even a maze-corridor start four distinct spawn tiles", () => {
+    // Seed 6's start room is a maze corridor. The BFS spawner floods down it, so
+    // all four spawns land on their own tile instead of stacking on the anchor.
+    const d = generateDungeon(6);
+    const distinct = new Set(d.playerSpawns.map(s => `${s.x},${s.y}`)).size;
+    expect(distinct).toBe(4);
+  });
+
   it("separates a stacked pair by a few pixels rather than flinging one away", () => {
-    // Seed 6's start room is a maze corridor, so two of its four spawns are the
-    // same tile. Matter resolves the overlap gently; nobody is teleported.
+    // Spawns are distinct now, but two players CAN still end up on the same tile at
+    // runtime (a teleport, a knockback pile-up). Matter must resolve that overlap
+    // gently — a nudge, never a launch. Stack a pair deliberately to prove it.
     const d = generateDungeon(6);
     const physics = new PhysicsWorld(d.mapData, d.cols, d.rows);
-    const party = d.playerSpawns.map(s => new Player(physics, s.x, s.y));
+    const at = d.playerSpawns[0];
+    const party = [
+      new Player(physics, at.x, at.y),
+      new Player(physics, at.x, at.y),
+    ];
     const start = party.map(p => ({ x: p.state.x, y: p.state.y }));
-    expect(new Set(start.map(s => `${s.x},${s.y}`)).size).toBe(3); // the stacked pair
 
     for (let t = 0; t < 60; t++) {
       for (const p of party) p.commitVelocity();
@@ -476,6 +488,6 @@ describe("the party's own spawn points", () => {
     }
     // ...and they really did come apart.
     const ends = party.map(p => `${p.state.x.toFixed(1)},${p.state.y.toFixed(1)}`);
-    expect(new Set(ends).size).toBe(4);
+    expect(new Set(ends).size).toBe(2);
   });
 });

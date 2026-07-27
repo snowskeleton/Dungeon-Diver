@@ -307,7 +307,7 @@ describe("reward rooms on a normal floor", () => {
     }
     floor.finalizeEmptyRooms();
 
-    const reward = d.rooms.filter((r: RoomData) => ["shop", "shrine", "chest"].includes(r.type));
+    const reward = d.rooms.filter((r: RoomData) => ["shop", "shrine"].includes(r.type));
     expect(reward.length).toBeGreaterThan(0);
     for (const r of reward) {
       expect(floor.isRoomCleared(r.id), r.id).toBe(true);

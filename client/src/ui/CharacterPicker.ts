@@ -1,4 +1,4 @@
-import { CHARACTER_REGISTRY, CharacterClass, CharacterType, WEAPON_REGISTRY } from "shared";
+import { CHARACTER_REGISTRY, CharacterClass, CharacterType, firstRollCategories } from "shared";
 import { CLIENT_CHARACTER_VISUAL_REGISTRY } from "../characters";
 import { addStyle, button, el, menuPanel, selectOne } from "./menuDom";
 
@@ -59,7 +59,9 @@ export class CharacterPicker {
           el("div", { className: "m-tile-name", text: cfg.name }),
           el("div", {
             className: "m-tile-detail",
-            text: `${cfg.maxHp} HP · ${cfg.speed} spd\n${WEAPON_REGISTRY[cfg.defaultWeaponId].name}`,
+            // The class's UNIQUE weapon categories are its identity and its
+            // first-weapon roll pool (the shared melee categories are omitted).
+            text: `${cfg.maxHp} HP · ${cfg.speed} spd\n${firstRollCategories(id).join(", ")}`,
           }),
         ]);
         tile.addEventListener("click", () => {

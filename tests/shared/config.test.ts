@@ -14,6 +14,8 @@ import {
   CharacterClass,
   getCharacterConfig,
   WEAPON_REGISTRY,
+  firstRollCategories,
+  firstRollWeaponIds,
   DEFAULT_DEBUG_CONFIG,
   DebugConfig,
   toDungeonOptions,
@@ -101,22 +103,28 @@ describe("character classes", () => {
     }
   });
 
-  it("gives every class a name, a viable stat line, and a real starting weapon", () => {
+  it("gives every class a name, a viable stat line, and a first-weapon pool", () => {
     for (const cls of classes) {
       const c = CHARACTER_REGISTRY[cls];
       expect(c.name.length, cls).toBeGreaterThan(0);
       expect(c.maxHp, cls).toBeGreaterThan(0);
       expect(c.speed, cls).toBeGreaterThan(0);
-      expect(WEAPON_REGISTRY[c.defaultWeaponId], `${cls} → ${c.defaultWeaponId}`).toBeDefined();
+      // No default weapon anymore — but every class must have at least one UNIQUE
+      // category to roll its first supply-room weapon from.
+      expect(firstRollWeaponIds(cls).length, `${cls} first-roll pool`).toBeGreaterThan(0);
+      for (const id of firstRollWeaponIds(cls)) {
+        expect(WEAPON_REGISTRY[id], `${cls} → ${id}`).toBeDefined();
+      }
     }
   });
 
   it("differentiates the roster — they are not four reskins", () => {
     const hp = new Set(classes.map(c => CHARACTER_REGISTRY[c].maxHp));
     const speed = new Set(classes.map(c => CHARACTER_REGISTRY[c].speed));
-    const weapons = new Set(classes.map(c => CHARACTER_REGISTRY[c].defaultWeaponId));
+    // Each class owns a DISTINCT set of unique weapon categories (its identity).
+    const firstRoll = new Set(classes.map(c => firstRollCategories(c).slice().sort().join(",")));
     expect(hp.size + speed.size).toBeGreaterThan(2);
-    expect(weapons.size).toBe(4);
+    expect(firstRoll.size).toBe(4);
   });
 
   it("gives the tank more HP than the glass cannon", () => {

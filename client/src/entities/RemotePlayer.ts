@@ -33,8 +33,9 @@ export class RemotePlayer extends Entity implements DebugDrawable {
   ) {
     const cfg = getCharacterConfig(characterClass);
     const visualDef = CLIENT_CHARACTER_VISUAL_REGISTRY[characterType];
-    const resolvedWeaponId = (weaponId ?? cfg.defaultWeaponId) as WeaponId;
-    const weapon = WEAPON_REGISTRY[resolvedWeaponId];
+    // May be empty until the player claims their first supply-room weapon — then
+    // `weapon` is undefined and setupCharacter renders no weapon (NoVisual).
+    const weapon = weaponId ? WEAPON_REGISTRY[weaponId as WeaponId] : undefined;
     super(scene, x, y, 0x9f7aea, cfg.maxHp);
     this.targetX = x;
     this.targetY = y;

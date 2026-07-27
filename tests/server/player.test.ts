@@ -14,8 +14,14 @@ import { flatWorld } from "../helpers/world";
 // The player's own layer: character config, the weapon list, the input cadence,
 // and what it puts on the wire.
 
-const newPlayer = (cls: CharacterClass = "knight", weaponId?: string) =>
-  new Player(flatWorld(), 300, 300, cls, "guy", weaponId as never);
+// Players spawn empty-handed now, so a test that needs a weapon arms one. The
+// helper arms `weaponId` (broadsword by default) so the weapon-list and cadence
+// tests below have something to swing.
+const newPlayer = (cls: CharacterClass = "knight", weaponId: string = "broadsword") => {
+  const p = new Player(flatWorld(), 300, 300, cls, "guy");
+  p.addWeapon(WEAPON_REGISTRY[weaponId as never]);
+  return p;
+};
 
 describe("character configuration", () => {
   it("takes its stats from the chosen class", () => {
@@ -27,20 +33,13 @@ describe("character configuration", () => {
     }
   });
 
-  it("starts with its class's default weapon", () => {
+  it("starts empty-handed — the first weapon comes from a supply pedestal", () => {
     for (const cls of Object.keys(CHARACTER_REGISTRY) as CharacterClass[]) {
-      expect(newPlayer(cls).weapon.id).toBe(CHARACTER_REGISTRY[cls].defaultWeaponId);
+      const p = new Player(flatWorld(), 300, 300, cls, "guy");
+      expect(p.weapons).toHaveLength(0);
+      expect(p.weapon).toBeUndefined();
+      expect(p.state.weaponId).toBe("");
     }
-  });
-
-  it("honours a requested starting weapon", () => {
-    expect(newPlayer("knight", "longbow").weapon.id).toBe("longbow");
-  });
-
-  it("falls back to the class default for a bogus weapon id from the client", () => {
-    // The join-time weapon id is untrusted input.
-    const p = newPlayer("knight", "not-a-real-weapon");
-    expect(p.weapon.id).toBe(CHARACTER_REGISTRY.knight.defaultWeaponId);
   });
 
   it("mirrors class and skin onto the synced state", () => {
@@ -63,12 +62,12 @@ describe("the weapon list", () => {
     const p = newPlayer();
     expect(p.weapons).toHaveLength(1);
     expect(p.state.activeWeaponIndex).toBe(0);
-    expect(p.state.weaponId).toBe(p.weapon.id);
+    expect(p.state.weaponId).toBe(p.weapon!.id);
   });
 
   it("mints a distinct instance per pickup, so duplicates are real duplicates", () => {
     const p = newPlayer();
-    const a = p.weapon;
+    const a = p.weapon!;
     const b = p.addWeapon(WEAPON_REGISTRY["broadsword"]);
     const c = p.addWeapon(WEAPON_REGISTRY["broadsword"]);
 
@@ -101,13 +100,13 @@ describe("the weapon list", () => {
     p.addWeapon(WEAPON_REGISTRY["hatchet"]);
 
     p.switchWeapon(1);
-    expect(p.weapon.id).toBe("longbow");
+    expect(p.weapon!.id).toBe("longbow");
     p.switchWeapon(1);
-    expect(p.weapon.id).toBe("hatchet");
+    expect(p.weapon!.id).toBe("hatchet");
     p.switchWeapon(1);
-    expect(p.weapon.id).toBe("broadsword"); // wrapped forward
+    expect(p.weapon!.id).toBe("broadsword"); // wrapped forward
     p.switchWeapon(-1);
-    expect(p.weapon.id).toBe("hatchet");    // and backward
+    expect(p.weapon!.id).toBe("hatchet");    // and backward
   });
 
   it("does nothing when there is only one weapon to switch to", () => {
@@ -213,6 +212,14 @@ describe("input and attack cadence", () => {
     expect(p.state.facing).toBe("down");
   });
 
+  it("a weaponless player still moves and faces, and attacking is a harmless no-op", () => {
+    // Players spawn empty-handed; applyInput must not assume a weapon exists.
+    const p = new Player(flatWorld(), 300, 300, "knight", "guy");
+    expect(() => p.applyInput({ dx: 1, dy: 0, attack: true }, SERVER_TICK_MS)).not.toThrow();
+    expect(p.state.facing).toBe("right");
+    expect(p.state.isAttacking).toBe(false);
+  });
+
   it("does not lock a melee weapon's facing", () => {
     const p = newPlayer("knight", "broadsword");
     p.applyInput({ dx: 1, dy: 0, attack: true }, SERVER_TICK_MS);
@@ -276,25 +283,25 @@ describe("the wire shape of a weapon slot", () => {
 
   it("carries ammo damage as ammo + weapon, matching what actually gets fired", () => {
     const p = newPlayer("ranger", "longbow");
-    const slot = slotStateFor(p.weapon);
-    const ammo = AMMO_REGISTRY[p.weapon.ammoId!];
+    const slot = slotStateFor(p.weapon!);
+    const ammo = AMMO_REGISTRY[p.weapon!.ammoId!];
 
-    expect(slot.ammoDamage).toBe(ammo.damage + p.weapon.damage);
+    expect(slot.ammoDamage).toBe(ammo.damage + p.weapon!.damage);
     expect(slot.ammoSpeed).toBe(ammo.speed);
     expect(slot.ammoPierce).toBe(ammo.pierce);
   });
 
   it("reconstructs on the client into the same numbers the server holds", () => {
     const p = newPlayer("ranger", "longbow");
-    const view = viewFromSlot(slotStateFor(p.weapon))!;
+    const view = viewFromSlot(slotStateFor(p.weapon!))!;
 
-    expect(view.damage).toBe(p.weapon.damage);
-    expect(view.attackCooldownMs).toBe(Math.round(p.weapon.attackCooldownMs));
-    expect(view.ammo!.damage).toBe(AMMO_REGISTRY[p.weapon.ammoId!].damage + p.weapon.damage);
+    expect(view.damage).toBe(p.weapon!.damage);
+    expect(view.attackCooldownMs).toBe(Math.round(p.weapon!.attackCooldownMs));
+    expect(view.ammo!.damage).toBe(AMMO_REGISTRY[p.weapon!.ammoId!].damage + p.weapon!.damage);
   });
 
   it("leaves the ammo block empty for a melee weapon", () => {
-    const slot = slotStateFor(newPlayer("knight", "broadsword").weapon);
+    const slot = slotStateFor(newPlayer("knight", "broadsword").weapon!);
     expect(slot.ammoDamage).toBe(0);
   });
 });

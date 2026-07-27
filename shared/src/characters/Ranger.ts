@@ -5,5 +5,5 @@ export const RANGER_CONFIG: CharacterConfig = {
   name: "Ranger",
   maxHp: 80,
   speed: 170,
-  defaultWeaponId: "shortbow",
+  usableCategories: ["sword", "axe", "spear", "rapier", "bow", "crossbow"],
 };

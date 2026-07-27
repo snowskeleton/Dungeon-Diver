@@ -1,4 +1,4 @@
-import { CHARACTER_REGISTRY, CharacterClass, CharacterType, WeaponId, WEAPON_REGISTRY, MAX_PLAYER_NAME_LEN } from "shared";
+import { CHARACTER_REGISTRY, CharacterClass, CharacterType, MAX_PLAYER_NAME_LEN } from "shared";
 import { Loadout } from "../launch";
 
 /**
@@ -17,7 +17,6 @@ export interface Profile {
   name: string;
   characterClass: CharacterClass;
   characterType: CharacterType;
-  weaponId: WeaponId;
 }
 
 const STORAGE_KEY = "game2.profile";
@@ -26,7 +25,6 @@ export const DEFAULT_PROFILE: Profile = {
   name: "Player",
   characterClass: "knight",
   characterType: "guy",
-  weaponId: CHARACTER_REGISTRY.knight.defaultWeaponId,
 };
 
 let cached: Profile | null = null;
@@ -38,15 +36,11 @@ function sanitize(raw: Partial<Profile>): Profile {
   const characterClass = raw.characterClass && CHARACTER_REGISTRY[raw.characterClass]
     ? raw.characterClass
     : DEFAULT_PROFILE.characterClass;
-  const weaponId = raw.weaponId && WEAPON_REGISTRY[raw.weaponId]
-    ? raw.weaponId
-    : CHARACTER_REGISTRY[characterClass].defaultWeaponId;
   const name = (raw.name ?? "").trim().slice(0, MAX_PLAYER_NAME_LEN);
   return {
     name: name.length > 0 ? name : DEFAULT_PROFILE.name,
     characterClass,
     characterType: raw.characterType ?? DEFAULT_PROFILE.characterType,
-    weaponId,
   };
 }
 
@@ -77,6 +71,5 @@ export function profileLoadout(profile: Profile = loadProfile()): Loadout {
   return {
     characterClass: profile.characterClass,
     characterType: profile.characterType,
-    weaponId: profile.weaponId,
   };
 }

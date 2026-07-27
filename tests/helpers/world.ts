@@ -11,6 +11,10 @@ import {
   Layer,
   SERVER_TICK_MS,
   AMMO_REGISTRY,
+  WEAPON_REGISTRY,
+  WeaponId,
+  CharacterClass,
+  CharacterType,
   PLAYER_ATTACK_AFFECTS,
   ENEMY_ATTACK_AFFECTS,
 } from "shared";
@@ -32,6 +36,22 @@ export function flatMap(cols = COLS, rows = ROWS, tile: TileId = TILE.FLOOR): Ti
 
 export function flatWorld(cols = COLS, rows = ROWS): PhysicsWorld {
   return new PhysicsWorld(flatMap(cols, rows), cols, rows);
+}
+
+/** A Player already holding a weapon. Players now spawn empty-handed (the first
+ *  weapon comes from a supply pedestal), so any test that needs to attack must arm
+ *  the player explicitly — this is the shared way to do it. */
+export function armedPlayer(
+  physics: PhysicsWorld,
+  x: number,
+  y: number,
+  cls: CharacterClass,
+  type: CharacterType,
+  weaponId: WeaponId,
+): Player {
+  const p = new Player(physics, x, y, cls, type);
+  p.addWeapon(WEAPON_REGISTRY[weaponId]);
+  return p;
 }
 
 /** A world where a single tile has been swapped — for tile-effect tests. */

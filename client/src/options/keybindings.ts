@@ -13,7 +13,7 @@
 //
 // KeyboardInputSource reads its keys from here; the rebind menu edits a draft of
 // it; nothing else needs to know a keycode. When we need to SHOW a key to the
-// player (the "press F to open" chest prompt), keyLabel() is the formatter.
+// player (the "press F to take" reward prompt), keyLabel() is the formatter.
 
 export type BindableAction =
   | "up"

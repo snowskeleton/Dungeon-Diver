@@ -12,6 +12,7 @@ import {
   roomCellAt,
   roomInteriorContains,
   roomInteriorRect,
+  mazeDeepestTile,
 } from "shared";
 
 // The generator's contract has two halves: it must produce a PLAYABLE floor
@@ -79,8 +80,11 @@ describe("determinism", () => {
     // This checksum is not a balance number — it is that contract. If a
     // deliberate generation change lands, re-run and paste the new value in,
     // and know you have changed every seed's layout.
+    // NOTE: changed deliberately when the start room became the cover-free SUPPLY
+    // room (it no longer draws the combat room's cover-block rng), which shifts
+    // every seed's layout. This is the documented "re-run and paste" case.
     const checksum = SEEDS.map(s => fingerprint(generateDungeon(s))).join("|");
-    expect(hash(checksum)).toMatchInlineSnapshot(`"64d49529"`);
+    expect(hash(checksum)).toMatchInlineSnapshot(`"d47b90b5"`);
   });
 });
 
@@ -280,7 +284,7 @@ describe("playability", () => {
     for (const seed of SEEDS) {
       const d = generateDungeon(seed);
       const exitType = d.rooms.find(r => r.id === d.exitRoomId)!.type;
-      expect(["shop", "shrine", "chest"], `seed ${seed}`).not.toContain(exitType);
+      expect(["shop", "shrine"], `seed ${seed}`).not.toContain(exitType);
     }
   });
 
@@ -344,20 +348,52 @@ describe("room types", () => {
     }
   });
 
-  it("forceRoomType gives every non-boss room that type, and reserves no boss", () => {
+  it("forceRoomType gives every non-boss, non-start room that type, and reserves no boss", () => {
     const d = generateDungeon(3, { forceRoomType: "maze" });
-    expect(d.rooms.every(r => r.type === "maze")).toBe(true);
+    // The start room is always the supply room; every other room takes the forced type.
+    expect(d.rooms.find(r => r.id === d.startRoomId)!.type).toBe("supply");
+    expect(d.rooms.filter(r => r.id !== d.startRoomId).every(r => r.type === "maze")).toBe(true);
     expect(d.bossRoomId).toBeNull();
   });
 
+  it("makes the run's start room the supply room", () => {
+    for (const seed of SEEDS.slice(0, 20)) {
+      const d = generateDungeon(seed);
+      expect(d.rooms.find(r => r.id === d.startRoomId)!.type, `seed ${seed}`).toBe("supply");
+    }
+  });
+
   it("showcaseRoomType builds a 3-room line with a real start and exit", () => {
-    for (const type of ["shop", "shrine", "chest", "wave", "timed", "dark", "boss"] as RoomType[]) {
+    for (const type of ["shop", "shrine", "wave", "timed", "dark", "boss"] as RoomType[]) {
       const d = generateDungeon(1, { showcaseRoomType: type });
       expect(d.rooms, type).toHaveLength(3);
       expect(d.rooms.some(r => r.type === type), type).toBe(true);
       expect(d.startRoomId, type).not.toBe(d.exitRoomId);
       // ...and it is still playable: the stairs exist and are walkable-to.
       expect(d.mapData[d.stairsTile.row][d.stairsTile.col], type).toBe(TILE.STAIRS);
+    }
+  });
+
+  it("puts a maze's deepest tile on floor, well inside, away from its doorways", () => {
+    // The chest goes here, so it must be reachable (floor), inside the room, and
+    // genuinely deep — not the doorway you walked in through. Checked across seeds
+    // because maze shape is seed-driven.
+    for (let seed = 1; seed <= 30; seed++) {
+      const d = generateDungeon(seed, { showcaseRoomType: "maze" });
+      const room = d.rooms.find(r => r.type === "maze")!;
+      const deep = mazeDeepestTile(d.mapData, room);
+      // On carved floor.
+      expect(d.mapData[deep.row][deep.col], `seed ${seed}`).toBe(TILE.FLOOR);
+      // Inside the room's grid slot.
+      expect(deep.col, `seed ${seed}`).toBeGreaterThanOrEqual(room.tileCol);
+      expect(deep.col, `seed ${seed}`).toBeLessThan(room.tileCol + ROOM_W);
+      expect(deep.row, `seed ${seed}`).toBeGreaterThanOrEqual(room.tileRow);
+      expect(deep.row, `seed ${seed}`).toBeLessThan(room.tileRow + ROOM_H);
+      // Not sitting on a doorway mouth (the border midpoints the BFS seeds from).
+      const onDoorway =
+        (deep.row === room.centerRow && (deep.col === room.tileCol || deep.col === room.tileCol + ROOM_W - 1)) ||
+        (deep.col === room.centerCol && (deep.row === room.tileRow || deep.row === room.tileRow + ROOM_H - 1));
+      expect(onDoorway, `seed ${seed}`).toBe(false);
     }
   });
 

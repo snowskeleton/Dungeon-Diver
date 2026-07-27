@@ -17,7 +17,7 @@
  * Rules for this file:
  *
  * - **Synced fields only.** A property that is deliberately undecorated on the
- *   schema (OfferChoiceState.mods, ChestState.weaponId/mods) must NOT appear
+ *   schema (OfferChoiceState.mods, RewardState.mods, ChestState.weaponId/mods) must NOT appear
  *   here: it never crosses the wire, so a client that could see it in the types
  *   would be reading undefined. Their absence is the point.
  * - **Read-only.** The client never writes state; only the server does.
@@ -156,6 +156,28 @@ export interface OfferStateView extends SyncedSchema {
   readonly claimedBy: SyncedList<string>;
 }
 
+/** A single-reward pedestal dropped where a room's last enemy fell. Unlike an
+ *  OfferState there is no choice and no cost: walk up, interact, it's yours. The
+ *  reward is one of a weapon (resolved stats in `weapon`, mods held server-side —
+ *  see RewardState.mods), an upgrade (`upgradeId` + name/description), or a gold
+ *  payout (`gold`). `kind` says which fields are meaningful. */
+export interface RewardStateView extends SyncedSchema {
+  readonly roomId: string;
+  readonly x: number;
+  readonly y: number;
+  readonly claimed: boolean;
+  readonly kind: "weapon" | "upgrade" | "gold";
+  readonly name: string;
+  readonly description: string;
+  /** Set when kind === "upgrade". */
+  readonly upgradeId: string;
+  /** The payout, when kind === "gold". */
+  readonly gold: number;
+  /** Resolved stats for the card, when kind === "weapon". The WeaponMods that
+   *  produced them stay server-side — see RewardState.mods. */
+  readonly weapon: WeaponSlotView;
+}
+
 /** Note what is NOT here: `weaponId` and `mods`. A chest's contents are
  *  deliberately unsynced — that's the surprise the chest exists to create. */
 export interface ChestStateView extends SyncedSchema {
@@ -189,6 +211,10 @@ export interface GameStateView extends SyncedSchema {
   readonly projectiles: SyncedMap<ProjectileStateView>;
   readonly shops: SyncedMap<ShopStateView>;
   readonly offers: SyncedMap<OfferStateView>;
+  readonly rewards: SyncedMap<RewardStateView>;
+  /** Floor-1 supply-room weapon pedestals, keyed by pedestal id. Same shape as a
+   *  room-clear reward (RewardState, kind "weapon") — one per player. */
+  readonly supplies: SyncedMap<RewardStateView>;
   readonly chests: SyncedMap<ChestStateView>;
   readonly challenges: SyncedMap<RoomChallengeStateView>;
   /** Loose coins on the floor, keyed by coin id. */

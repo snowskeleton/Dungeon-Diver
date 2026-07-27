@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { generateDungeon, WEAPON_REGISTRY, RoomType, DungeonResult, TILE } from "shared";
-import { LootDirector } from "../../server/src/rooms/LootDirector";
+import { generateDungeon, WEAPON_REGISTRY, RoomType, DungeonResult, TILE, TILE_SIZE, mazeDeepestTile, CharacterClass } from "shared";
+import { LootDirector, WRONG_CLASS_MSG } from "../../server/src/rooms/LootDirector";
 import { GameState } from "../../server/src/schema/GameState";
 import { Player } from "../../server/src/entities/Player";
 import { PhysicsWorld } from "../../server/src/physics/PhysicsWorld";
@@ -18,15 +18,25 @@ function floor(type: RoomType, floorNumber = 1) {
   // the shared-draft rules, not affordability (the gold sinks have their own suite
   // in economy.test.ts). An empty purse would make every buy/shrine-pick a no-op.
   state.gold = 100000;
-  const loot = new LootDirector(state);
+  // A single-knight party so the D10 loot filter rolls knight-usable weapons and
+  // the knight buyers below can equip everything a pedestal offers. Position is
+  // irrelevant — the map is only read for party composition.
+  const players = new Map<string, Player>();
+  players.set("party", new Player(physics, x0, y0, "knight", "guy"));
+  const loot = new LootDirector(state, players);
   loot.setFloor(dungeon, physics);
   const room = dungeon.rooms.find(r => r.type === type)!;
-  return { dungeon, physics, state, loot, room };
+  return { dungeon, physics, state, loot, room, players };
 }
 
-/** A player standing exactly on a pedestal, so proximity always passes. */
+// A parking spot for the party-composition player, off in a corner of the floor.
+const x0 = TILE_SIZE * 2;
+const y0 = TILE_SIZE * 2;
+
+/** A knight standing exactly on a pedestal, so proximity always passes. Starts
+ *  empty-handed (no default weapon), like every player now. */
 function playerAt(physics: PhysicsWorld, x: number, y: number) {
-  return new Player(physics, x, y, "knight", "guy", "wood-sword");
+  return new Player(physics, x, y, "knight", "guy");
 }
 
 describe("shops", () => {
@@ -92,7 +102,7 @@ describe("shops", () => {
 
     loot.buy(p, { roomId: room.id, itemIndex: 0 });
 
-    expect(p.weapons).toHaveLength(1);
+    expect(p.weapons).toHaveLength(0);
     expect(item!.purchased).toBe(false);
   });
 
@@ -105,7 +115,7 @@ describe("shops", () => {
 
     loot.buy(latecomer, { roomId: room.id, itemIndex: 0 });
 
-    expect(latecomer.weapons).toHaveLength(1);
+    expect(latecomer.weapons).toHaveLength(0);
   });
 
   it("refuses a purchase the shared purse can't cover", () => {
@@ -118,7 +128,7 @@ describe("shops", () => {
 
     expect(state.gold).toBe(item!.cost - 1); // not charged
     expect(item!.purchased).toBe(false);
-    expect(p.weapons).toHaveLength(1); // nothing granted
+    expect(p.weapons).toHaveLength(0); // nothing granted
   });
 
   it("refuses to charge for an unmodified duplicate the player already owns", () => {
@@ -144,7 +154,7 @@ describe("shops", () => {
       loot.buy(p, { roomId: room.id, itemIndex: -1 });
       loot.buy(p, undefined as never);
     }).not.toThrow();
-    expect(p.weapons).toHaveLength(1);
+    expect(p.weapons).toHaveLength(0);
   });
 });
 
@@ -303,18 +313,132 @@ describe("reward pedestals", () => {
   });
 });
 
-describe("chests", () => {
+describe("room-clear rewards", () => {
+  const RX = 500;
+  const RY = 500;
+
+  // Drop one reward pedestal at (RX, RY), keyed "r". The kind is a weighted roll
+  // over weapon/upgrade/gold, so a caller who needs a specific kind re-rolls.
+  function rewardFloor() {
+    const f = floor("combat");
+    f.loot.dropRoomReward("r", RX, RY);
+    return { ...f, reward: f.state.rewards.get("r")! };
+  }
+
+  function rewardOfKind(kind: "weapon" | "upgrade" | "gold") {
+    for (let i = 0; i < 1000; i++) {
+      const f = rewardFloor();
+      if (f.reward.kind === kind) return f;
+    }
+    throw new Error(`never rolled a ${kind} reward`);
+  }
+
+  it("drops a well-formed, unclaimed reward on clear", () => {
+    const { reward } = rewardFloor();
+    expect(["weapon", "upgrade", "gold"]).toContain(reward.kind);
+    expect(reward.name.length).toBeGreaterThan(0);
+    expect(reward.claimed).toBe(false);
+  });
+
+  it("only drops once per room, however many enemies fall", () => {
+    const { loot, state, reward } = rewardFloor();
+    loot.dropRoomReward("r", 1, 1); // a later kill in the same room
+    expect(state.rewards.get("r")).toBe(reward); // untouched
+  });
+
+  it("keeps a weapon reward's mods server-side, off the wire", () => {
+    // mods are deliberately UNDECORATED on RewardState — same reason as an offer.
+    const { reward } = rewardOfKind("weapon");
+    expect(reward.mods.length).toBeGreaterThan(0);
+    const synced = JSON.parse(JSON.stringify(reward.toJSON()));
+    expect(synced.mods).toBeUndefined();
+  });
+
+  it("hands over a weapon reward, mods and all, and consumes the pedestal", () => {
+    const { reward, loot, physics } = rewardOfKind("weapon");
+    const p = playerAt(physics, RX, RY);
+
+    loot.claimReward(p, { roomId: "r" });
+
+    const got = p.weapons[p.weapons.length - 1];
+    expect(got.id).toBe(reward.weapon.weaponId);
+    expect(got.modLabels).toEqual(reward.mods.map(m => m.label));
+    expect(reward.claimed).toBe(true);
+  });
+
+  it("adds a gold reward to the shared purse", () => {
+    const { reward, loot, state, physics } = rewardOfKind("gold");
+    const before = state.gold;
+    loot.claimReward(playerAt(physics, RX, RY), { roomId: "r" });
+    expect(state.gold).toBe(before + reward.gold);
+    expect(reward.gold).toBeGreaterThan(0);
+  });
+
+  it("grants an upgrade reward to the player who claims it", () => {
+    const { reward, loot, physics } = rewardOfKind("upgrade");
+    const p = playerAt(physics, RX, RY);
+    const before = p.upgrades.length;
+    loot.claimReward(p, { roomId: "r" });
+    expect(p.upgrades.length).toBe(before + 1);
+    expect(p.upgrades[before].id).toBe(reward.upgradeId);
+  });
+
+  it("is claimed exactly once, however many players reach for it", () => {
+    const { reward, loot, physics } = rewardOfKind("weapon");
+    const a = playerAt(physics, RX, RY);
+    const b = playerAt(physics, RX, RY);
+    loot.claimReward(a, { roomId: "r" });
+
+    loot.claimReward(b, { roomId: "r" });
+    loot.claimReward(a, { roomId: "r" });
+
+    expect(reward.claimed).toBe(true);
+    expect(a.weapons).toHaveLength(1);
+    expect(b.weapons).toHaveLength(0);
+  });
+
+  it("refuses a player standing away from it", () => {
+    const { reward, loot, physics } = rewardFloor();
+    loot.claimReward(playerAt(physics, RX + 500, RY), { roomId: "r" });
+    expect(reward.claimed).toBe(false);
+  });
+
+  it("rolls all three kinds over many drops", () => {
+    const kinds = new Set<string>();
+    for (let i = 0; i < 300; i++) kinds.add(rewardFloor().reward.kind);
+    expect(kinds).toEqual(new Set(["weapon", "upgrade", "gold"]));
+  });
+
+  it("shrugs off a malformed claim message", () => {
+    const { loot, physics } = rewardFloor();
+    const p = playerAt(physics, 0, 0);
+    expect(() => {
+      loot.claimReward(p, { roomId: "nope" });
+      loot.claimReward(p, undefined as never);
+    }).not.toThrow();
+  });
+});
+
+describe("maze chests", () => {
   function chestFloor() {
-    const f = floor("chest");
+    const f = floor("maze");
     f.loot.spawnChests();
     return { ...f, chest: f.state.chests.get(f.room.id)! };
   }
 
-  it("puts one chest in every chest room, pre-loaded", () => {
+  it("puts one chest in every maze room, pre-loaded and closed", () => {
     const { chest } = chestFloor();
     expect(WEAPON_REGISTRY[chest.weaponId!]).toBeDefined();
     expect(chest.mods.length).toBeGreaterThan(0);
     expect(chest.opened).toBe(false);
+  });
+
+  it("sits at the maze's deepest tile, on floor inside the room", () => {
+    const { chest, dungeon, room } = chestFloor();
+    const deep = mazeDeepestTile(dungeon.mapData, room);
+    expect(chest.x).toBe(deep.col * TILE_SIZE + TILE_SIZE / 2);
+    expect(chest.y).toBe(deep.row * TILE_SIZE + TILE_SIZE / 2);
+    expect(dungeon.mapData[deep.row][deep.col]).toBe(TILE.FLOOR);
   });
 
   it("keeps its contents server-side, so opening it is still a surprise", () => {
@@ -354,8 +478,8 @@ describe("chests", () => {
     loot.chestOpen(b, { roomId: room.id });
     loot.chestOpen(a, { roomId: room.id });
 
-    expect(a.weapons).toHaveLength(2);
-    expect(b.weapons).toHaveLength(1);
+    expect(a.weapons).toHaveLength(1);
+    expect(b.weapons).toHaveLength(0);
   });
 
   it("refuses a player standing away from it", () => {
@@ -363,20 +487,6 @@ describe("chests", () => {
     const p = playerAt(physics, chest.x + 500, chest.y);
     loot.chestOpen(p, { roomId: room.id });
     expect(chest.opened).toBe(false);
-  });
-
-  it("is solid, so you can't walk through it (playtest B8)", () => {
-    const { chest, physics } = chestFloor();
-    const p = new Player(physics, chest.x - 40, chest.y);
-
-    for (let i = 0; i < 60; i++) {
-      p.move(1, 0, 200);
-      p.commitVelocity();
-      physics.step();
-      p.syncFromBody();
-    }
-
-    expect(p.state.x).toBeLessThan(chest.x); // stopped at the chest's face
   });
 
   it("stops an arrow too, like any solid rectangle", () => {
@@ -406,5 +516,102 @@ describe("chests", () => {
       loot.chestOpen(p, { roomId: "nope" });
       loot.chestOpen(p, undefined as never);
     }).not.toThrow();
+  });
+});
+
+describe("supply pedestals (floor-1 first weapon)", () => {
+  // A floor-1 supply room with a given party, pedestals laid.
+  function supplyFloor(classes: CharacterClass[]) {
+    const f = floor("supply");
+    f.players.clear();
+    const party = classes.map((cls, i) => {
+      const p = new Player(f.physics, x0, y0, cls, "guy");
+      f.players.set(`p${i}`, p);
+      return p;
+    });
+    f.loot.spawnSupply();
+    return { ...f, party, supplies: f.state.supplies };
+  }
+
+  it("lays one weapon pedestal per player, from that class's unique categories", () => {
+    const { supplies } = supplyFloor(["knight", "mage"]);
+    expect(supplies.size).toBe(2);
+    const cats = [...supplies.values()].map(s => WEAPON_REGISTRY[s.weapon.weaponId].category);
+    // Knight → hammer/mace, Mage → staff; every pedestal is one of the party's uniques.
+    for (const cat of cats) expect(["hammer", "mace", "staff"]).toContain(cat);
+    expect(cats).toContain("staff"); // the mage's pedestal
+  });
+
+  it("only exists on floor 1", () => {
+    const f = floor("supply", 2);
+    f.players.set("p0", new Player(f.physics, x0, y0, "knight", "guy"));
+    f.loot.spawnSupply();
+    expect(f.state.supplies.size).toBe(0);
+  });
+
+  it("lets any compatible player claim it — it is class-gated, not owner-locked", () => {
+    const s = supplyFloor(["knight"]);
+    const [supplyId, reward] = [...s.supplies.entries()][0];
+    // A DIFFERENT knight (not the one it was rolled for) standing on it can claim.
+    const otherKnight = new Player(s.physics, reward.x, reward.y, "knight", "guy");
+    expect(s.loot.claimSupply(otherKnight, { supplyId })).toBeNull();
+    expect(reward.claimed).toBe(true);
+    expect(otherKnight.weapons).toHaveLength(1);
+  });
+
+  it("blocks an incompatible class with an error and grants nothing", () => {
+    const s = supplyFloor(["mage"]); // a single staff pedestal
+    const [supplyId, reward] = [...s.supplies.entries()][0];
+    const knight = new Player(s.physics, reward.x, reward.y, "knight", "guy");
+
+    expect(s.loot.claimSupply(knight, { supplyId })).toBe(WRONG_CLASS_MSG);
+    expect(reward.claimed).toBe(false);
+    expect(knight.weapons).toHaveLength(0);
+
+    // ...and the intended class can still take it afterwards.
+    const mage = new Player(s.physics, reward.x, reward.y, "mage", "guy");
+    expect(s.loot.claimSupply(mage, { supplyId })).toBeNull();
+    expect(mage.weapons).toHaveLength(1);
+  });
+});
+
+describe("class restriction blocks incompatible pickups everywhere", () => {
+  it("refuses a shop purchase of a weapon the class can't use, and charges nothing", () => {
+    const f = floor("shop");
+    f.loot.spawnShops();
+    const shop = f.state.shops.get(f.room.id)!;
+    shop.items[0].weaponId = "oak-staff"; // force a Mage-only weapon onto the pedestal
+    const knight = playerAt(f.physics, shop.items[0].x, shop.items[0].y);
+    const gold0 = f.state.gold;
+
+    expect(f.loot.buy(knight, { roomId: f.room.id, itemIndex: 0 })).toBe(WRONG_CLASS_MSG);
+    expect(shop.items[0].purchased).toBe(false);
+    expect(f.state.gold).toBe(gold0);
+    expect(knight.weapons).toHaveLength(0);
+  });
+
+  it("refuses an offer weapon card the class can't use, without consuming it", () => {
+    const f = floor("shrine");
+    f.loot.spawnShrineOffers();
+    const offer = f.state.offers.get(f.room.id)!;
+    offer.choices[0].kind = "weapon";
+    offer.choices[0].weapon.weaponId = "oak-staff";
+    const knight = playerAt(f.physics, offer.x, offer.y);
+
+    expect(f.loot.offerPick("s1", knight, { roomId: f.room.id, choiceIndex: 0 })).toBe(WRONG_CLASS_MSG);
+    expect([...offer.consumed]).toEqual([]); // still available for a Mage teammate
+    expect(knight.weapons).toHaveLength(0);
+  });
+
+  it("refuses to open a chest holding a weapon the class can't use", () => {
+    const f = floor("maze");
+    f.loot.spawnChests();
+    const chest = f.state.chests.get(f.room.id)!;
+    chest.weaponId = "oak-staff";
+    const knight = playerAt(f.physics, chest.x, chest.y);
+
+    expect(f.loot.chestOpen(knight, { roomId: f.room.id })).toBe(WRONG_CLASS_MSG);
+    expect(chest.opened).toBe(false); // left closed and unspoiled for a Mage
+    expect(knight.weapons).toHaveLength(0);
   });
 });

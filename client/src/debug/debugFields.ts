@@ -16,7 +16,6 @@ const ROOM_TYPES: RoomType[] = [
   "boss",
   "shop",
   "shrine",
-  "chest",
   "wave",
   "timed",
   "dark",
@@ -108,13 +107,6 @@ export const DEBUG_PRESETS: Preset<DebugConfig>[] = [
     values: {
       ...DEFAULT_DEBUG_CONFIG, enabled: true, gridCols: 1, gridRows: 1,
       roomType: "shop", enemiesPerRoom: 0,
-    },
-  },
-  {
-    label: "Chest showcase",
-    values: {
-      ...DEFAULT_DEBUG_CONFIG, enabled: true, gridCols: 1, gridRows: 1,
-      roomType: "chest", enemiesPerRoom: 0,
     },
   },
   {
