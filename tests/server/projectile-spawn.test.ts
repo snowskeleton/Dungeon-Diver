@@ -15,10 +15,17 @@ import { flatMap, COLS, ROWS } from "../helpers/world";
 
 // BUG B2 regression: a ranged shot spawns at a muzzle offset AHEAD of the caster
 // so its swept-ellipse tail clears the shooter's body. Standing flush against a
-// wall and firing into/along it, that muzzle point used to land inside the wall
-// tile, so the projectile was born blocked and died on its first sample — the
-// shot silently never appeared. Entity.spawnProjectile now clamps the spawn back
-// to the last walkable point along caster→muzzle.
+// wall, that muzzle point used to land inside the wall tile, so the projectile was
+// born blocked and died on its first sample — the shot silently never appeared.
+// Entity.spawnProjectile now clamps the spawn back to the last walkable point
+// along feet→muzzle.
+//
+// The real playtest repro was firing PARALLEL to a NORTH wall, not perpendicular
+// into a wall: because the sprite centre sits FOOT_OFFSET(8) above the collision
+// body (radius ENTITY_RADIUS(5)), pressing against a north wall leaves the feet
+// clear but the sprite centre ~3px INSIDE the wall. The muzzle is taken at
+// centre-height, so a sideways shot's muzzle is inside the wall — which is why the
+// clamp must anchor at the (always-walkable) feet, not the sprite centre.
 
 const arrow = AMMO_REGISTRY["arrow"];
 
@@ -66,6 +73,34 @@ describe("ranged spawn against a wall (BUG B2)", () => {
     atMuzzle.tick(SERVER_TICK_MS);
     expect(atMuzzle.dead).toBe(true);
 
+    const atSpawn = new Projectile(physics, arrow, spawn.x, spawn.y, 0, "p1", PLAYER_PROJECTILE_AFFECTS);
+    expect(atSpawn.dead).toBe(false);
+  });
+
+  it("fires PARALLEL along a north wall, where the sprite centre is inside the wall", () => {
+    // The playtest repro. A north wall on row 10; the player pressed against it so
+    // the feet (state.y + FOOT_OFFSET) are in the walkable row below but the sprite
+    // centre (state.y) is inside the wall tile.
+    const map = flatMap();
+    map[10][14] = TILE.WALL;
+    map[10][15] = TILE.WALL;
+    const physics = new PhysicsWorld(map, COLS, ROWS);
+    const px = 14 * TILE_SIZE + 16;
+    const py = 10 * TILE_SIZE + 29; // centre inside wall row 10 (320..352); feet at 357 → row 11
+    const player = new Player(physics, px, py, "ranger", "guy");
+
+    // Root-cause preconditions: the sprite CENTRE is in the wall, and so is the
+    // sideways muzzle taken at centre height. Anchoring the search at the centre
+    // (the pre-fix behaviour) could not recover from this.
+    expect(walkable(physics, px, py)).toBe(false);
+    const muzzleX = px + 18; // firing right, parallel to the wall
+    expect(walkable(physics, muzzleX, py)).toBe(false);
+
+    player.spawnProjectile(arrow.id, muzzleX, py, 0);
+    const spawn = spawnPoint(player);
+
+    // Clamped to a walkable point (down toward the feet), so the shot actually exists.
+    expect(walkable(physics, spawn.x, spawn.y)).toBe(true);
     const atSpawn = new Projectile(physics, arrow, spawn.x, spawn.y, 0, "p1", PLAYER_PROJECTILE_AFFECTS);
     expect(atSpawn.dead).toBe(false);
   });

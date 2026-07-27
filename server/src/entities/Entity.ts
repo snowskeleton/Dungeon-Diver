@@ -1,6 +1,6 @@
 import type Matter from "matter-js";
 import {
-  TILE_PROPS, TileId, TILE_SIZE, TILE_DAMAGE_INTERVAL_MS, InteractionProfile, Attack,
+  TILE_PROPS, TileId, TILE_SIZE, FOOT_OFFSET, TILE_DAMAGE_INTERVAL_MS, InteractionProfile, Attack,
   KNOCKBACK_SCALE, KNOCKBACK_MIN_FRACTION, KNOCKBACK_STUN_MS_PER_UNIT, KNOCKBACK_STUN_MAX_MS, SERVER_TICK_MS,
   HurtBounds, PLAYER_HURT_BOUNDS,
 } from "shared";
@@ -100,10 +100,10 @@ export abstract class Entity {
   /** Queue a projectile to spawn this tick. GameRoom stamps team + owner on drain.
    *  The requested spawn point is a muzzle offset AHEAD of the caster (so the
    *  projectile's swept-ellipse tail clears the shooter's own body). Flush against
-   *  a wall, that muzzle point lands inside a blocked tile and the projectile dies
-   *  on its first sample — the "can't fire against a wall" bug. So we clamp the
-   *  spawn back along caster→muzzle to the furthest still-walkable point, letting a
-   *  point-blank shot spawn just in front of (or at) the caster instead. */
+   *  a wall, that muzzle point can land inside a blocked tile and the projectile
+   *  dies on its first sample — the "can't fire against a wall" bug. So we clamp
+   *  the spawn back toward the caster's FEET to the furthest still-walkable point,
+   *  letting a point-blank shot spawn just in front of (or at) the caster instead. */
   spawnProjectile: SpawnProjectile = (ammoId, x, y, angle, opts) => {
     const spawn = this.clampSpawnToWalkable(x, y);
     this.pendingEffects.push({
@@ -116,13 +116,21 @@ export abstract class Entity {
     });
   };
 
-  /** Walk from the caster's centre toward (mx, my) and return the furthest point
-   *  that is still walkable (the same wall + barrier test the Projectile uses, so a
-   *  spawn we accept can't die on its first sample). Falls back to the caster
-   *  centre if even that is blocked (shouldn't happen — the caster stands there). */
+  /** Walk from the caster's FEET toward (mx, my) and return the furthest point that
+   *  is still walkable (the same wall + barrier test the Projectile uses, so a spawn
+   *  we accept can't die on its first sample).
+   *
+   *  The anchor is the feet, NOT the sprite centre, and that distinction is the
+   *  whole fix: `state.x/y` is the sprite centre, which sits FOOT_OFFSET(8) above
+   *  the collision body while the body's radius is only ENTITY_RADIUS(5). Pressed
+   *  against a NORTH wall the physics keeps the feet 5px clear but leaves the sprite
+   *  centre ~3px INSIDE the wall tile — so a shot fired PARALLEL to that wall gets a
+   *  muzzle at centre-height that is inside the wall, and anchoring the search at
+   *  the centre can't recover because the centre is blocked too. The feet are the
+   *  one point the physics guarantees is walkable, so they're the valid origin. */
   private clampSpawnToWalkable(mx: number, my: number): { x: number; y: number } {
     const cx = this.state.x;
-    const cy = this.state.y;
+    const cy = this.state.y + FOOT_OFFSET;
     if (!this.spawnBlockedAt(mx, my)) return { x: mx, y: my };
 
     const dx = mx - cx;
