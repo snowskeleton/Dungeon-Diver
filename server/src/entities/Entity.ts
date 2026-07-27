@@ -1,6 +1,6 @@
 import type Matter from "matter-js";
 import {
-  TILE_PROPS, TileId, TILE_DAMAGE_INTERVAL_MS, InteractionProfile, Attack,
+  TILE_PROPS, TileId, TILE_SIZE, TILE_DAMAGE_INTERVAL_MS, InteractionProfile, Attack,
   KNOCKBACK_SCALE, KNOCKBACK_MIN_FRACTION, KNOCKBACK_STUN_MS_PER_UNIT, KNOCKBACK_STUN_MAX_MS, SERVER_TICK_MS,
   HurtBounds, PLAYER_HURT_BOUNDS,
 } from "shared";
@@ -97,10 +97,57 @@ export abstract class Entity {
     this.pendingEffects.push({ kind: "hit", source });
   }
 
-  /** Queue a projectile to spawn this tick. GameRoom stamps team + owner on drain. */
+  /** Queue a projectile to spawn this tick. GameRoom stamps team + owner on drain.
+   *  The requested spawn point is a muzzle offset AHEAD of the caster (so the
+   *  projectile's swept-ellipse tail clears the shooter's own body). Flush against
+   *  a wall, that muzzle point lands inside a blocked tile and the projectile dies
+   *  on its first sample — the "can't fire against a wall" bug. So we clamp the
+   *  spawn back along caster→muzzle to the furthest still-walkable point, letting a
+   *  point-blank shot spawn just in front of (or at) the caster instead. */
   spawnProjectile: SpawnProjectile = (ammoId, x, y, angle, opts) => {
-    this.pendingEffects.push({ kind: "projectile", ammoId, x, y, angle, opts });
+    const spawn = this.clampSpawnToWalkable(x, y);
+    this.pendingEffects.push({
+      kind: "projectile",
+      ammoId,
+      x: spawn.x,
+      y: spawn.y,
+      angle,
+      opts,
+    });
   };
+
+  /** Walk from the caster's centre toward (mx, my) and return the furthest point
+   *  that is still walkable (the same wall + barrier test the Projectile uses, so a
+   *  spawn we accept can't die on its first sample). Falls back to the caster
+   *  centre if even that is blocked (shouldn't happen — the caster stands there). */
+  private clampSpawnToWalkable(mx: number, my: number): { x: number; y: number } {
+    const cx = this.state.x;
+    const cy = this.state.y;
+    if (!this.spawnBlockedAt(mx, my)) return { x: mx, y: my };
+
+    const dx = mx - cx;
+    const dy = my - cy;
+    const dist = Math.hypot(dx, dy);
+    // Sample in ≤half-tile steps so no wall can hide between two samples.
+    const steps = Math.max(1, Math.ceil(dist / (TILE_SIZE / 2)));
+    let best = { x: cx, y: cy };
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      const px = cx + dx * t;
+      const py = cy + dy * t;
+      if (this.spawnBlockedAt(px, py)) break;
+      best = { x: px, y: py };
+    }
+    return best;
+  }
+
+  /** A point a projectile born here would immediately die on: off-map, a
+   *  non-walkable tile, or a locked-door barrier. Mirrors Projectile.checkWalls. */
+  private spawnBlockedAt(x: number, y: number): boolean {
+    const tile = this.physics.tileAt(x, y);
+    if (tile === null || !TILE_PROPS[tile].walkable) return true;
+    return this.physics.barrierAt(x, y);
+  }
 
   /** Queue a minion enemy to spawn this tick (a boss summon). GameRoom places it
    *  in the caster's room. Protected so only a Boss (via SummonCaster) exposes it. */
