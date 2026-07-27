@@ -23,31 +23,41 @@ Not the local keypress. The *cooldown-gated* fire logic lives only in `Player.ap
 **Do not** revive the old "local player animates straight from `input.attack`" shortcut — it desynced from the server's cooldown, so held-fire replayed the bow only once and cooldown-rejected presses restarted the swing clip every frame. Trade-off: the local swing shows ~1 tick (50ms) after the press (position was already server-driven, so it's consistent); if that ever needs to feel instant, add client-side cooldown prediction rather than going back to raw-input animation.
 
 Two related server rules in the same method:
-- **Melee is deferred** — a press holds a wind-up and the swing fires on **release** (a quick tap is a regular swing, a hold is a charged hard swing; see the deferred-melee section above), while **ranged auto-fires while held**.
+- **Melee swings on press, then charges** — a press fires a regular swing **immediately** (so taps feel snappy, not gooey), and holding the button past the threshold arms a single **charged hard swing** that fires on release (see the melee section above); **ranged auto-fires while held**.
 - **Facing is frozen while a ranged weapon is held** (after the first frame) so you can strafe/back-pedal and keep firing your aimed direction. `LocalPlayer` mirrors that exact facing rule locally so the sprite matches with no round-trip — **if you change one, change both.**
 
-## Melee is deferred: tap vs hold (charged "hard" swing)
+## Melee: tap swings now, hold-then-release adds a hard swing
 
-Melee attacks do **not** fire on the button press. A press starts a **wind-up** the
-player holds (`PlayerState.charging`), and the swing fires on **release**:
+Melee fires the regular swing **on the button press**, immediately — waiting for
+release made every tap feel gooey. Charging the heavy is then gated behind *keeping the
+button held after that first swing*:
 
-- released **before** the hold threshold → a **regular** swing (advances the combo below);
-- held **past** the threshold → a single **hard** (charged) swing. `chargeHard` flips
-  true at the threshold so the client can telegraph that the heavy is armed (a warm
-  tint on the wind-up pose); nothing auto-fires — the player still releases to swing.
+- **press** → a **regular** swing fires this tick (advances the combo below);
+- **keep holding** past the threshold → a single **hard** (charged) swing is armed
+  (`PlayerState.chargeHard`) and fires when you **release**. `chargeHard` flips true at
+  the threshold so the client telegraphs that the heavy is armed (a warm tint on the
+  hold pose); nothing auto-fires — you release to swing.
 
-While charging, the client holds the swing's **first animation frame** with the weapon
-cocked back (`Entity.renderChargePose` + `WeaponVisual.showWindup`), so it's obvious an
-attack is winding up. The hold threshold is a universal Option (`chargeHoldMs`, default
-`DEFAULT_CHARGE_HOLD_MS`), sent to the server alongside the combo window.
+The charge telegraph only appears **once the initial swing's animation is done**
+(`state.charging` is suppressed while the swing's cast is still busy, so the swing plays
+out first and then transitions into the held pose). While charging, the client holds the
+swing's **first animation frame** with the weapon cocked back
+(`Entity.renderChargePose` + `WeaponVisual.showWindup`). The hold threshold is a
+universal Option (`chargeHoldMs`, default `DEFAULT_CHARGE_HOLD_MS`), sent to the server
+alongside the combo window.
+
+If the button is released past the threshold while the initial swing's cooldown is still
+running (a fast weapon that charges before it's ready to swing again), the hard swing is
+**queued** (`Player.hardQueued`) and fires the moment the weapon is free.
 
 The hard swing is **weapon-tunable** like the combo: `Weapon.hardSwing` (default = the
 combo finisher — wider strip, ×1.25 damage/knockback) built from `hardDamageMult` /
 `hardKnockbackMult` (numeric getters the weapon-balance tool edits). A hard swing is its
 own move — it resets the tap combo rather than extending it. Server flow:
-`Player.updateMeleeCharge`/`releaseCharge` choose the swing and set `PlayerState.hardSwing`,
-which the client reads on the `attackSeq` change to draw the heavy strip. Ranged/AOE
-weapons are unchanged — they still fire on press/hold, never charge.
+`Player.updateMelee` fires the press swing and runs the charge, `fireSwing` chooses the
+variant and sets `PlayerState.hardSwing`, which the client reads on the `attackSeq`
+change to draw the heavy strip. Ranged/AOE weapons are unchanged — they fire on
+press/hold, never charge.
 
 ## Melee combo (first → reverse → finisher)
 

@@ -29,9 +29,9 @@ function chain(
   const steps: number[] = [];
   let lastSeq = p.state.attackSeq;
   for (let t = 0; t < idleTicksBefore; t++) a.stepWithInput(id, 0, 0, false);
-  // Toggle attack each tick: a press starts a wind-up and the very next tick
-  // releases it — a hold of one tick (50ms), well under the hard threshold, so
-  // every release is a regular swing that advances the combo. Cap the loop.
+  // Toggle attack each tick: every rising edge fires a swing immediately, and the
+  // one-tick hold (50ms) is well under the hard threshold, so each is a regular
+  // swing that advances the combo. Cap the loop.
   for (let t = 0; steps.length < n && t < 400; t++) {
     a.stepWithInput(id, 0, 0, t % 2 === 0);
     if (p.state.attackSeq !== lastSeq) {
@@ -121,45 +121,53 @@ describe("a player swinging in sequence", () => {
   });
 });
 
-/** Hold the attack for `holdTicks`, then release for one tick; return the player. */
+/** Hold the attack for `holdTicks`, then release for one tick; return the player.
+ *  The press swings immediately; a hold past the threshold arms a hard swing that
+ *  fires on the release tick. */
 function holdRelease(a: ReturnType<typeof arena>, id: string, holdTicks: number) {
   for (let t = 0; t < holdTicks; t++) a.stepWithInput(id, 0, 0, true);
-  a.stepWithInput(id, 0, 0, false); // release fires the swing
+  a.stepWithInput(id, 0, 0, false); // release fires the charged hard swing (if armed)
   return a.players.get(id)!;
 }
 
-describe("deferred melee: tap vs hold", () => {
+describe("melee: tap swings now, hold-then-release adds a hard swing", () => {
   const holdTicksFor = (ms: number) => Math.ceil(ms / SERVER_TICK_MS) + 1;
 
   it("holding past the threshold releases a hard swing; a tap does not", () => {
     const a = arena();
     a.addPlayer("p1", armedPlayer(a.physics, 300, 300, "knight", "guy", "broadsword"));
 
-    // A one-tick tap: regular swing, not hard.
+    // A one-tick tap: the immediate press swing is regular, not hard.
     const tapped = holdRelease(a, "p1", 1);
     expect(tapped.state.hardSwing).toBe(false);
 
-    // Idle to drop the combo, then hold well past the threshold: hard swing.
+    // Idle to drop the combo, then hold well past the threshold: the RELEASE fires
+    // a hard swing on top of the initial press swing.
     for (let t = 0; t < 20; t++) a.stepWithInput("p1", 0, 0, false);
     const held = holdRelease(a, "p1", holdTicksFor(DEFAULT_CHARGE_HOLD_MS));
     expect(held.state.hardSwing).toBe(true);
     expect(held.state.comboStep).toBe(0); // a heavy resets the tap combo
   });
 
-  it("nothing fires until release — the wind-up just charges", () => {
+  it("the press swings immediately; holding then arms the heavy and release fires it", () => {
     const a = arena();
     const p = a.addPlayer("p1", armedPlayer(a.physics, 300, 300, "knight", "guy", "broadsword"));
     const seq0 = p.state.attackSeq;
-    // Hold well past the hard threshold WITHOUT releasing: still charging, unfired.
+    // First press fires the regular swing right away — no gooey wait.
+    a.stepWithInput("p1", 0, 0, true);
+    const seqAfterPress = p.state.attackSeq;
+    expect(seqAfterPress).not.toBe(seq0);
+    expect(p.state.hardSwing).toBe(false);
+    // Keep holding past the hard threshold WITHOUT releasing: heavy arms, unfired.
     for (let t = 0; t < holdTicksFor(DEFAULT_CHARGE_HOLD_MS) + 3; t++) {
       a.stepWithInput("p1", 0, 0, true);
     }
     expect(p.state.charging).toBe(true);
     expect(p.state.chargeHard).toBe(true); // heavy is armed
-    expect(p.state.attackSeq).toBe(seq0); // but nothing has fired
-    // Release: now it fires exactly once.
+    expect(p.state.attackSeq).toBe(seqAfterPress); // nothing fired since the press
+    // Release: now the hard swing fires.
     a.stepWithInput("p1", 0, 0, false);
-    expect(p.state.attackSeq).not.toBe(seq0);
+    expect(p.state.attackSeq).not.toBe(seqAfterPress);
     expect(p.state.charging).toBe(false);
     expect(p.state.hardSwing).toBe(true);
   });

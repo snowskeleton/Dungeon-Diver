@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   SERVER_TICK_MS,
+  DEFAULT_CHARGE_HOLD_MS,
   WEAPON_REGISTRY,
   AMMO_REGISTRY,
   CHARACTER_REGISTRY,
@@ -158,9 +159,10 @@ describe("input and attack cadence", () => {
     expect(p.state.facing).toBe("up");
   });
 
-  it("defers a melee swing to release: holding charges, releasing fires once", () => {
+  it("fires a melee swing immediately on press; holding then release arms one hard swing", () => {
     const p = newPlayer("knight", "broadsword");
     const window = Math.ceil(WEAPON_REGISTRY["broadsword"].attackCooldownMs / SERVER_TICK_MS);
+    const holdTicks = Math.ceil(DEFAULT_CHARGE_HOLD_MS / SERVER_TICK_MS);
 
     let swings = 0;
     let last = p.state.attackSeq;
@@ -169,18 +171,30 @@ describe("input and attack cadence", () => {
       if (p.state.attackSeq !== last) { swings++; last = p.state.attackSeq; }
     };
 
-    // Holding the button fires nothing — it just holds the wind-up.
-    for (let t = 0; t < window * 2; t++) step(true);
-    expect(swings).toBe(0);
-
-    step(false); // release fires exactly one swing
+    // Press fires the regular swing right away — no gooey wait for release.
+    step(true);
     expect(swings).toBe(1);
 
-    // Let that swing's window elapse, then tap again for a second swing.
-    for (let t = 0; t < window; t++) step(false);
-    step(true);
-    step(false);
+    // Keep holding past the charge threshold (and past the swing's cooldown):
+    // that arms a hard swing but doesn't fire while held.
+    for (let t = 0; t < Math.max(holdTicks, window) + 2; t++) step(true);
+    expect(swings).toBe(1);
+    expect(p.state.chargeHard).toBe(true);
+
+    step(false); // release fires exactly the one charged hard swing
     expect(swings).toBe(2);
+    expect(p.state.hardSwing).toBe(true);
+  });
+
+  it("a quick tap fires a regular swing and arms no hard swing", () => {
+    const p = newPlayer("knight", "broadsword");
+    let last = p.state.attackSeq;
+    p.applyInput({ dx: 0, dy: 0, attack: true }, SERVER_TICK_MS);  // press: swings now
+    expect(p.state.attackSeq).not.toBe(last);
+    expect(p.state.hardSwing).toBe(false);
+    last = p.state.attackSeq;
+    p.applyInput({ dx: 0, dy: 0, attack: false }, SERVER_TICK_MS); // quick release: nothing extra
+    expect(p.state.attackSeq).toBe(last);
   });
 
   it("ends the swing after its window, so isAttacking is not stuck on", () => {
@@ -235,12 +249,10 @@ describe("input and attack cadence", () => {
     expect(p.state.facing).toBe("up");
   });
 
-  it("advances attackSeq on release so the client can tell a new swing from a held one", () => {
+  it("advances attackSeq on press so the client can tell a new swing from a held one", () => {
     const p = newPlayer("knight", "broadsword");
     const seq0 = p.state.attackSeq;
-    p.applyInput({ dx: 0, dy: 0, attack: true }, SERVER_TICK_MS);  // press: charging
-    expect(p.state.attackSeq).toBe(seq0);
-    p.applyInput({ dx: 0, dy: 0, attack: false }, SERVER_TICK_MS); // release: fires
+    p.applyInput({ dx: 0, dy: 0, attack: true }, SERVER_TICK_MS);  // press: fires now
     expect(p.state.attackSeq).not.toBe(seq0);
   });
 

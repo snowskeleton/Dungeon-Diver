@@ -118,13 +118,13 @@ export const MAX_CLIENTS = 4;
 // deliberately short — the client surfaces it as a universal, tunable Option
 // (gameOptions.comboWindowMs) that each player sends to the server on join, so
 // this is only the fallback when no preference has been received.
-export const DEFAULT_COMBO_WINDOW_MS = 300;
+export const DEFAULT_COMBO_WINDOW_MS = 600;
 // Melee attacks are DEFERRED: a press holds the swing's wind-up pose and fires on
 // release. Release before this hold threshold → a regular swing (advances the
 // combo); hold at least this long → a heavy "hard" swing. Like the combo window,
 // this is surfaced as a universal, tunable Option (gameOptions.chargeHoldMs) the
 // client sends to the server; this is the fallback default.
-export const DEFAULT_CHARGE_HOLD_MS = 350;
+export const DEFAULT_CHARGE_HOLD_MS = 600;
 // When a deferred enemy is revealed (a player walks into its room) it doesn't act
 // immediately: it emerges from its dust puff over this long, holding in place and
 // dealing no contact damage, then starts moving. Shared so the client can pace the

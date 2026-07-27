@@ -7,7 +7,7 @@ export abstract class Mace extends Weapon {
   get category(): WeaponCategory { return "mace"; }
   get fxType(): AttackFXType { return "slash"; }
   get damage() { return 25; }
-  get attackCooldownMs() { return 550; }
+  get attackCooldownMs() { return 200; }
   get attackForce() { return 12; }
   get iconAngle() { return -45; }
 }

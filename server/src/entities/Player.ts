@@ -64,6 +64,9 @@ export class Player extends Entity implements Caster {
   private charging = false;
   private chargeMs = 0;
   private chargeHoldMs = DEFAULT_CHARGE_HOLD_MS;
+  // hardQueued: the button was released past the charge threshold, so a hard swing
+  // is waiting to fire the moment the weapon is free (its cooldown may still run).
+  private hardQueued = false;
   private pendingHard = false;
 
   constructor(
@@ -183,48 +186,62 @@ export class Player extends Entity implements Caster {
     this.state.comboStep = this.comboIndex;
   }
 
-  /** Run the deferred-melee charge for this tick. A rising edge starts a wind-up
-   *  (nothing fires); while held the player holds the pose and chargeMs grows;
-   *  releasing fires the swing — a hard one if it was held past the threshold,
-   *  otherwise the next combo step. Returns true while a wind-up is in progress
-   *  (so the caller doesn't also run the plain fire path). */
-  private updateMeleeCharge(attackHeld: boolean, risingEdge: boolean, dtMs: number, aim: AimPoint): boolean {
+  /** Run melee for this tick. A press fires a regular swing IMMEDIATELY (no
+   *  deferred wind-up — that's what made taps feel gooey), and if the button stays
+   *  held past `chargeHoldMs` a single hard swing is armed and fires on release.
+   *  So: tap = swing now; hold-after-the-tap = charge, release = heavy. Combos
+   *  still come from distinct taps (each rising edge advances the chain). */
+  private updateMelee(attackHeld: boolean, risingEdge: boolean, dtMs: number, aim: AimPoint): void {
     const now = this.spellCaster.now;
-    if (this.charging) {
-      this.chargeMs += dtMs;
-      this.state.chargeHard = this.chargeMs >= this.chargeHoldMs;
-      if (!attackHeld) this.releaseCharge(now, aim, dtMs);
-      return true;
-    }
-    // Start a new wind-up only on a fresh press with the weapon idle and ready.
-    if (risingEdge && !this.spellCaster.busy && this.spellFor(this.weapon!).isReady(now)) {
+    const spell = this.spellFor(this.weapon!);
+
+    // Fresh press: swing right away and begin charging a hard follow-up.
+    if (risingEdge && !this.spellCaster.busy && spell.isReady(now)) {
+      this.fireSwing(false, now, aim, dtMs);
       this.charging = true;
       this.chargeMs = 0;
-      this.state.charging = true;
-      this.state.chargeHard = false;
-      return true;
+      return;
     }
-    return false;
+
+    if (this.charging) {
+      if (attackHeld) {
+        this.chargeMs += dtMs;
+      } else {
+        // Released. Arm the heavy only if it was held past the threshold; either
+        // way the regular swing already went out on the press.
+        if (this.chargeMs >= this.chargeHoldMs) this.hardQueued = true;
+        this.charging = false;
+        this.chargeMs = 0;
+      }
+    }
+
+    // The telegraph shows only once the initial swing's animation is done — during
+    // the swing the client is playing it, and the charge pose would fight it.
+    const armed = this.charging && this.chargeMs >= this.chargeHoldMs;
+    this.state.charging = this.charging && !this.spellCaster.busy;
+    this.state.chargeHard = armed && !this.spellCaster.busy;
+
+    // A queued hard swing fires as soon as the weapon is free (the initial swing's
+    // cooldown may still be running when the button is released).
+    if (this.hardQueued && !this.spellCaster.busy && spell.isReady(now)) {
+      this.hardQueued = false;
+      this.fireSwing(true, now, aim, dtMs);
+    }
   }
 
-  /** Drop a wind-up in progress without firing (stun, downed, or a swap to a
-   *  non-melee weapon mid-hold). Idempotent. */
+  /** Drop a charge / queued hard swing without firing (stun, downed, or a swap to
+   *  a non-melee weapon mid-hold). Idempotent. */
   private cancelCharge(): void {
-    if (!this.charging) return;
+    if (!this.charging && !this.hardQueued) return;
     this.charging = false;
     this.chargeMs = 0;
+    this.hardQueued = false;
     this.state.charging = false;
     this.state.chargeHard = false;
   }
 
-  /** Release a charged wind-up: fire the chosen swing and clear the charge. */
-  private releaseCharge(now: number, aim: AimPoint, dtMs: number): void {
-    const hard = this.chargeMs >= this.chargeHoldMs;
-    this.charging = false;
-    this.chargeMs = 0;
-    this.state.charging = false;
-    this.state.chargeHard = false;
-
+  /** Fire a melee swing this tick — hard (charged) or the next combo step. */
+  private fireSwing(hard: boolean, now: number, aim: AimPoint, dtMs: number): void {
     this.pendingHard = hard;
     this.state.hardSwing = hard;
     this.state.attackSeq = (this.state.attackSeq + 1) % 65536;
@@ -414,8 +431,8 @@ export class Player extends Entity implements Caster {
       // No weapon yet — drop any charge and do nothing else.
       this.cancelCharge();
     } else if (!weapon.isRanged && !weapon.isAoe) {
-      // Deferred melee: hold the wind-up, fire on release (regular vs hard by hold time).
-      this.updateMeleeCharge(input.attack, risingEdge, dtMs, aim);
+      // Melee: tap swings now, holding past the threshold arms a hard swing on release.
+      this.updateMelee(input.attack, risingEdge, dtMs, aim);
     } else {
       // A wind-up left over from before a swap to this ranged/AOE weapon is dropped.
       this.cancelCharge();
