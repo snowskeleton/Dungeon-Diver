@@ -2,7 +2,7 @@ import Phaser from "phaser";
 import { WEAPON_REGISTRY, WeaponId } from "shared";
 import { UiLayer } from "./UiLayer";
 import { LocalPlayer } from "../entities/LocalPlayer";
-import { weaponStatLines, viewFromTemplate } from "./weaponStats";
+import { comparedStatLines, statLineText, viewFromTemplate } from "./weaponStats";
 import { promptKeyLabel } from "../options/keybindings";
 
 /**
@@ -246,7 +246,11 @@ export class GameHud {
       return;
     }
     const weapon = viewFromTemplate(template);
-    const stats = weaponStatLines(weapon).map((s) => `  ${s.label}: ${s.value}`).join("\n");
+    // Each row compares to P1's active weapon (▲/▼ + delta), so the card answers
+    // "better than what I'm holding?"; empty-handed there's just no indicator.
+    const stats = comparedStatLines(weapon, first?.activeWeaponView())
+      .map((s) => `  ${statLineText(s)}`)
+      .join("\n");
     this.storeCard.setText(
       `${weapon.name}   (${near.cost} gold)\n${stats}\n[F] buy`,
     );
