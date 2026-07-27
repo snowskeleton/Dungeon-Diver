@@ -1,8 +1,8 @@
-import { TILE_PROPS, TileId, Facing, FOOT_OFFSET, ENTITY_RADIUS, SERVER_TICK_MS, ENEMY_ATTACK_AFFECTS } from "shared";
+import { TILE_PROPS, TileId, Facing, ENTITY_RADIUS, SERVER_TICK_MS, ENEMY_ATTACK_AFFECTS } from "shared";
 import { Enemy, EnemyClass } from "./Enemy";
 import { PlayerState } from "../schema/PlayerState";
 import { Spell, SpellCaster, DashCaster, SummonCaster, AimPoint } from "../spells";
-import { PhysicsWorld } from "../physics/PhysicsWorld";
+import { PhysicsWorld, spriteToBody } from "../physics/PhysicsWorld";
 import { MovementBehavior, approachAbility } from "./bosses/movement";
 
 // Base class for the 8 bosses. Bosses deal no passive contact damage — every hit
@@ -208,7 +208,8 @@ export abstract class Boss extends Enemy implements DashCaster, SummonCaster {
     if (cx < this.arenaMinX || cx > this.arenaMaxX || cy < this.arenaMinY || cy > this.arenaMaxY) {
       return true;
     }
-    return this.isWallAt(cx, cy + FOOT_OFFSET);
+    const foot = spriteToBody({ x: cx, y: cy });
+    return this.isWallAt(foot.x, foot.y);
   }
 
   // Opt out of the base enemy's contact hitbox — see the class header.

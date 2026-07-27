@@ -1,4 +1,4 @@
-import { AiState, SERVER_TICK_MS, EnemyType, EnemyFacingMode, ENEMY_BODY_PROFILE, AIRBORNE_ENEMY_BODY_PROFILE, ENEMY_ATTACK_AFFECTS , ENEMY_HURT_BOUNDS, PLAYER_HURT_BOUNDS, HurtBounds, ENEMY_SPAWN_EMERGE_MS, FOOT_OFFSET } from "shared";
+import { AiState, SERVER_TICK_MS, EnemyType, EnemyFacingMode, ENEMY_BODY_PROFILE, AIRBORNE_ENEMY_BODY_PROFILE, ENEMY_ATTACK_AFFECTS , ENEMY_HURT_BOUNDS, PLAYER_HURT_BOUNDS, HurtBounds, ENEMY_SPAWN_EMERGE_MS } from "shared";
 import { EnemyState } from "../schema/EnemyState";
 import { PlayerState } from "../schema/PlayerState";
 import { Entity } from "./Entity";
@@ -428,10 +428,10 @@ export abstract class Enemy extends Entity {
       // sprite centre) — that's what actually squeezes past a wall. Sampling on the
       // sprite centre would send an enemy through a gap its feet don't fit through
       // (a 1-tile corridor is a foot-tall slit once the offset is applied).
-      const fx = this.state.x;
-      const fy = this.state.y + FOOT_OFFSET;
-      const tx = this.state.x + target.dx;
-      const ty = this.state.y + target.dy + FOOT_OFFSET;
+      const fx = this.footX;
+      const fy = this.footY;
+      const tx = this.footX + target.dx;
+      const ty = this.footY + target.dy;
       if (!this.nav.lineOfSight(kind, this.homeRoomId, fx, fy, tx, ty)) {
         const heading = this.nav.sample(kind, this.homeRoomId, target.id, fx, fy);
         if (heading) {

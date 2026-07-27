@@ -129,8 +129,8 @@ export abstract class Entity {
    *  the centre can't recover because the centre is blocked too. The feet are the
    *  one point the physics guarantees is walkable, so they're the valid origin. */
   private clampSpawnToWalkable(mx: number, my: number): { x: number; y: number } {
-    const cx = this.state.x;
-    const cy = this.state.y + FOOT_OFFSET;
+    const cx = this.footX;
+    const cy = this.footY;
     if (!this.spawnBlockedAt(mx, my)) return { x: mx, y: my };
 
     const dx = mx - cx;
@@ -357,6 +357,18 @@ export abstract class Entity {
   }
   get y(): number {
     return this.state.y;
+  }
+
+  /** The collision/walkability anchor: the sprite's FEET, FOOT_OFFSET below the
+   *  centre. Ask for this instead of open-coding `state.y + FOOT_OFFSET` — the
+   *  feet are the one point physics guarantees is walkable, so any wall/spawn/nav
+   *  test should be against them, not the sprite centre (which can sit inside a
+   *  wall tile when pressed against it). Mirrors PhysicsWorld's spriteToBody. */
+  get footX(): number {
+    return this.state.x;
+  }
+  get footY(): number {
+    return this.state.y + FOOT_OFFSET;
   }
 
   get isDead(): boolean {

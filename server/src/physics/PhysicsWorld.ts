@@ -33,12 +33,27 @@ export function pxPerSecToVelocity(pxPerSec: number): number {
   return pxPerSec / 60;
 }
 
+// The two reference frames, converted in ONE place. "Sprite" space is the schema
+// state.x/y (the wire/render/hurt frame); "body" space is the collision frame, a
+// point FOOT_OFFSET below the sprite centre. Every FOOT_OFFSET conversion goes
+// through these two functions so no call site open-codes the arithmetic — see the
+// coordinate-mapping note above. Entity's footX/footY getters are the read-only
+// half of the same contract for code that only needs to ask "where are my feet?".
+export function spriteToBody(pt: { x: number; y: number }): { x: number; y: number } {
+  return { x: pt.x, y: pt.y + FOOT_OFFSET };
+}
+
+export function bodyToSprite(pt: { x: number; y: number }): { x: number; y: number } {
+  return { x: pt.x, y: pt.y - FOOT_OFFSET };
+}
+
 export function syncStateFromBody(
   state: { x: number; y: number },
   body: Matter.Body,
 ): void {
-  state.x = body.position.x;
-  state.y = body.position.y - FOOT_OFFSET;
+  const s = bodyToSprite(body.position);
+  state.x = s.x;
+  state.y = s.y;
 }
 
 type WallRect = { col: number; row: number; cols: number; rows: number };
@@ -240,9 +255,10 @@ export class PhysicsWorld {
   // `layer` is the body's matter category (what it IS); `solidMask` is what it
   // physically blocks against. Both come from the entity's InteractionProfile.
   createEntityBody(spriteX: number, spriteY: number, layer: number, solidMask: number): Matter.Body {
+    const bodyPos = spriteToBody({ x: spriteX, y: spriteY });
     const body = Matter.Bodies.circle(
-      spriteX,
-      spriteY + FOOT_OFFSET,
+      bodyPos.x,
+      bodyPos.y,
       ENTITY_RADIUS,
       {
         friction: 0,
@@ -278,7 +294,7 @@ export class PhysicsWorld {
   }
 
   setEntityPosition(body: Matter.Body, spriteX: number, spriteY: number): void {
-    Matter.Body.setPosition(body, { x: spriteX, y: spriteY + FOOT_OFFSET });
+    Matter.Body.setPosition(body, spriteToBody({ x: spriteX, y: spriteY }));
     Matter.Body.setVelocity(body, { x: 0, y: 0 });
   }
 
