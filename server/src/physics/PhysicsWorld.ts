@@ -219,15 +219,6 @@ export class PhysicsWorld {
       : PLAYER_BODY_PROFILE.solidMask;
   }
 
-  /** A solid piece of room furniture — the chest at a maze's deep end, which you
-   *  could otherwise walk straight through (playtest B8). Same static-rect
-   *  machinery as a barrier, and deliberately in the same map: both are "solid
-   *  rectangles that aren't tiles", both must be cleared when the floor is rebuilt,
-   *  and both should stop an arrow. */
-  addSolidProp(id: string, cx: number, cy: number, w: number, h: number): void {
-    this.addBarrier(`prop_${id}`, cx, cy, w, h);
-  }
-
   /** Is this point inside a standing barrier? Projectiles are not matter bodies,
    *  so they'd otherwise sail straight through a shut door (playtest B5). Both
    *  sides block: a one-way barrier is one-way for *walking*, not for arrows. */

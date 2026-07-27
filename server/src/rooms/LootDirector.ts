@@ -14,7 +14,6 @@ import { RewardState } from "../schema/RewardState";
 import { ChestState } from "../schema/ChestState";
 import { Player, resolveTemplate, slotStateFor } from "../entities/Player";
 import { upgradeById, upgradePool, rollWeaponMod } from "../upgrades";
-import { PhysicsWorld } from "../physics/PhysicsWorld";
 
 const SHOP_ITEM_COUNT = 3;
 // How many choices a reward pedestal presents.
@@ -33,12 +32,6 @@ const ROOM_REWARD_WEIGHTS: { kind: "weapon" | "upgrade" | "gold"; weight: number
 // Gold handed out when a room-clear reward rolls gold — one cheap shop item's
 // worth, so it reads as a small windfall rather than a jackpot.
 const ROOM_REWARD_GOLD = SHOP_TIERS[0];
-
-// The chest's collision box. Matches the 28px sprite the client draws (see
-// ChestEntity), kept a little shorter so a player can press up against its front
-// face and still be inside interact range.
-const CHEST_SOLID_W = 26;
-const CHEST_SOLID_H = 20;
 
 // Chance a maze chest is the rarer gold one.
 const GOLD_CHEST_CHANCE = 0.15;
@@ -79,17 +72,10 @@ export class LootDirector {
     return classes;
   }
 
-  /** The floor's physics world. Handed over in setFloor rather than the
-   *  constructor because GameRoom builds the PhysicsWorld from the first generated
-   *  floor, which happens after the directors exist — the same reason SpawnDirector
-   *  takes it here. Only the solid maze chest needs it. */
-  private physics!: PhysicsWorld;
-
   /** Point at the newly generated floor. Called from GameRoom.initFloor before any
    *  of the spawn methods. */
-  setFloor(dungeon: DungeonResult, physics: PhysicsWorld) {
+  setFloor(dungeon: DungeonResult) {
     this.dungeon = dungeon;
-    this.physics = physics;
   }
 
   // ---- placement -----------------------------------------------------------
@@ -163,10 +149,12 @@ export class LootDirector {
       const modCount = chest.gold ? GOLD_CHEST_MODS : BROWN_CHEST_MODS;
       for (let i = 0; i < modCount; i++) chest.mods.push(rollWeaponMod(this.state.floor));
 
-      // Solid, so you can't walk through it (playtest B8). A perfect maze's deep
-      // tile is a dead end, so a solid chest there never walls off the only path.
-      this.physics.addSolidProp(room.id, pos.x, pos.y, CHEST_SOLID_W, CHEST_SOLID_H);
-
+      // NOT a collision body: you walk through it and open it by proximity/interact,
+      // exactly like the reward and offer pedestals (B1). The chest used to be a solid
+      // prop (B8), but the maze's deepest tile isn't always a dead end — when it landed
+      // on a required corridor the chest walled off the only path to the exit and
+      // hard-softlocked the run. Solving the maze is still the gate; the chest no
+      // longer blocks anything.
       this.state.chests.set(room.id, chest);
     }
   }

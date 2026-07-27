@@ -189,7 +189,7 @@ function lootFloor(type: RoomType, floorNumber = 1) {
   const players = new Map<string, Player>();
   players.set("party", new Player(physics, 100, 100, "knight", "guy"));
   const loot = new LootDirector(state, players);
-  loot.setFloor(dungeon, physics);
+  loot.setFloor(dungeon);
   const room = dungeon.rooms.find(r => r.type === type)!;
   return { dungeon, physics, state, loot, room };
 }

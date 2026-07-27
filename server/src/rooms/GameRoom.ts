@@ -348,7 +348,7 @@ export class GameRoom extends Room<GameState> {
     // Commitment is per-floor room state; the new floor's rooms are all unlocked.
     this.committedRoom.clear();
 
-    this.loot.setFloor(this.currentDungeon, this.physics);
+    this.loot.setFloor(this.currentDungeon);
     this.spawner.setFloor(this.currentDungeon, this.physics, this.floorManager, this.flowField);
     // Loot placement is deferred to placeFloorLoot(), run from startRun/advanceFloor
     // — NOT here — because the D10 party filter needs the settled party, which

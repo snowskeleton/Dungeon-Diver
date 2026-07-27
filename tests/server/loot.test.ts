@@ -35,7 +35,7 @@ function floor(type: RoomType, floorNumber = 1) {
   const players = new Map<string, Player>();
   players.set("party", new Player(physics, x0, y0, "knight", "guy"));
   const loot = new LootDirector(state, players);
-  loot.setFloor(dungeon, physics);
+  loot.setFloor(dungeon);
   const room = dungeon.rooms.find(r => r.type === type)!;
   return { dungeon, physics, state, loot, room, players };
 }
@@ -500,9 +500,12 @@ describe("maze chests", () => {
     expect(chest.opened).toBe(false);
   });
 
-  it("stops an arrow too, like any solid rectangle", () => {
+  it("is not solid — you walk through it and open it by proximity (B1)", () => {
+    // A maze's deepest tile can be a required corridor; a solid chest there walled
+    // off the only path to the exit and softlocked the run. The chest registers no
+    // collision body, so nothing physical blocks that tile.
     const { chest, physics } = chestFloor();
-    expect(physics.barrierAt(chest.x, chest.y)).toBe(true);
+    expect(physics.barrierAt(chest.x, chest.y)).toBe(false);
   });
 
   it("rolls gold chests as the rare case, with more modifiers on them", () => {
@@ -594,7 +597,7 @@ describe("supply pedestals (floor-1 first weapon)", () => {
     const players = new Map<string, Player>();
     players.set("p0", new Player(physics, x0, y0, cls, "guy"));
     const loot = new LootDirector(state, players, { ...DEFAULT_DEBUG_CONFIG, enabled: true, firstWeaponId });
-    loot.setFloor(dungeon, physics);
+    loot.setFloor(dungeon);
     loot.spawnSupply();
     return { state, supplies: state.supplies };
   }
