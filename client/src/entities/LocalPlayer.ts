@@ -2,7 +2,7 @@ import Phaser from "phaser";
 import { Room } from "colyseus.js";
 import {
   InputMessage, CharacterClass, CharacterType, Character, getCharacter,
-  WeaponId, Weapon, WeaponSlotView, UpgradeSlotView, WEAPON_REGISTRY, Facing,
+  WeaponId, Weapon, WeaponView, WeaponSlotView, UpgradeSlotView, WEAPON_REGISTRY, Facing,
   GameStateView, PlayerStateView, ShopStateView, ShopItemStateView, OfferStateView, RewardStateView, ChestStateView,
   PLAYER_HURT_BOUNDS,
 } from "shared";
@@ -14,6 +14,7 @@ import { meleeHurtboxShapes } from "../debug/hurtboxShapes";
 import { AcquireFX, ACQUIRE_MS } from "./AcquireFX";
 import { InventoryMenu } from "../ui/InventoryMenu";
 import { OfferPicker, OfferChoiceView } from "../ui/OfferPicker";
+import { viewFromSlot } from "../ui/weaponStats";
 import { loadOptions } from "../options/gameOptions";
 
 // Must match GameRoom BUY_RADIUS so the client prompt appears exactly when the
@@ -366,10 +367,20 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     if (this.offerPicker.isOpen || !this.nearbyOffer) return;
     const { roomId, choices, consumed } = this.nearbyOffer;
     this.setMenuPaused(true);
-    this.offerPicker.show(choices, consumed, (index) => {
+    this.offerPicker.show(choices, consumed, this.activeWeaponView(), (index) => {
       this.room.send("offerPick", { roomId, choiceIndex: index });
       this.setMenuPaused(false);
     });
+  }
+
+  /** The local player's currently-active weapon as a WeaponView, so a pickup
+   *  preview can show each stat relative to it. Null when empty-handed (the
+   *  floor-1 supply room) — there is nothing to compare against yet. */
+  activeWeaponView(): WeaponView | null {
+    const ps = (this.room.state as GameStateView).players.get(this.room.sessionId);
+    if (!ps) return null;
+    const slot = Array.from(ps.weapons)[ps.activeWeaponIndex] as WeaponSlotView | undefined;
+    return slot ? viewFromSlot(slot) : null;
   }
 
   syncFromServer(state: PlayerStateView) {

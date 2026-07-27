@@ -1,5 +1,5 @@
-import { WeaponSlotView } from "shared";
-import { weaponStatLines, viewFromSlot } from "./weaponStats";
+import { WeaponSlotView, WeaponView } from "shared";
+import { comparedStatLines, statLineHtml, viewFromSlot } from "./weaponStats";
 import { addStyle, el, menuPanel, MenuPanel } from "./menuDom";
 
 // The 1-of-3 reward picker (shrine boon / boss drop), modelled on InventoryMenu:
@@ -53,6 +53,7 @@ export class OfferPicker {
   show(
     choices: OfferChoiceView[],
     consumed: Set<number>,
+    compareTo: WeaponView | null,
     onPick: (index: number) => void,
   ) {
     if (this.menu) return;
@@ -81,7 +82,7 @@ export class OfferPicker {
           text: choice.kind === "weapon" ? "WEAPON" : "UPGRADE",
         }),
       ]);
-      card.append(...this.cardBody(choice));
+      card.append(...this.cardBody(choice, compareTo));
       if (taken) card.appendChild(el("span", { className: "offer-taken-tag", text: "TAKEN" }));
       cards.appendChild(card);
     });
@@ -96,7 +97,7 @@ export class OfferPicker {
     );
   }
 
-  private cardBody(choice: OfferChoiceView): HTMLElement[] {
+  private cardBody(choice: OfferChoiceView, compareTo: WeaponView | null): HTMLElement[] {
     if (choice.kind !== "weapon") {
       return [
         el("div", { className: "m-row-name", text: choice.name }),
@@ -116,10 +117,12 @@ export class OfferPicker {
     );
     if (view) {
       // The exact stats of the weapon that will be granted — the server keeps
-      // the rolled modifiers, so this preview cannot drift from the reward.
+      // the rolled modifiers, so this preview cannot drift from the reward. Each
+      // row shows how it compares to the weapon currently held (▲/▼ + delta), so
+      // "is this better?" reads at a glance.
       parts.push(el("div", {
         className: "m-row-detail",
-        html: weaponStatLines(view).map((s) => `${s.label}: ${s.value}`).join("<br>"),
+        html: comparedStatLines(view, compareTo).map(statLineHtml).join("<br>"),
       }));
     }
     return parts;
