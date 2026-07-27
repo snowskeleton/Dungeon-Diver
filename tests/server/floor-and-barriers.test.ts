@@ -188,6 +188,26 @@ describe("the softlock guard", () => {
     expect(floor.releaseAbandonedRooms([childCentre])).toHaveLength(0);
   });
 
+  it("does NOT release a room a player is pressed against the exit doorway of (B3)", () => {
+    // The bug: a player held against a room's exit barrier stands in the DOORWAY,
+    // where roomAt() reads null (the doorway punches through the interior ring). A
+    // bare interior occupancy test then believes the room is empty and drops the
+    // barrier out from under them — so they walk out of an uncleared fight. This
+    // surfaced as "leaking through the NORTH exit" specifically, because FOOT_OFFSET
+    // shifts the collision point down, and only the top barrier leaves the sprite
+    // outside the interior; south/east/west hold the sprite just inside it.
+    const { floor, conn, childCentre } = setup();
+    floor.assignEnemy("e1", childCentre.x, childCentre.y);
+    floor.checkPlayerEnteredRoom(childCentre.x, childCentre.y);
+    const gate = gateOf(conn); // the doorway the exit barrier occupies
+
+    // A player standing in the doorway is confirmed to be OUTSIDE the interior...
+    expect(floor.roomAt(gate.x, gate.y)?.id).not.toBe(conn.childRoomId);
+    // ...yet the softlock guard must still count them as present.
+    expect(floor.releaseAbandonedRooms([gate])).toHaveLength(0);
+    expect(floor.barrierSnapshot().childStanding).toContain(conn.id);
+  });
+
   it("lets the room lock again the next time someone walks in", () => {
     const { floor, conn, childCentre } = setup();
     floor.assignEnemy("e1", childCentre.x, childCentre.y);

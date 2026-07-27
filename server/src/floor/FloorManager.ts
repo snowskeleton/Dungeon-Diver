@@ -182,7 +182,7 @@ export class FloorManager {
     const childUnlocked: string[] = [];
     for (const roomId of [...this.enteredChildRooms]) {
       if (this.clearedRooms.has(roomId)) continue;
-      const occupied = playerPositions.some(p => this.roomAt(p.x, p.y)?.id === roomId);
+      const occupied = playerPositions.some(p => this.occupiesRoom(p.x, p.y, roomId));
       if (occupied) continue;
       for (const conn of this.connections) {
         if (conn.childRoomId === roomId && this.drop(conn, "child")) {
@@ -239,6 +239,24 @@ export class FloorManager {
           return true;
         }
       }
+    }
+    return false;
+  }
+
+  /** Is this point inside the room's interior, or standing in one of its own
+   *  doorways? The softlock guard needs the looser test: a player pressed against
+   *  a room's NORTH exit barrier is held by their FEET at the doorway tile, which
+   *  leaves their SPRITE just above the interior top — a spot roomAt() reads as
+   *  null, because FOOT_OFFSET drops the collision point a few px below the sprite
+   *  and only the top barrier stands the sprite outside the interior. A bare
+   *  roomAt() test there sees the room as unoccupied and drops the barrier out from
+   *  under the player, letting them walk out of an uncleared fight (bug B3). A
+   *  doorway of THIS room counts as still being in it. */
+  private occupiesRoom(x: number, y: number, roomId: string): boolean {
+    if (this.roomAt(x, y)?.id === roomId) return true;
+    for (const conn of this.connections) {
+      if (conn.parentRoomId !== roomId && conn.childRoomId !== roomId) continue;
+      if (this.inPassageway(x, y, conn)) return true;
     }
     return false;
   }
