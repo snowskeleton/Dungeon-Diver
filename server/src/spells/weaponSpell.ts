@@ -1,4 +1,4 @@
-import { WeaponInstance, HitShape, AMMO_REGISTRY } from "shared";
+import { WeaponInstance, HitShape, AMMO_REGISTRY, ComboSwing } from "shared";
 import { RehitGate } from "../combat/RehitGate";
 import { Spell, SpellOpts, SpellEffect, Caster, AttackStats } from "./Spell";
 
@@ -84,7 +84,8 @@ function aoeEffect(inst: WeaponInstance, radius: number): SpellEffect {
       caster.emitHitSource({
         shape: { kind: "circle", cx: caster.x, cy: caster.y, r: radius },
         affects: caster.attackAffects,
-        attack: casterAttack(caster, inst),
+        // AOE never combos — the neutral first swing just carries ×1 multipliers.
+        attack: casterAttack(caster, inst, firstComboSwing(inst)),
         claim: (id) => gate.claim(id),
         onDealt: (_, dmg) => caster.onDamageDealt?.(dmg),
       });
@@ -106,6 +107,12 @@ function meleeWeaponSpell(inst: WeaponInstance): Spell {
   });
 }
 
+/** The default swing for a melee weapon with no combo tracker (a bare weaponSpell
+ *  in a test, or any non-Player caster): the first, un-mirrored, neutral swing. */
+function firstComboSwing(inst: WeaponInstance): ComboSwing {
+  return inst.comboSwings[0];
+}
+
 function meleeEffect(inst: WeaponInstance): SpellEffect {
   const gate = new RehitGate(Infinity); // one hit per target for the whole swing
 
@@ -115,12 +122,16 @@ function meleeEffect(inst: WeaponInstance): SpellEffect {
   // its animation (and so its hitbox) has finished — which is correct, and is why
   // this counter is kept here rather than read off the spell's phase progress.
   let swingMs = 0;
+  // The combo swing this whole attack belongs to, sampled once when it begins so a
+  // chain advance mid-swing can't retime the arc already in flight (same reasoning
+  // as SpellCaster caching phase durations at phase entry).
+  let swing: ComboSwing = firstComboSwing(inst);
 
   // Emit the hurtbox for the animation frame currently on screen. Returns null on
   // a wind-up frame (the strips' first two frames draw nothing) and once the
   // animation is over, so damage is live exactly while the blade is visible.
   const emit = (caster: Caster) => {
-    const box = inst.getHurtbox(caster.x, caster.y, caster.facing, swingMs);
+    const box = inst.comboHurtbox(swing, caster.x, caster.y, caster.facing, swingMs);
     if (!box) return;
     const shape: HitShape = box.shape === "rect"
       ? { kind: "rect", x: box.x, y: box.y, w: box.w, h: box.h }
@@ -128,7 +139,7 @@ function meleeEffect(inst: WeaponInstance): SpellEffect {
     caster.emitHitSource({
       shape,
       affects: caster.attackAffects,
-      attack: casterAttack(caster, inst),
+      attack: casterAttack(caster, inst, swing),
       claim: (id) => gate.claim(id),
       onDealt: (_, dmg) => caster.onDamageDealt?.(dmg),
     });
@@ -137,6 +148,7 @@ function meleeEffect(inst: WeaponInstance): SpellEffect {
     onActivate: (caster) => {
       gate.reset();
       swingMs = 0;
+      swing = caster.meleeCombo?.(inst) ?? firstComboSwing(inst);
       emit(caster);
     },
     onActiveTick: (caster, dtMs) => {
@@ -179,10 +191,14 @@ function rangedWeaponSpell(inst: WeaponInstance): Spell {
   });
 }
 
-/** Stage 2 → 3: the weapon instance's own numbers, scaled by whoever swings it. */
-function casterAttack(caster: Caster, inst: WeaponInstance) {
+/** Stage 2 → 3: the weapon instance's own numbers, scaled first by the combo
+ *  swing (the finisher hits harder) and then by whoever swings it. */
+function casterAttack(caster: Caster, inst: WeaponInstance, swing: ComboSwing) {
   return caster.buildAttack(
-    { damage: inst.damage, knockback: inst.attackForce },
+    {
+      damage: inst.damage * swing.damageMult,
+      knockback: inst.attackForce * swing.knockbackMult,
+    },
     caster.x,
     caster.y,
   );

@@ -31,6 +31,31 @@ export type HitRegion = RectHitRegion | CircleHitRegion;
  *  follows the art frame by frame. Returns null while no blade is drawn. */
 export type GetHurtbox = (px: number, py: number, facing: Facing, swingMs: number) => HitRegion | null;
 
+/** One swing of a melee weapon's combo. A consecutive-swing chain steps through
+ *  these in order (wrapping): the first is a plain swing, the second the same arc
+ *  mirrored (the "reverse"), the third a wider finisher. `damageMult`/`knockbackMult`
+ *  scale that swing's blow, so a weapon (or category) can make its finisher hit
+ *  harder without touching a damage number in any spell. See Weapon.comboSwings. */
+export interface ComboSwing {
+  /** Which FX strip this swing draws — and so which measured hurtbox it uses. */
+  fxType: StripFXType;
+  /** Flip the arc across the facing axis, so a chained swing reads as a backswing. */
+  mirrored: boolean;
+  damageMult: number;
+  knockbackMult: number;
+}
+
+/** The wider "long" strip for a base strip type — the combo finisher's reach.
+ *  A strip that is already long stays itself. */
+export function longFxVariant(fx: StripFXType): StripFXType {
+  switch (fx) {
+    case "slash":      return "long-slash";
+    case "stab":       return "long-stab";
+    case "long-slash": return "long-slash";
+    case "long-stab":  return "long-stab";
+  }
+}
+
 /** An area-of-effect blast a weapon casts (the Mage's staff): after a brief
  *  wind-up the caster erupts a damaging circle around itself for `blastMs`. Marks
  *  the weapon as an AOE caster — the server builds a wind-up+AOE Spell from it
@@ -84,6 +109,51 @@ export abstract class Weapon {
    * slashing weapon so the blade sits diagonally mid-swing rather than fully extended.
    */
   get iconAngle(): number { return 0; }
+
+  // ── Melee combo (three-hit chain) ────────────────────────────────────────────
+  // Per-swing multipliers, as plain numeric getters so the weapon-balance tool
+  // can edit them and a category base or a single weapon can selectively buff one
+  // swing. Defaults: the first two swings are neutral; the finisher hits +25%.
+  // Ranged/AOE weapons carry these too but never combo, so they're simply unused.
+  get combo1DamageMult(): number { return 1; }
+  get combo2DamageMult(): number { return 1; }
+  get combo3DamageMult(): number { return 1.25; }
+  get combo1KnockbackMult(): number { return 1; }
+  get combo2KnockbackMult(): number { return 1; }
+  get combo3KnockbackMult(): number { return 1.25; }
+
+  /** The swings a consecutive-melee chain steps through, in order. The default is
+   *  the universal three-hit combo — swing, mirrored backswing, then a wider
+   *  finisher — built from this weapon's `fxType` and its per-swing multipliers.
+   *  A weapon can override this wholesale for a bespoke combo. */
+  get comboSwings(): ComboSwing[] {
+    const base: StripFXType = isStripFx(this.fxType) ? this.fxType : "slash";
+    return [
+      { fxType: base, mirrored: false, damageMult: this.combo1DamageMult, knockbackMult: this.combo1KnockbackMult },
+      { fxType: base, mirrored: true, damageMult: this.combo2DamageMult, knockbackMult: this.combo2KnockbackMult },
+      { fxType: longFxVariant(base), mirrored: false, damageMult: this.combo3DamageMult, knockbackMult: this.combo3KnockbackMult },
+    ];
+  }
+
+  // ── Hard (charged) swing ─────────────────────────────────────────────────────
+  // A held attack releases a single heavy swing instead of a combo step. Its knobs
+  // mirror the combo's — plain numeric getters the weapon-balance tool edits, so a
+  // weapon or category can tune the payoff. Defaults match the combo finisher.
+  get hardDamageMult(): number { return this.combo3DamageMult; }
+  get hardKnockbackMult(): number { return this.combo3KnockbackMult; }
+
+  /** The heavy swing a hold releases: the wider finisher strip, scaled by the
+   *  hard multipliers. Overridable wholesale for a bespoke heavy attack. */
+  get hardSwing(): ComboSwing {
+    const base: StripFXType = isStripFx(this.fxType) ? this.fxType : "slash";
+    return {
+      fxType: longFxVariant(base),
+      mirrored: false,
+      damageMult: this.hardDamageMult,
+      knockbackMult: this.hardKnockbackMult,
+    };
+  }
+
   /**
    * If set, this is a ranged weapon: attacking spawns a projectile using this
    * ammo id (see AMMO_REGISTRY) instead of a melee hitbox. Ranged weapons deal
@@ -113,6 +183,20 @@ export abstract class Weapon {
     }
     const fx = this.fxType as StripFXType;
     return (px, py, facing, swingMs) => fxHurtboxAt(fx, swingMs, px, py, facing);
+  }
+
+  /** The hurtbox for a specific combo swing — its own FX strip's measured bounds,
+   *  mirrored across the facing axis when the swing is a backswing. Melee only
+   *  (ranged/AOE have no arc), so it returns null for those. */
+  comboHurtbox(
+    swing: ComboSwing,
+    px: number,
+    py: number,
+    facing: Facing,
+    swingMs: number,
+  ): HitRegion | null {
+    if (this.isRanged || this.isAoe) return null;
+    return fxHurtboxAt(swing.fxType, swingMs, px, py, facing, swing.mirrored);
   }
 
   /** Client-side sprite path served from public/sprites/weapons/. */

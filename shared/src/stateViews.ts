@@ -76,6 +76,15 @@ export interface PlayerStateView extends EntityStateView {
   readonly facing: Facing;
   readonly isAttacking: boolean;
   readonly attackSeq: number;
+  /** Combo swing index the current attack belongs to (0 first, 1 reverse, 2
+   *  finisher). Drives the client's FX strip + mirror; 0 for ranged/AOE. */
+  readonly comboStep: number;
+  /** Holding a melee wind-up (deferred swing, not yet released). */
+  readonly charging: boolean;
+  /** The current charge has passed the hard threshold — a heavy is armed. */
+  readonly chargeHard: boolean;
+  /** The latest attackSeq fired a hard (charged) swing. */
+  readonly hardSwing: boolean;
   readonly characterClass: CharacterClass;
   readonly characterType: CharacterType;
   /** The ACTIVE weapon's id. A plain string on purpose: the server's Weapon.id

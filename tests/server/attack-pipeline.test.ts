@@ -11,7 +11,7 @@ import { Player } from "../../server/src/entities/Player";
 import { GooGreen } from "../../server/src/entities/enemies/goos";
 import { Projectile } from "../../server/src/entities/Projectile";
 import { Upgrade } from "../../server/src/upgrades";
-import { arena, flatWorld, swingUntilHit, armedPlayer } from "../helpers/world";
+import { arena, flatWorld, swingUntilHit, tapSwing, armedPlayer } from "../helpers/world";
 
 // End-to-end: a real player, a real enemy, the real physics world, and the exact
 // gather-and-resolve step GameRoom runs. These are the tests that prove the four
@@ -75,7 +75,7 @@ describe("a melee swing, start to finish", () => {
 
     swingUntilHit(a, "p1", "e1");
     const afterFirst = e.state.health;
-    for (let i = 0; i < 6; i++) a.stepWithInput("p1", 0, 0, true); // same swing, held
+    for (let i = 0; i < 6; i++) a.stepWithInput("p1", 0, 0, false); // let the swing linger
     expect(e.state.health).toBe(afterFirst);
   });
 
@@ -96,7 +96,7 @@ describe("a melee swing, start to finish", () => {
     const e = a.addEnemy("e1", new GooGreen(a.physics, 260, 300)); // to the LEFT
     const hp0 = e.state.health;
 
-    for (let i = 0; i < 12; i++) a.stepWithInput("p1", 0, 0, true);
+    tapSwing(a, "p1", 12);
     expect(e.state.health).toBe(hp0);
   });
 
@@ -109,7 +109,7 @@ describe("a melee swing, start to finish", () => {
     const e = a.addEnemy("e1", new GooGreen(a.physics, 330, 300)); // beyond the blade tip
     const hp0 = e.state.health;
 
-    for (let i = 0; i < 15; i++) a.stepWithInput("p1", 0, 0, true);
+    tapSwing(a, "p1", 15);
     expect(e.state.health).toBeLessThan(hp0);
   });
 
@@ -120,7 +120,7 @@ describe("a melee swing, start to finish", () => {
     const ally = a.addPlayer("p2", new Player(a.physics, 312, 300));
     const hp0 = ally.state.health;
 
-    for (let i = 0; i < 15; i++) a.stepWithInput("p1", 0, 0, true);
+    tapSwing(a, "p1", 15);
     expect(ally.state.health).toBe(hp0);
   });
 });
@@ -313,8 +313,9 @@ describe("two players in the same world", () => {
     const hp2 = e2.state.health;
 
     for (let i = 0; i < 15; i++) {
-      p1.applyInput({ dx: 0, dy: 0, attack: true }, SERVER_TICK_MS);
-      p2.applyInput({ dx: 0, dy: 0, attack: true }, SERVER_TICK_MS);
+      // Deferred melee: tap (press once, then release) so each is a regular swing.
+      p1.applyInput({ dx: 0, dy: 0, attack: i === 0 }, SERVER_TICK_MS);
+      p2.applyInput({ dx: 0, dy: 0, attack: i === 0 }, SERVER_TICK_MS);
       a.step();
     }
 
@@ -334,8 +335,9 @@ describe("two players in the same world", () => {
     const hp0 = e.state.health;
 
     for (let i = 0; i < 15; i++) {
-      p1.applyInput({ dx: 0, dy: 0, attack: true }, SERVER_TICK_MS);
-      p2.applyInput({ dx: 0, dy: 0, attack: true }, SERVER_TICK_MS);
+      // Deferred melee: tap (press once, then release) so each is a regular swing.
+      p1.applyInput({ dx: 0, dy: 0, attack: i === 0 }, SERVER_TICK_MS);
+      p2.applyInput({ dx: 0, dy: 0, attack: i === 0 }, SERVER_TICK_MS);
       a.step();
     }
 

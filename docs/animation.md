@@ -23,8 +23,62 @@ Not the local keypress. The *cooldown-gated* fire logic lives only in `Player.ap
 **Do not** revive the old "local player animates straight from `input.attack`" shortcut — it desynced from the server's cooldown, so held-fire replayed the bow only once and cooldown-rejected presses restarted the swing clip every frame. Trade-off: the local swing shows ~1 tick (50ms) after the press (position was already server-driven, so it's consistent); if that ever needs to feel instant, add client-side cooldown prediction rather than going back to raw-input animation.
 
 Two related server rules in the same method:
-- **Melee fires only on the rising edge** (`input.attack && !prevAttack`) so you can't hold-to-chain-swing, while **ranged auto-fires while held**.
+- **Melee is deferred** — a press holds a wind-up and the swing fires on **release** (a quick tap is a regular swing, a hold is a charged hard swing; see the deferred-melee section above), while **ranged auto-fires while held**.
 - **Facing is frozen while a ranged weapon is held** (after the first frame) so you can strafe/back-pedal and keep firing your aimed direction. `LocalPlayer` mirrors that exact facing rule locally so the sprite matches with no round-trip — **if you change one, change both.**
+
+## Melee is deferred: tap vs hold (charged "hard" swing)
+
+Melee attacks do **not** fire on the button press. A press starts a **wind-up** the
+player holds (`PlayerState.charging`), and the swing fires on **release**:
+
+- released **before** the hold threshold → a **regular** swing (advances the combo below);
+- held **past** the threshold → a single **hard** (charged) swing. `chargeHard` flips
+  true at the threshold so the client can telegraph that the heavy is armed (a warm
+  tint on the wind-up pose); nothing auto-fires — the player still releases to swing.
+
+While charging, the client holds the swing's **first animation frame** with the weapon
+cocked back (`Entity.renderChargePose` + `WeaponVisual.showWindup`), so it's obvious an
+attack is winding up. The hold threshold is a universal Option (`chargeHoldMs`, default
+`DEFAULT_CHARGE_HOLD_MS`), sent to the server alongside the combo window.
+
+The hard swing is **weapon-tunable** like the combo: `Weapon.hardSwing` (default = the
+combo finisher — wider strip, ×1.25 damage/knockback) built from `hardDamageMult` /
+`hardKnockbackMult` (numeric getters the weapon-balance tool edits). A hard swing is its
+own move — it resets the tap combo rather than extending it. Server flow:
+`Player.updateMeleeCharge`/`releaseCharge` choose the swing and set `PlayerState.hardSwing`,
+which the client reads on the `attackSeq` change to draw the heavy strip. Ranged/AOE
+weapons are unchanged — they still fire on press/hold, never charge.
+
+## Melee combo (first → reverse → finisher)
+
+Consecutive melee swings (taps) chain a three-hit combo: a plain swing, the same arc
+**mirrored** (a backswing), then a **wider finisher** that hits harder. Wait longer
+than the grace window and it drops back to the first swing.
+
+- **The combo is defined on the weapon**, MIT-style, not in a lookup table.
+  `Weapon.comboSwings` (`shared/src/weapons/base.ts`) returns the three
+  `ComboSwing`s — each an `{ fxType, mirrored, damageMult, knockbackMult }` — built
+  from the weapon's own `fxType` (the finisher uses `longFxVariant`) and its
+  per-swing multiplier getters (`comboNDamageMult` / `comboNKnockbackMult`, plain
+  numbers so the weapon-balance tool edits them; a weapon or a category base can
+  buff just one swing). Ranged/AOE weapons carry the getters but never combo.
+- **The step lives on the player and is server-authoritative.** `Player`
+  (`server/src/entities/Player.ts`) walks `comboIndex` 0→1→2→0 as it accepts
+  melee swings and resets it when the gap since the last swing exceeds the
+  weapon's cooldown plus the grace window (`advanceCombo`). It exposes the current
+  swing to the melee spell via `Caster.meleeCombo`, so `weaponSpell`'s melee
+  effect picks the right hurtbox (`Weapon.comboHurtbox`, which mirrors via
+  `fxHurtboxAt(..., mirrored)`) and folds the multipliers into the blow.
+- **The step crosses the wire as `PlayerState.comboStep`** (beside `attackSeq`),
+  so the client draws the matching strip. On an `attackSeq` change,
+  `LocalPlayer`/`RemotePlayer` call `Entity.setPendingComboSwing(weaponId,
+  comboStep)`; the FX layer (`playAttackFX`) flips the strip with `setFlipY` for a
+  backswing and swaps to the finisher's wider strip. `HeldWeaponVisual` keeps one
+  strip sprite per FX type the weapon can swing.
+- **The grace window is a client Option** (`comboWindowMs`, default
+  `DEFAULT_COMBO_WINDOW_MS`). It governs server-authoritative timing, so — unlike
+  every other option — `LocalPlayer` sends it to the room (`"comboWindow"`) on
+  join and `Player.setComboWindow` clamps it.
 
 ## `syncSpritePosition` — why it exists
 

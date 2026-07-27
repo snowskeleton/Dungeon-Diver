@@ -115,9 +115,24 @@ export function holdWeaponIconAtRest(
   icon.setVisible(true);
 }
 
+/** Pose the weapon icon at the first keyframe of a swing's strip — the "cocked
+ *  back" wind-up position — without playing the strip. Used to hold the pose while
+ *  a deferred melee attack is charging, so the wind-up is visually obvious. */
+export function poseWeaponIconWindup(
+  icon: Phaser.GameObjects.Image,
+  fxType: StripFXType,
+  px: number,
+  py: number,
+  facing: Facing,
+  iconAngle: number,
+  mirrored = false,
+) {
+  applyIconKeyframe(icon, ICON_KEYFRAMES[fxType][0], px, py, facing, iconAngle, mirrored);
+}
+
 // Active-swing state per FX sprite, so syncAttackFX() can re-anchor the strip
 // and icon to the entity's current position every frame while it moves.
-type ActiveSwing = { facing: Facing; kf: IconKeyframe; iconAngle: number };
+type ActiveSwing = { facing: Facing; kf: IconKeyframe; iconAngle: number; mirrored: boolean };
 const activeSwings = new WeakMap<Phaser.GameObjects.Sprite, ActiveSwing>();
 
 export function preloadAttackFX(scene: Phaser.Scene) {
@@ -158,6 +173,7 @@ function applyIconKeyframe(
   py: number,
   facing: Facing,
   iconAngle: number,
+  mirrored = false,
 ) {
   if (!kf) {
     icon.setVisible(false);
@@ -167,14 +183,21 @@ function applyIconKeyframe(
   // diagonal carries that correction in its own `iconAngle`, so add it here too
   // or a thrust points 45° off its own strip. The rest pose mirrors when facing
   // left — the swing doesn't, so clear the flip and use the tilt unnegated.
-  icon.setFlipX(false);
+  //
+  // A `mirrored` (combo backswing) reflects the whole keyframe across the arc's
+  // body axis — the strip does this with flipY, so the icon matches by negating
+  // its cross-axis offset and its orientation, and flipping the sprite. That is
+  // the same reflection the server applies to the hurtbox (fxHurtboxAt mirrored).
+  const ky = mirrored ? -kf.y : kf.y;
+  const orient = mirrored ? -(kf.angle + iconAngle) : kf.angle + iconAngle;
+  icon.setFlipX(mirrored);
   const rot = FACING_ROTATION[facing];
   const rad = Phaser.Math.DegToRad(rot);
   const cos = Math.round(Math.cos(rad));
   const sin = Math.round(Math.sin(rad));
-  icon.x = px + kf.x * cos - kf.y * sin;
-  icon.y = py + kf.x * sin + kf.y * cos;
-  icon.setAngle(kf.angle + rot + iconAngle);
+  icon.x = px + kf.x * cos - ky * sin;
+  icon.y = py + kf.x * sin + ky * cos;
+  icon.setAngle(orient + rot);
   icon.setVisible(true);
 }
 
@@ -186,10 +209,13 @@ export function playAttackFX(
   facing: Facing,
   weaponIcon?: Phaser.GameObjects.Image,
   iconAngle = 0,
+  mirrored = false,
 ) {
   sprite.x = px;
   sprite.y = py;
   sprite.setAngle(FACING_ROTATION[facing]);
+  // A combo backswing is the same strip reflected across the arc's body axis.
+  sprite.setFlipY(mirrored);
   sprite.setVisible(true);
 
   // Clear listeners from a previous swing that may have been interrupted.
@@ -200,19 +226,20 @@ export function playAttackFX(
     facing,
     kf: null,
     iconAngle,
+    mirrored,
   };
   activeSwings.set(sprite, swing);
 
   if (weaponIcon) {
     const keyframes = ICON_KEYFRAMES[fxType];
     swing.kf = keyframes[0];
-    applyIconKeyframe(weaponIcon, swing.kf, px, py, facing, iconAngle);
+    applyIconKeyframe(weaponIcon, swing.kf, px, py, facing, iconAngle, mirrored);
     sprite.on(
       Phaser.Animations.Events.ANIMATION_UPDATE,
       (_anim: Phaser.Animations.Animation, frame: Phaser.Animations.AnimationFrame) => {
         // AnimationFrame.index is 1-based.
         swing.kf = keyframes[frame.index - 1] ?? null;
-        applyIconKeyframe(weaponIcon, swing.kf, sprite.x, sprite.y, facing, iconAngle);
+        applyIconKeyframe(weaponIcon, swing.kf, sprite.x, sprite.y, facing, iconAngle, mirrored);
       },
     );
   }
@@ -241,6 +268,6 @@ export function syncAttackFX(
   sprite.x = px;
   sprite.y = py;
   if (weaponIcon) {
-    applyIconKeyframe(weaponIcon, swing.kf, px, py, swing.facing, swing.iconAngle);
+    applyIconKeyframe(weaponIcon, swing.kf, px, py, swing.facing, swing.iconAngle, swing.mirrored);
   }
 }

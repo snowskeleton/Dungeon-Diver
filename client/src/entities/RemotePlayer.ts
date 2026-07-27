@@ -64,10 +64,15 @@ export class RemotePlayer extends Entity implements DebugDrawable {
       }
     }
     if (attackSeq !== this.lastAttackSeq) {
+      this.setPendingComboSwing(weaponId, state.comboStep, state.hardSwing);
       if (this.lastAttackSeq !== -1) this.retriggerAttack();
       this.lastAttackSeq = attackSeq;
       this.swingStartedAt = performance.now();
     }
+    const windupSwing = this.weapon
+      ? (state.chargeHard ? this.weapon.hardSwing : this.weapon.comboSwings[0])
+      : null;
+    this.setChargePose(state.charging, state.chargeHard, windupSwing);
     if (this.pendingSnap) {
       this.pendingSnap = false;
       this.setPosition(state.x, state.y);

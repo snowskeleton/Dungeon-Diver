@@ -17,6 +17,18 @@ export class PlayerState extends EntityState implements PlayerStateView {
   // Increments once per swing — clients edge-detect this to restart the attack
   // animation even when isAttacking never flips false (held attack key).
   @type("uint16") attackSeq: number = 0;
+  // Which swing of the melee combo the current attack is (0 = first, 1 = reverse,
+  // 2 = finisher). Clients read it on an attackSeq change to draw the matching FX
+  // strip and mirror. Meaningless for ranged/AOE weapons (stays 0).
+  @type("uint8") comboStep: number = 0;
+  // Melee attacks are deferred: while the button is held the player holds the
+  // swing's wind-up pose (charging = true). chargeHard flips true once the hold
+  // passes the threshold, so the client can telegraph that the heavy is armed.
+  @type("boolean") charging: boolean = false;
+  @type("boolean") chargeHard: boolean = false;
+  // The swing that the latest attackSeq fired was a hard (charged) swing — the
+  // client reads this on an attackSeq change to draw the heavy strip.
+  @type("boolean") hardSwing: boolean = false;
   @type("string") characterClass: CharacterClass = "knight";
   @type("string") characterType: CharacterType = "guy";
   // weaponId is the ACTIVE weapon (updated on switch) so remote weapon-visual

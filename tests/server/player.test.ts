@@ -158,7 +158,7 @@ describe("input and attack cadence", () => {
     expect(p.state.facing).toBe("up");
   });
 
-  it("swings once per press, however long the button is held", () => {
+  it("defers a melee swing to release: holding charges, releasing fires once", () => {
     const p = newPlayer("knight", "broadsword");
     const window = Math.ceil(WEAPON_REGISTRY["broadsword"].attackCooldownMs / SERVER_TICK_MS);
 
@@ -169,18 +169,26 @@ describe("input and attack cadence", () => {
       if (p.state.attackSeq !== last) { swings++; last = p.state.attackSeq; }
     };
 
+    // Holding the button fires nothing — it just holds the wind-up.
     for (let t = 0; t < window * 2; t++) step(true);
+    expect(swings).toBe(0);
+
+    step(false); // release fires exactly one swing
     expect(swings).toBe(1);
 
-    step(false); // release
-    step(true);  // re-press
+    // Let that swing's window elapse, then tap again for a second swing.
+    for (let t = 0; t < window; t++) step(false);
+    step(true);
+    step(false);
     expect(swings).toBe(2);
   });
 
   it("ends the swing after its window, so isAttacking is not stuck on", () => {
     const p = newPlayer("knight", "broadsword");
     const window = Math.ceil(WEAPON_REGISTRY["broadsword"].attackCooldownMs / SERVER_TICK_MS);
-    for (let t = 0; t < window * 2; t++) p.applyInput({ dx: 0, dy: 0, attack: true }, SERVER_TICK_MS);
+    // Tap to fire, then let the swing's window elapse: isAttacking must drop.
+    p.applyInput({ dx: 0, dy: 0, attack: true }, SERVER_TICK_MS);
+    for (let t = 0; t < window * 2; t++) p.applyInput({ dx: 0, dy: 0, attack: false }, SERVER_TICK_MS);
     expect(p.state.isAttacking).toBe(false);
   });
 
@@ -227,10 +235,12 @@ describe("input and attack cadence", () => {
     expect(p.state.facing).toBe("up");
   });
 
-  it("advances attackSeq so the client can tell a new swing from a held one", () => {
+  it("advances attackSeq on release so the client can tell a new swing from a held one", () => {
     const p = newPlayer("knight", "broadsword");
     const seq0 = p.state.attackSeq;
-    p.applyInput({ dx: 0, dy: 0, attack: true }, SERVER_TICK_MS);
+    p.applyInput({ dx: 0, dy: 0, attack: true }, SERVER_TICK_MS);  // press: charging
+    expect(p.state.attackSeq).toBe(seq0);
+    p.applyInput({ dx: 0, dy: 0, attack: false }, SERVER_TICK_MS); // release: fires
     expect(p.state.attackSeq).not.toBe(seq0);
   });
 

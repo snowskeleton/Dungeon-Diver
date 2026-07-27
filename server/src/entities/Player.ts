@@ -2,6 +2,7 @@ import {
   InputMessage, CharacterClass, CharacterType, CharacterConfig, getCharacterConfig,
   Weapon, WeaponInstance, WeaponMod, WEAPON_REGISTRY, AMMO_REGISTRY,
   PLAYER_BODY_PROFILE, PLAYER_ATTACK_AFFECTS, Facing, Attack, foldStat,
+  ComboSwing, DEFAULT_COMBO_WINDOW_MS, DEFAULT_CHARGE_HOLD_MS,
   canClassUseWeapon,
 } from "shared";
 import { PlayerState, UpgradeSlotState } from "../schema/PlayerState";
@@ -49,6 +50,21 @@ export class Player extends Entity implements Caster {
   // Previous tick's attack-button state, for rising-edge detection (melee fires
   // once per press; ranged auto-fires while held).
   private prevAttack = false;
+  // Melee combo state. comboIndex walks 0→1→2→0 across consecutive swings; it
+  // resets to the first swing whenever the chain window lapses (see advanceCombo).
+  // lastSwingAt is the caster-clock time the previous melee swing began.
+  private comboIndex = 0;
+  private lastSwingAt = -Infinity;
+  // The chain grace beyond the weapon's cooldown, in ms. A per-player preference
+  // the client sends from its Options; defaults until one arrives.
+  private comboWindowMs = DEFAULT_COMBO_WINDOW_MS;
+  // Deferred melee: a press holds a wind-up (charging) that fires on release.
+  // chargeMs accumulates the hold; past chargeHoldMs the release is a hard swing.
+  // pendingHard records which kind the swing now in flight is, for meleeCombo.
+  private charging = false;
+  private chargeMs = 0;
+  private chargeHoldMs = DEFAULT_CHARGE_HOLD_MS;
+  private pendingHard = false;
 
   constructor(
     physics: PhysicsWorld,
@@ -137,6 +153,93 @@ export class Player extends Entity implements Caster {
   }
   get attackAffects(): number {
     return PLAYER_ATTACK_AFFECTS;
+  }
+
+  /** The swing this attack is on, for the melee spell (Caster.meleeCombo): the
+   *  heavy swing when the release was a hold, otherwise the current combo step.
+   *  Both were chosen when the swing was released, so this reads the variant — FX
+   *  + damage/knockback multipliers — for the swing now in flight. */
+  meleeCombo(inst: WeaponInstance): ComboSwing {
+    if (this.pendingHard) return inst.hardSwing;
+    const swings = inst.comboSwings;
+    return swings[this.comboIndex % swings.length];
+  }
+
+  /** Set this player's melee tuning (ms). Both come from the client's Options and
+   *  are clamped so a bad value can't disable or unboundedly stretch either. */
+  setMeleeTuning(comboWindowMs: number, chargeHoldMs: number): void {
+    if (Number.isFinite(comboWindowMs)) this.comboWindowMs = Math.max(0, Math.min(2000, comboWindowMs));
+    if (Number.isFinite(chargeHoldMs)) this.chargeHoldMs = Math.max(50, Math.min(3000, chargeHoldMs));
+  }
+
+  /** Advance (or reset) the melee combo for a swing released at caster-clock `now`.
+   *  The chain continues only when the gap since the last swing is within the
+   *  weapon's cooldown plus the grace window; otherwise it restarts at swing 0. */
+  private advanceCombo(now: number): void {
+    const graceExpired = now - this.lastSwingAt > this.weapon!.attackCooldownMs + this.comboWindowMs;
+    const len = this.weapon!.comboSwings.length;
+    this.comboIndex = graceExpired ? 0 : (this.comboIndex + 1) % len;
+    this.lastSwingAt = now;
+    this.state.comboStep = this.comboIndex;
+  }
+
+  /** Run the deferred-melee charge for this tick. A rising edge starts a wind-up
+   *  (nothing fires); while held the player holds the pose and chargeMs grows;
+   *  releasing fires the swing — a hard one if it was held past the threshold,
+   *  otherwise the next combo step. Returns true while a wind-up is in progress
+   *  (so the caller doesn't also run the plain fire path). */
+  private updateMeleeCharge(attackHeld: boolean, risingEdge: boolean, dtMs: number, aim: AimPoint): boolean {
+    const now = this.spellCaster.now;
+    if (this.charging) {
+      this.chargeMs += dtMs;
+      this.state.chargeHard = this.chargeMs >= this.chargeHoldMs;
+      if (!attackHeld) this.releaseCharge(now, aim, dtMs);
+      return true;
+    }
+    // Start a new wind-up only on a fresh press with the weapon idle and ready.
+    if (risingEdge && !this.spellCaster.busy && this.spellFor(this.weapon!).isReady(now)) {
+      this.charging = true;
+      this.chargeMs = 0;
+      this.state.charging = true;
+      this.state.chargeHard = false;
+      return true;
+    }
+    return false;
+  }
+
+  /** Drop a wind-up in progress without firing (stun, downed, or a swap to a
+   *  non-melee weapon mid-hold). Idempotent. */
+  private cancelCharge(): void {
+    if (!this.charging) return;
+    this.charging = false;
+    this.chargeMs = 0;
+    this.state.charging = false;
+    this.state.chargeHard = false;
+  }
+
+  /** Release a charged wind-up: fire the chosen swing and clear the charge. */
+  private releaseCharge(now: number, aim: AimPoint, dtMs: number): void {
+    const hard = this.chargeMs >= this.chargeHoldMs;
+    this.charging = false;
+    this.chargeMs = 0;
+    this.state.charging = false;
+    this.state.chargeHard = false;
+
+    this.pendingHard = hard;
+    this.state.hardSwing = hard;
+    this.state.attackSeq = (this.state.attackSeq + 1) % 65536;
+    if (hard) {
+      // A heavy swing is its own move — it doesn't extend the tap combo. Reset so
+      // the next tap starts a fresh chain, and stamp lastSwingAt for that timing.
+      this.comboIndex = 0;
+      this.state.comboStep = 0;
+      this.lastSwingAt = now;
+    } else {
+      this.advanceCombo(now);
+    }
+    const spell = this.spellFor(this.weapon!);
+    this.spellCaster.begin(spell, aim);
+    this.spellCaster.update(this, dtMs, aim); // zero wind-up: strike this tick
   }
 
   /** Stage 3 of the attack pipeline: the player's own offensive scaling. This is
@@ -266,6 +369,7 @@ export class Player extends Entity implements Caster {
     // so a held key from before they fell doesn't keep the body drifting.
     if (this.state.downed) {
       this.move(0, 0, 0);
+      this.cancelCharge();
       this.prevAttack = false;
       return;
     }
@@ -277,6 +381,7 @@ export class Player extends Entity implements Caster {
     // cast is frozen too. prevAttack is tracked so a held attack doesn't auto-fire
     // the instant stun ends.
     if (this.updateStun(dtMs)) {
+      this.cancelCharge();
       this.prevAttack = input.attack;
       return;
     }
@@ -297,24 +402,38 @@ export class Player extends Entity implements Caster {
 
     this.move(input.dx, input.dy, this.stats.speed);
 
-    // Advance an in-flight attack; then — the same tick it finishes — a held/pressed
-    // attack may start the next one, so the cadence is exactly the weapon's cooldown.
-    // With no weapon (before the first supply pickup) there is nothing to cast, so the
-    // whole attack block is skipped and the player just moves.
+    // Advance an in-flight attack; then — the same tick it finishes — the next one
+    // may start, so the cadence is exactly the weapon's cooldown. With no weapon
+    // (before the first supply pickup) there is nothing to cast, so the attack block
+    // is skipped and the player just moves.
     const aim = this.facingAim();
     if (this.spellCaster.busy) {
       this.spellCaster.update(this, dtMs, aim);
     }
-    if (spell && !this.spellCaster.busy) {
+    if (!weapon || !spell) {
+      // No weapon yet — drop any charge and do nothing else.
+      this.cancelCharge();
+    } else if (!weapon.isRanged && !weapon.isAoe) {
+      // Deferred melee: hold the wind-up, fire on release (regular vs hard by hold time).
+      this.updateMeleeCharge(input.attack, risingEdge, dtMs, aim);
+    } else {
+      // A wind-up left over from before a swap to this ranged/AOE weapon is dropped.
+      this.cancelCharge();
+      // Ranged/AOE fire immediately — held for "hold" fire mode, once per press for
+      // "press". They never combo, so their swing is always the neutral first step.
       const wantsToFire = spell.fireMode === "hold" ? input.attack : risingEdge;
-      if (wantsToFire && spell.isReady(this.spellCaster.now)) {
+      if (!this.spellCaster.busy && wantsToFire && spell.isReady(this.spellCaster.now)) {
         this.state.attackSeq = (this.state.attackSeq + 1) % 65536;
+        this.comboIndex = 0;
+        this.state.comboStep = 0;
+        this.state.hardSwing = false;
         this.spellCaster.begin(spell, aim);
         this.spellCaster.update(this, dtMs, aim); // zero wind-up: strike this tick
       }
     }
     // isAttacking tracks the cast: true through the swing/shot window (drives the
-    // client attack animation), false when idle.
+    // client attack animation), false when idle. charging is the deferred wind-up
+    // that precedes a melee swing — a separate pose the client reads.
     this.state.isAttacking = this.spellCaster.busy;
 
     this.prevAttack = input.attack;

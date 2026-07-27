@@ -10,7 +10,8 @@
 // only the numeric stats fold. That keeps the 52 template modules untouched and
 // means a rolled weapon still draws with the same icon and swings the same arc.
 
-import { Weapon, AttackFXType, RangedStyle, GetHurtbox } from "./base";
+import { Weapon, AttackFXType, RangedStyle, GetHurtbox, ComboSwing, HitRegion } from "./base";
+import { Facing } from "../types";
 
 /** Attack-cooldown floor (ms). Attack-speed modifiers divide the cooldown, so
  *  without a floor a big enough stack would collapse the swing window to nothing
@@ -132,6 +133,17 @@ export class WeaponInstance implements WeaponView {
   get isRanged(): boolean { return this.template.isRanged; }
   get isAoe(): boolean { return this.template.isAoe; }
   get getHurtbox(): GetHurtbox { return this.template.getHurtbox; }
+  get comboSwings(): ComboSwing[] { return this.template.comboSwings; }
+  get hardSwing(): ComboSwing { return this.template.hardSwing; }
+  comboHurtbox(
+    swing: ComboSwing,
+    px: number,
+    py: number,
+    facing: Facing,
+    swingMs: number,
+  ): HitRegion | null {
+    return this.template.comboHurtbox(swing, px, py, facing, swingMs);
+  }
 
   // ── Folded stats ────────────────────────────────────────────────────────────
   get damage(): number {

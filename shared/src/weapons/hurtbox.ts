@@ -43,15 +43,20 @@ export function fxHurtboxAt(
   px: number,
   py: number,
   facing: Facing,
+  mirrored = false,
 ): HitRegion | null {
   const f = frameAt(fxType, swingMs);
   if (!f) return null;
 
-  // Inclusive-exclusive edges of the frame's box in anchor space.
+  // Inclusive-exclusive edges of the frame's box in anchor space. A mirrored
+  // (backswing) arc reflects the box across the body axis — in right-facing anchor
+  // space that is the x-axis, so the cross-axis span flips: y ∈ [y, y+h] becomes
+  // [-(y+h), -y]. The reach (x) and both extents are unchanged; the facing rotation
+  // below then carries the reflection into world space just like the strip's flipY.
   const x0 = f.x;
-  const y0 = f.y;
+  const y0 = mirrored ? -(f.y + f.h) : f.y;
   const x1 = f.x + f.w;
-  const y1 = f.y + f.h;
+  const y1 = mirrored ? -f.y : f.y + f.h;
 
   switch (facing) {
     case "right":

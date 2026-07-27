@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { Facing, RangedStyle, WEAPON_REGISTRY } from "shared";
+import { Facing, RangedStyle, WEAPON_REGISTRY, ComboSwing } from "shared";
 import {
   AttackFXType,
   StripFXType,
@@ -7,6 +7,7 @@ import {
   playAttackFX,
   syncAttackFX,
   holdWeaponIconAtRest,
+  poseWeaponIconWindup,
   WEAPON_ICON_DISPLAY_SIZE,
 } from "./AttackFXSprites";
 import { NovaFX } from "./NovaFX";
@@ -28,8 +29,14 @@ import { createCastSprite, playCastFX, syncCastFX, showHeldStaff } from "./CastF
 export interface WeaponVisual {
   /** Follow the owner. Called every frame from the anim path. */
   sync(x: number, y: number, facing: Facing): void;
-  /** Fire the one-shot attack visual. Called on the frame a swing starts. */
-  playAttack(x: number, y: number, facing: Facing): void;
+  /** Fire the one-shot attack visual. Called on the frame a swing starts. The
+   *  optional combo swing selects which strip to draw and whether to mirror it;
+   *  omitted (or unsupported) means the weapon's default first swing. */
+  playAttack(x: number, y: number, facing: Facing, swing?: ComboSwing | null): void;
+  /** Hold the wind-up pose while a deferred melee attack is charging (the weapon
+   *  cocked back at the swing's first keyframe). No-op for weapons that don't
+   *  charge. `swing` hints which swing is being wound up (hard vs combo). */
+  showWindup(x: number, y: number, facing: Facing, swing?: ComboSwing | null): void;
   destroy(): void;
 }
 
@@ -40,20 +47,32 @@ export interface WeaponVisual {
  *  absent: a weapon can have a strip with no icon, or an icon with no strip (a
  *  thrown weapon, held but never swung). */
 class HeldWeaponVisual implements WeaponVisual {
-  private readonly fxSprite?: Phaser.GameObjects.Sprite;
+  // One strip sprite per FX type this weapon can swing — its base type plus any
+  // combo variants (the finisher's wider strip). Created lazily and cached, since
+  // a swing may be the first this weapon has drawn of that variant.
+  private readonly fxSprites = new Map<StripFXType, Phaser.GameObjects.Sprite>();
+  // The strip currently playing, so sync() re-anchors the right one.
+  private activeSprite?: Phaser.GameObjects.Sprite;
   private readonly icon?: Phaser.GameObjects.Image;
   /** The weapon's natural hold tilt, from its config (see AttackFXSprites). */
   private readonly iconAngle: number;
 
   constructor(
-    scene: Phaser.Scene,
+    private readonly scene: Phaser.Scene,
     private readonly fxType: StripFXType | null,
     weaponIconTextureKey: string | undefined,
     x: number,
     y: number,
     facing: Facing,
   ) {
-    if (fxType) this.fxSprite = createAttackFXSprite(scene, fxType);
+    // Pre-create the base strip (and, for a melee weapon, its combo variants) so
+    // the first swing of any variant doesn't stutter building its sprite.
+    if (fxType) {
+      this.spriteFor(fxType);
+      for (const s of WEAPON_REGISTRY[weaponIconTextureKey ?? ""]?.comboSwings ?? []) {
+        this.spriteFor(s.fxType);
+      }
+    }
     this.iconAngle = WEAPON_REGISTRY[weaponIconTextureKey ?? ""]?.iconAngle ?? 0;
     if (weaponIconTextureKey) {
       this.icon = scene.add.image(0, 0, weaponIconTextureKey);
@@ -64,23 +83,43 @@ class HeldWeaponVisual implements WeaponVisual {
     }
   }
 
+  private spriteFor(fx: StripFXType): Phaser.GameObjects.Sprite {
+    let sprite = this.fxSprites.get(fx);
+    if (!sprite) {
+      sprite = createAttackFXSprite(this.scene, fx);
+      this.fxSprites.set(fx, sprite);
+    }
+    return sprite;
+  }
+
   sync(x: number, y: number, facing: Facing): void {
     // While a swing is playing, its keyframes drive the icon (and the strip is
     // visible); the rest of the time the weapon rests in the hand.
-    if (this.fxSprite?.visible) {
-      syncAttackFX(this.fxSprite, x, y, this.icon);
+    if (this.activeSprite?.visible) {
+      syncAttackFX(this.activeSprite, x, y, this.icon);
     } else if (this.icon) {
       holdWeaponIconAtRest(this.icon, x, y, facing, this.iconAngle);
     }
   }
 
-  playAttack(x: number, y: number, facing: Facing): void {
-    if (!this.fxType || !this.fxSprite) return;
-    playAttackFX(this.fxSprite, this.fxType, x, y, facing, this.icon, this.iconAngle);
+  playAttack(x: number, y: number, facing: Facing, swing?: ComboSwing | null): void {
+    const fx = swing?.fxType ?? this.fxType;
+    if (!fx) return;
+    const sprite = this.spriteFor(fx);
+    this.activeSprite = sprite;
+    playAttackFX(sprite, fx, x, y, facing, this.icon, this.iconAngle, swing?.mirrored ?? false);
+  }
+
+  showWindup(x: number, y: number, facing: Facing, swing?: ComboSwing | null): void {
+    const fx = swing?.fxType ?? this.fxType;
+    if (!this.icon || !fx) return;
+    // No strip during the wind-up — just the icon cocked back at its first keyframe.
+    if (this.activeSprite?.visible) this.activeSprite.setVisible(false);
+    poseWeaponIconWindup(this.icon, fx, x, y, facing, this.iconAngle, swing?.mirrored ?? false);
   }
 
   destroy(): void {
-    this.fxSprite?.destroy();
+    for (const s of this.fxSprites.values()) s.destroy();
     this.icon?.destroy();
   }
 }
@@ -113,6 +152,8 @@ class HeldBowVisual implements WeaponVisual {
     playBowFX(this.bowSprite, this.weaponId, x, y, facing);
   }
 
+  showWindup(): void {} // ranged weapons don't charge
+
   destroy(): void {
     this.bowSprite.destroy();
   }
@@ -135,6 +176,8 @@ class HeldStaffVisual implements WeaponVisual {
     playCastFX(this.castSprite, x, y, facing);
   }
 
+  showWindup(): void {} // staves cast, they don't charge a melee swing
+
   destroy(): void {
     this.castSprite.destroy();
   }
@@ -156,6 +199,8 @@ class NovaVisual implements WeaponVisual {
     this.novaFx.play(x, y);
   }
 
+  showWindup(): void {}
+
   destroy(): void {
     this.novaFx.destroy();
   }
@@ -166,6 +211,7 @@ class NovaVisual implements WeaponVisual {
 class NoVisual implements WeaponVisual {
   sync(): void {}
   playAttack(): void {}
+  showWindup(): void {}
   destroy(): void {}
 }
 

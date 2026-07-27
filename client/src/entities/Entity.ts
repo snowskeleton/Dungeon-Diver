@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { TILE_SIZE, Facing, RangedStyle, FOOT_OFFSET, ENTITY_RADIUS, WEAPON_REGISTRY } from "shared";
+import { TILE_SIZE, Facing, RangedStyle, FOOT_OFFSET, ENTITY_RADIUS, WEAPON_REGISTRY, ComboSwing } from "shared";
 import { DEBUG_COLORS, type DebugShape } from "../debug/DebugDraw";
 import { AttackFXType } from "./AttackFXSprites";
 import { WeaponVisual, createWeaponVisual, createNoWeaponVisual } from "./WeaponVisuals";
@@ -133,11 +133,71 @@ export abstract class Entity {
     this.wasAttacking = false;
   }
 
+  /** Resolve the swing for a synced (weaponId, comboStep, hard) into pendingComboSwing,
+   *  so the next attack FX draws the matching strip + mirror. Call before retrigger. */
+  protected setPendingComboSwing(weaponId: string, comboStep: number, hard: boolean) {
+    const w = WEAPON_REGISTRY[weaponId];
+    if (hard) {
+      this.pendingComboSwing = w?.hardSwing ?? null;
+      return;
+    }
+    const swings = w?.comboSwings;
+    this.pendingComboSwing = swings ? swings[comboStep % swings.length] ?? null : null;
+  }
+
+  // Deferred-melee wind-up pose: while charging, the subclass sets this from the
+  // synced charging/chargeHard flags and playAnim holds the swing's first frame.
+  private chargeActive = false;
+  private chargeHardPose = false;
+  private chargeWasTinted = false;
+  private chargeSwing: ComboSwing | null = null;
+
+  /** Set (or clear) the charging wind-up pose. `swing` hints which swing is being
+   *  wound up so the cocked-back icon matches (hard vs combo). */
+  protected setChargePose(active: boolean, hard: boolean, swing: ComboSwing | null) {
+    this.chargeActive = active;
+    this.chargeHardPose = hard;
+    this.chargeSwing = swing;
+  }
+
+  /** Hold the first frame of the attack animation (the wind-up) while charging,
+   *  with the weapon cocked back and a warm tint once the hard swing is armed. */
+  private renderChargePose(facing: Facing) {
+    if (!this.charSprite || !this.spriteConfig) return;
+    this.charSprite.setFlipX(this.spriteConfig.usesFlipX && facing === "left");
+    const key = this.spriteConfig.resolveAnim("attack", facing);
+    const anim = this.scene.anims.get(key);
+    this.charSprite.anims.stop();
+    const f0 = anim?.frames[0];
+    if (f0) this.charSprite.setTexture(f0.textureKey, f0.textureFrame);
+    // Force the next real clip to replay (this static frame isn't a played anim).
+    this.currentAnimKey = undefined;
+    if (this.chargeHardPose) {
+      this.charSprite.setTint(0xffcc66);
+      this.chargeWasTinted = true;
+    } else if (!this.downedShown) {
+      this.charSprite.clearTint();
+    }
+    this.weaponVisual.showWindup(this.sprite.x, this.sprite.y, facing, this.chargeSwing);
+    this.lastFacing = facing;
+  }
+
   protected playAnim(action: CharacterAction, facing: Facing) {
     if (!this.charSprite || !this.spriteConfig) return;
     this.syncSpritePosition();
 
     if (this.playHurtFlash(facing)) return;
+
+    // A charging wind-up holds the swing's first frame and takes over the sprite.
+    if (this.chargeActive) {
+      this.renderChargePose(facing);
+      return;
+    }
+    // Leaving a hard-charge: drop the warm tint (downed keeps its own).
+    if (this.chargeWasTinted && !this.downedShown) {
+      this.charSprite.clearTint();
+      this.chargeWasTinted = false;
+    }
 
     const startedAttack = action === "attack" && !this.wasAttacking;
     const effective = this.resolveEffectiveAction(action, startedAttack);
@@ -182,9 +242,14 @@ export abstract class Entity {
     this.charSprite!.play(key);
   }
 
+  // The combo swing the next attack visual should draw, set by a player subclass
+  // from the synced comboStep just before it retriggers. Null = default first swing
+  // (enemies, or a weapon with no combo).
+  protected pendingComboSwing: ComboSwing | null = null;
+
   private updateAttackFX(startedAttack: boolean, facing: Facing) {
     if (!startedAttack) return;
-    this.weaponVisual.playAttack(this.sprite.x, this.sprite.y, facing);
+    this.weaponVisual.playAttack(this.sprite.x, this.sprite.y, facing, this.pendingComboSwing);
   }
 
   private downedShown = false;

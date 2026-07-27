@@ -14,6 +14,7 @@ import { meleeHurtboxShapes } from "../debug/hurtboxShapes";
 import { AcquireFX, ACQUIRE_MS } from "./AcquireFX";
 import { InventoryMenu } from "../ui/InventoryMenu";
 import { OfferPicker, OfferChoiceView } from "../ui/OfferPicker";
+import { loadOptions } from "../options/gameOptions";
 
 // Must match GameRoom BUY_RADIUS so the client prompt appears exactly when the
 // server will accept the purchase.
@@ -104,6 +105,10 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     this.roomState = room.state as GameStateView;
     this.inputSource = inputSource;
     this.setupCharacter(visualDef.spriteConfig, null, undefined, undefined);
+    // Tell the server this player's melee tuning (combo window + charge hold) —
+    // client Options that govern server-authoritative timing.
+    const opts = loadOptions();
+    this.room.send("meleeTuning", { comboWindowMs: opts.comboWindowMs, chargeHoldMs: opts.chargeHoldMs });
   }
 
   update() {
@@ -374,9 +379,19 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     // A new attackSeq means the server accepted a fresh attack — restart the
     // swing/bow clip even if isAttacking never dropped (held-fire).
     if (attackSeq !== this.lastAttackSeq) {
+      this.setPendingComboSwing(weaponId, state.comboStep, state.hardSwing);
       if (this.lastAttackSeq !== -1) this.retriggerAttack();
       this.lastAttackSeq = attackSeq;
       this.swingStartedAt = performance.now();
+    }
+    // Deferred-melee wind-up: hold the swing pose while charging (hard once armed).
+    // No weapon yet (before the first supply pickup) means nothing to charge.
+    if (this.weapon) {
+      this.setChargePose(
+        state.charging,
+        state.chargeHard,
+        state.chargeHard ? this.weapon.hardSwing : this.weapon.comboSwings[0],
+      );
     }
     // Active weapon changed (switch or acquire) — hot-swap the visuals + local
     // weapon so attack FX / facing-lock follow the new weapon.
