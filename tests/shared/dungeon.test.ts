@@ -394,6 +394,15 @@ describe("room types", () => {
         (deep.row === room.centerRow && (deep.col === room.tileCol || deep.col === room.tileCol + ROOM_W - 1)) ||
         (deep.col === room.centerCol && (deep.row === room.tileRow || deep.row === room.tileRow + ROOM_H - 1));
       expect(onDoorway, `seed ${seed}`).toBe(false);
+      // A dead end (≤1 floor neighbour), so the chest tucks into a pocket and
+      // never blocks a through-corridor or an exit (playtest C1).
+      const isFloor = (c: number, r: number) => d.mapData[r]?.[c] === TILE.FLOOR;
+      const neighbours =
+        Number(isFloor(deep.col + 1, deep.row)) +
+        Number(isFloor(deep.col - 1, deep.row)) +
+        Number(isFloor(deep.col, deep.row + 1)) +
+        Number(isFloor(deep.col, deep.row - 1));
+      expect(neighbours, `seed ${seed}`).toBeLessThanOrEqual(1);
     }
   });
 

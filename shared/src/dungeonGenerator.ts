@@ -868,16 +868,22 @@ function buildPlayerSpawns(
 }
 
 /**
- * The interior FLOOR tile of a maze room that is hardest to reach — the tile
- * maximizing BFS distance from the maze's doorway mouths. A chest placed here
- * forces the party to actually solve the maze to reach the treasure.
+ * The interior FLOOR tile of a maze room best suited to hide a chest — a
+ * DEAD END (a floor tile with exactly one floor neighbour) as far as possible
+ * from the maze's doorway mouths. A chest placed here forces the party to solve
+ * the maze AND tucks it into a pocket off the walkway, so it never blocks a
+ * through-corridor or an exit (playtest C1: a chest on the only walkway
+ * softlocked a run). If the maze has no dead end (shouldn't occur), we fall back
+ * to the plain farthest-reachable tile.
  *
  * Doorways are always carved at a room's centre row/col on its outer walls (see
  * carveDoorways), so those up-to-four border midpoints are the BFS seeds — but
  * only the ones that are actually FLOOR, since an unconnected wall stays solid.
  * Multi-source BFS from every real doorway means the tile chosen is far from ALL
  * entrances, not just one. The search is confined to the room's own grid slot so
- * it can't leak into a neighbour through a doorway corridor.
+ * it can't leak into a neighbour through a doorway corridor. Dead-endedness is
+ * tested the same way — only floor neighbours inside the room count, so a tile
+ * whose only opening is the doorway corridor still reads as a true dead end.
  *
  * Deterministic (no rng) — computed from the finished map, so calling it doesn't
  * touch generation order or any seed's layout. Falls back to the room centre if
@@ -917,12 +923,27 @@ export function mazeDeepestTile(
     [0, 1],
     [0, -1],
   ];
+  const floorNeighbours = (c: number, r: number) => {
+    let n = 0;
+    for (const [dc, dr] of NB) if (isFloor(c + dc, r + dr)) n++;
+    return n;
+  };
+
+  // Fall back to the plain farthest-reachable tile if no dead end exists.
   let best = queue[0];
-  let bestD = 0;
+  let bestD = -1;
+  // Preferred: the farthest DEAD END (one floor neighbour) — a pocket off the walkway.
+  let bestDeadEnd: { col: number; row: number } | null = null;
+  let bestDeadEndD = -1;
+
   while (queue.length > 0) {
     const cur = queue.shift()!;
     const d = dist.get(`${cur.col},${cur.row}`)!;
     if (d > bestD) { bestD = d; best = cur; }
+    if (d > 0 && d > bestDeadEndD && floorNeighbours(cur.col, cur.row) <= 1) {
+      bestDeadEndD = d;
+      bestDeadEnd = cur;
+    }
     for (const [dc, dr] of NB) {
       const nc = cur.col + dc;
       const nr = cur.row + dr;
@@ -932,7 +953,7 @@ export function mazeDeepestTile(
       queue.push({ col: nc, row: nr });
     }
   }
-  return best;
+  return bestDeadEnd ?? best;
 }
 
 // ── 8. Colour boss passageway tiles gold ───────────────────────────────────
