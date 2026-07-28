@@ -50,6 +50,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       { kind: "balance", text: "Far fewer weapon drops: shop rooms are rarer and ordinary room-clear rewards no longer roll weapons, so weapon swaps are a real choice again" },
       { kind: "ui", text: "Shop, reward, and offer screens now show green/red up/down arrows comparing a weapon's stats to the one you're holding" },
       { kind: "ui", text: "Buffs now show a short description of what they do when you pick them up (and in the inventory screen), not just a name" },
+      { kind: "feature", text: "Melee weapons now wind up before they strike: pressing attack instantly rears the weapon back and holds it for the weapon's speed, then swings — heavy weapons telegraph clearly, light ones stay snappy, and your input always shows immediate feedback" },
     ],
   },
 ];

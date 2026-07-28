@@ -1,4 +1,4 @@
-import { WeaponInstance, HitShape, AMMO_REGISTRY, ComboSwing } from "shared";
+import { WeaponInstance, HitShape, AMMO_REGISTRY, ComboSwing, swingDurationMs } from "shared";
 import { RehitGate } from "../combat/RehitGate";
 import { Spell, SpellOpts, SpellEffect, Caster, AttackStats } from "./Spell";
 
@@ -38,6 +38,39 @@ class WeaponSpell extends Spell {
   /** The swing window IS the weapon's cooldown, so it tracks attack-speed mods. */
   override get activeMs(): number {
     return this.inst.attackCooldownMs;
+  }
+}
+
+/**
+ * A melee swing spends the weapon's attack cooldown as a VISIBLE wind-up: the
+ * character snaps to the cocked-back first frame (instant feedback that the input
+ * landed) and holds it, THEN plays the swing arc that carries the hitbox. So the
+ * active phase is just the swing animation's own length, and the wind-up soaks up
+ * whatever cooldown is left over — the total cadence stays the weapon's cooldown,
+ * but the previously-invisible dead time before you can swing again is now shown
+ * as a telegraphed hold (a hammer visibly rears back, a dagger barely pauses).
+ *
+ * All four FX strips are the same length today, so `swingMs` is effectively a
+ * constant; the max keeps a longer finisher/hard strip from being cut short if
+ * the art ever diverges. attackCooldownMs is read LIVE (attack-speed mods), which
+ * is why windUpMs/activeMs are getters, not frozen fields.
+ */
+class MeleeWeaponSpell extends WeaponSpell {
+  private readonly swingMs: number;
+
+  constructor(inst: WeaponInstance, opts: SpellOpts) {
+    super(inst, opts);
+    this.swingMs = Math.max(
+      swingDurationMs(inst.hardSwing.fxType),
+      ...inst.comboSwings.map((s) => swingDurationMs(s.fxType)),
+    );
+  }
+
+  override get windUpMs(): number {
+    return Math.max(0, this.inst.attackCooldownMs - this.swingMs);
+  }
+  override get activeMs(): number {
+    return this.swingMs;
   }
 }
 
@@ -94,10 +127,10 @@ function aoeEffect(inst: WeaponInstance, radius: number): SpellEffect {
 }
 
 function meleeWeaponSpell(inst: WeaponInstance): Spell {
-  return new WeaponSpell(inst, {
+  return new MeleeWeaponSpell(inst, {
     id: `weapon:${inst.id}`,
-    windUpMs: 0,
-    activeMs: inst.attackCooldownMs,
+    windUpMs: 0, // overridden by the getter (cooldown − swing length), read live
+    activeMs: 0, // overridden by the getter (the swing animation's own length)
     recoverMs: 0,
     cooldownMs: 0,
     range: 0,
@@ -116,11 +149,11 @@ function firstComboSwing(inst: WeaponInstance): ComboSwing {
 function meleeEffect(inst: WeaponInstance): SpellEffect {
   const gate = new RehitGate(Infinity); // one hit per target for the whole swing
 
-  // Elapsed time into the ATTACK ANIMATION, which is not the same clock as the
-  // spell's active phase: the FX strip always plays at its own frame rate, while
-  // activeMs is the weapon's cooldown. A slow weapon holds isAttacking long after
-  // its animation (and so its hitbox) has finished — which is correct, and is why
-  // this counter is kept here rather than read off the spell's phase progress.
+  // Elapsed time into the ATTACK ANIMATION, measured from the strike (the end of
+  // the wind-up hold). The active phase now equals the swing animation's length,
+  // so this tracks it closely — but it's kept as its own counter rather than read
+  // off the spell's phase progress because the FX strip's frame rate is the source
+  // of truth for which frame (and so which hitbox) is on screen.
   let swingMs = 0;
   // The combo swing this whole attack belongs to, sampled once when it begins so a
   // chain advance mid-swing can't retime the arc already in flight (same reasoning

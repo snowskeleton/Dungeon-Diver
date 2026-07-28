@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { Facing, Attack, PLAYER_ATTACK_AFFECTS, WEAPON_REGISTRY, WeaponInstance, WeaponMod, WeaponId, Weapon, WeaponCategory, AMMO_REGISTRY } from "shared";
+import { Facing, Attack, PLAYER_ATTACK_AFFECTS, WEAPON_REGISTRY, WeaponInstance, WeaponMod, WeaponId, Weapon, WeaponCategory, AMMO_REGISTRY, swingDurationMs } from "shared";
 import { Spell, SpellOpts, Caster, AttackStats } from "../../server/src/spells/Spell";
 import { SpellCaster } from "../../server/src/spells/SpellCaster";
 import { weaponSpell } from "../../server/src/spells/weaponSpell";
@@ -290,11 +290,15 @@ describe("weaponSpell", () => {
   const sword = WEAPON_REGISTRY["broadsword"];
   const bow = WEAPON_REGISTRY["longbow"];
 
-  it("builds a melee swing whose active window IS the weapon's cooldown", () => {
+  it("spends a melee weapon's cooldown as a wind-up hold before a swing-length strike", () => {
+    // The swing arc is the FX animation's own length; the cooldown left over becomes
+    // a visible cocked-back wind-up, so total cadence stays the weapon's cooldown.
     const inst = new WeaponInstance(sword, "a");
     const s = weaponSpell(inst);
-    expect(s.windUpMs).toBe(0);
-    expect(s.activeMs).toBe(inst.attackCooldownMs);
+    const swing = swingDurationMs(inst.comboSwings[0].fxType);
+    expect(s.activeMs).toBe(swing);
+    expect(s.windUpMs).toBe(inst.attackCooldownMs - swing);
+    expect(s.windUpMs + s.activeMs).toBe(inst.attackCooldownMs); // cadence preserved
     expect(s.fireMode).toBe("press"); // one swing per press
   });
 
@@ -307,9 +311,13 @@ describe("weaponSpell", () => {
     // whole run, so a spell built before a modifier existed must still see it.
     const base = weaponSpell(new WeaponInstance(sword, "a"));
     const hasted = weaponSpell(new WeaponInstance(sword, "b", [new Faster()]));
+    const swing = swingDurationMs(sword.comboSwings[0].fxType);
 
-    expect(base.activeMs).toBe(sword.attackCooldownMs);
-    expect(hasted.activeMs).toBeCloseTo(sword.attackCooldownMs / 2, 9);
+    // The wind-up is the live-tracked part (cooldown − swing length); a faster
+    // cooldown shrinks it, clamped at 0 once the swing alone fills the cooldown.
+    expect(base.windUpMs).toBe(sword.attackCooldownMs - swing);
+    expect(hasted.windUpMs).toBe(Math.max(0, sword.attackCooldownMs / 2 - swing));
+    expect(hasted.activeMs).toBe(swing); // the arc length never changes
   });
 
   it("emits nothing on a melee wind-up frame, then a hurtbox once the blade is drawn", () => {

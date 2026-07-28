@@ -256,7 +256,9 @@ export class Player extends Entity implements Caster {
     }
     const spell = this.spellFor(this.weapon!);
     this.spellCaster.begin(spell, aim);
-    this.spellCaster.update(this, dtMs, aim); // zero wind-up: strike this tick
+    // Advance one tick now. A fast weapon (windUp 0) strikes this very tick so taps
+    // stay snappy; a slower one enters its wind-up hold and strikes once it elapses.
+    this.spellCaster.update(this, dtMs, aim);
   }
 
   /** Stage 3 of the attack pipeline: the player's own offensive scaling. This is
@@ -449,9 +451,13 @@ export class Player extends Entity implements Caster {
       }
     }
     // isAttacking tracks the cast: true through the swing/shot window (drives the
-    // client attack animation), false when idle. charging is the deferred wind-up
-    // that precedes a melee swing — a separate pose the client reads.
+    // client attack animation), false when idle. charging is the deferred heavy
+    // wind-up AFTER a swing; windingUp is the swing's own wind-up BEFORE the blow
+    // (a melee swing holds the weapon's cooldown as a cocked-back pose). Both are
+    // melee-only poses the client reads; ranged/AOE never set them.
     this.state.isAttacking = this.spellCaster.busy;
+    const isMelee = !!weapon && !weapon.isRanged && !weapon.isAoe;
+    this.state.windingUp = isMelee && this.spellCaster.windingUp;
 
     this.prevAttack = input.attack;
   }

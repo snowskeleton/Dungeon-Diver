@@ -149,18 +149,21 @@ export interface SpellOpts {
 // so that cooldown state survives; the effect is a plain object it delegates to.
 export class Spell {
   readonly id: string;
-  readonly windUpMs: number;
   readonly recoverMs: number;
   readonly range: number;
-  // activeMs/cooldownMs are getters rather than fields so a subclass can derive
-  // them from live state. A weapon's swing window IS its attack cooldown, and that
-  // is modifiable per weapon instance (an attack-speed roll) — baking it in at
-  // construction would freeze the pre-modifier value forever, since spells are
-  // cached for the caster's lifetime. SpellCaster reads them once per cast when it
-  // enters a phase, so a mid-swing change can't retime a swing already in flight.
+  // windUp/active/cooldown are getters rather than fields so a subclass can derive
+  // them from live state. A weapon's swing timing IS driven by its attack cooldown,
+  // and that is modifiable per weapon instance (an attack-speed roll) — baking it in
+  // at construction would freeze the pre-modifier value forever, since spells are
+  // cached for the caster's lifetime. A melee swing in particular spends the cooldown
+  // as a VISIBLE wind-up hold before the blow (see MeleeWeaponSpell), so windUpMs is
+  // derived too. SpellCaster reads each once per cast when it enters a phase, so a
+  // mid-swing change can't retime a swing already in flight.
+  protected readonly baseWindUpMs: number;
   protected readonly baseActiveMs: number;
   protected readonly baseCooldownMs: number;
 
+  get windUpMs(): number { return this.baseWindUpMs; }
   get activeMs(): number { return this.baseActiveMs; }
   get cooldownMs(): number { return this.baseCooldownMs; }
   readonly aimLockMs: number;
@@ -174,7 +177,7 @@ export class Spell {
 
   constructor(opts: SpellOpts) {
     this.id = opts.id;
-    this.windUpMs = opts.windUpMs;
+    this.baseWindUpMs = opts.windUpMs;
     this.baseActiveMs = opts.activeMs;
     this.recoverMs = opts.recoverMs;
     this.baseCooldownMs = opts.cooldownMs;

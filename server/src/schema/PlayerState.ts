@@ -26,6 +26,11 @@ export class PlayerState extends EntityState implements PlayerStateView {
   // passes the threshold, so the client can telegraph that the heavy is armed.
   @type("boolean") charging: boolean = false;
   @type("boolean") chargeHard: boolean = false;
+  // A melee swing spends the weapon's cooldown as a visible wind-up before the
+  // blow: while this is true the client holds the cocked-back first swing frame
+  // (same pose as charging), then plays the arc when it flips false. 0ms for fast
+  // weapons whose swing animation already fills the cooldown.
+  @type("boolean") windingUp: boolean = false;
   // The swing that the latest attackSeq fired was a hard (charged) swing — the
   // client reads this on an attackSeq change to draw the heavy strip.
   @type("boolean") hardSwing: boolean = false;

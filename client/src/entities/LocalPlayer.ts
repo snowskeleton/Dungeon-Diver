@@ -11,6 +11,7 @@ import { InputSource, InputActions } from "../input/InputSource";
 import { CLIENT_CHARACTER_VISUAL_REGISTRY } from "../characters";
 import { DebugDrawable, DebugShape, DEBUG_COLORS, hurtBoxShape } from "../debug/DebugDraw";
 import { meleeHurtboxShapes } from "../debug/hurtboxShapes";
+import { meleeWindupPose } from "./meleeWindupPose";
 import { AcquireFX, ACQUIRE_MS } from "./AcquireFX";
 import { InventoryMenu } from "../ui/InventoryMenu";
 import { OfferPicker, OfferChoiceView } from "../ui/OfferPicker";
@@ -82,6 +83,9 @@ export class LocalPlayer extends Entity implements DebugDrawable {
    *  overlay can ask the weapon for the hurtbox of the frame on screen right now.
    *  -Infinity until the first swing, which reads as "animation long over". */
   private swingStartedAt = -Infinity;
+  // Mid melee wind-up (holding the cocked-back pose before the strike) — suppresses
+  // the debug hurtbox and marks where the swing arc's clock restarts.
+  private windingUp = false;
   private serverAttacking = false;
   private lastAttackSeq = -1;
   hp: number;
@@ -399,15 +403,16 @@ export class LocalPlayer extends Entity implements DebugDrawable {
       this.lastAttackSeq = attackSeq;
       this.swingStartedAt = performance.now();
     }
-    // Deferred-melee wind-up: hold the swing pose while charging (hard once armed).
-    // No weapon yet (before the first supply pickup) means nothing to charge.
-    if (this.weapon) {
-      this.setChargePose(
-        state.charging,
-        state.chargeHard,
-        state.chargeHard ? this.weapon.hardSwing : this.weapon.comboSwings[0],
-      );
-    }
+    // Hold the cocked-back first swing frame for both melee poses: the swing's own
+    // wind-up BEFORE the blow (windingUp) and the heavy charge held AFTER it. No
+    // weapon yet (before the first supply pickup) means nothing to pose.
+    if (this.weapon) this.setChargePose(...meleeWindupPose(state, this.weapon));
+    // The swing arc's animation clock starts at the STRIKE (the end of the wind-up),
+    // not the press — so the debug hurtbox lines up with the frame the resolver
+    // actually hit against. attackSeq set it at the press for fast (0ms) weapons.
+    const wasWindingUp = this.windingUp;
+    this.windingUp = state.windingUp;
+    if (wasWindingUp && !this.windingUp) this.swingStartedAt = performance.now();
     // Active weapon changed (switch or acquire) — hot-swap the visuals + local
     // weapon so attack FX / facing-lock follow the new weapon.
     if (weaponId !== this.activeWeaponId) {
@@ -460,7 +465,7 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     return [
       this.bodyDebugCircle(DEBUG_COLORS.playerBody),
       hurtBoxShape(PLAYER_HURT_BOUNDS, this.sprite.x, this.sprite.y),
-      ...(this.weapon
+      ...(this.weapon && !this.windingUp
         ? meleeHurtboxShapes(this.weapon, this.sprite.x, this.sprite.y, this.facing, performance.now() - this.swingStartedAt)
         : []),
     ];

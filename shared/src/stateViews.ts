@@ -83,6 +83,8 @@ export interface PlayerStateView extends EntityStateView {
   readonly charging: boolean;
   /** The current charge has passed the hard threshold — a heavy is armed. */
   readonly chargeHard: boolean;
+  /** Mid wind-up of a melee swing — hold the cocked-back first frame until it clears. */
+  readonly windingUp: boolean;
   /** The latest attackSeq fired a hard (charged) swing. */
   readonly hardSwing: boolean;
   readonly characterClass: CharacterClass;

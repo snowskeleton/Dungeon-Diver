@@ -43,6 +43,12 @@ export class SpellCaster {
     return this._phase !== "idle";
   }
 
+  /** True while in the wind-up phase (before the strike) — a melee player reads
+   *  this to hold the cocked-back first swing frame for the weapon's wind-up. */
+  get windingUp(): boolean {
+    return this._phase === "windup";
+  }
+
   /** True while mid-active-phase of a knockback-immune spell — the caster reads
    *  this to set its own immunity, rather than being pushed a flag. */
   get knockbackImmuneActive(): boolean {

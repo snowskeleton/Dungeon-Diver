@@ -26,6 +26,29 @@ Two related server rules in the same method:
 - **Melee swings on press, then charges** — a press fires a regular swing **immediately** (so taps feel snappy, not gooey), and holding the button past the threshold arms a single **charged hard swing** that fires on release (see the melee section above); **ranged auto-fires while held**.
 - **Facing is frozen while a ranged weapon is held** (after the first frame) so you can strafe/back-pedal and keep firing your aimed direction. `LocalPlayer` mirrors that exact facing rule locally so the sprite matches with no round-trip — **if you change one, change both.**
 
+## Melee timing: the weapon's cooldown is a VISIBLE wind-up, not a dead cooldown
+
+A melee weapon no longer spends its `attackCooldownMs` as an invisible re-fire lockout.
+Instead a swing is a **wind-up hold → swing arc**: on press the character instantly
+snaps to the cocked-back first swing frame (immediate feedback that the input landed) and
+**holds it for the weapon's leftover cooldown**, then plays the swing arc that carries the
+hitbox. The active phase is just the FX animation's own length (`swingDurationMs`), and
+the wind-up soaks up whatever cooldown is left over — so the **total cadence is still the
+weapon's cooldown**, but the old invisible dead time is now a telegraphed pose (a hammer
+visibly rears back; a dagger whose swing animation already fills its cooldown winds up for
+0ms and stays snappy).
+
+- Server: `MeleeWeaponSpell` (`server/src/spells/weaponSpell.ts`) derives
+  `windUpMs = max(0, attackCooldownMs − swingDurationMs)` and `activeMs = swingDurationMs`,
+  both as live getters so an attack-speed mod still applies (the wind-up shrinks first).
+- The wind-up phase is synced as `PlayerState.windingUp`; the client holds the cocked-back
+  first frame during it via the **same** `setChargePose` machinery the heavy charge uses
+  (`meleeWindupPose` picks the args for both poses). When it flips false the swing arc's
+  attack FX plays on the rising edge.
+- Consequence: the blow lands `windUpMs` later than the press (a heavy telegraph for slow
+  weapons). This is deliberate — it's what makes weapon speed *readable*. Tune it by
+  changing a weapon's `attackCooldownMs`; the arc length comes from the FX art.
+
 ## Melee: tap swings now, hold-then-release adds a hard swing
 
 Melee fires the regular swing **on the button press**, immediately — waiting for

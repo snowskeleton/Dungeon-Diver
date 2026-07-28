@@ -198,6 +198,37 @@ describe("input and attack cadence", () => {
     expect(p.state.attackSeq).toBe(last);
   });
 
+  // The tick a tapped melee weapon first emits a hitbox (kind "hit"), or -1. The
+  // press tick fires; then we hold released so only the wind-up + swing play out.
+  const firstHitTick = (p: Player): { tick: number; windingUpAtHit: boolean } => {
+    p.applyInput({ dx: 0, dy: 0, attack: true }, SERVER_TICK_MS);
+    p.drainEffects();
+    for (let t = 1; t <= 30; t++) {
+      p.applyInput({ dx: 0, dy: 0, attack: false }, SERVER_TICK_MS);
+      if (p.drainEffects().some(e => e.kind === "hit")) {
+        return { tick: t, windingUpAtHit: p.state.windingUp };
+      }
+    }
+    return { tick: -1, windingUpAtHit: false };
+  };
+
+  it("gives instant feedback: a melee press flags windingUp before any hitbox lands", () => {
+    const p = newPlayer("knight", "war-hammer"); // slow: a real wind-up hold
+    p.applyInput({ dx: 0, dy: 0, attack: true }, SERVER_TICK_MS);
+    expect(p.state.isAttacking).toBe(true);
+    expect(p.state.windingUp).toBe(true);           // cocked back at once
+    expect(p.drainEffects().some(e => e.kind === "hit")).toBe(false); // but no blow yet
+  });
+
+  it("holds the wind-up longer for a slower weapon, and the blow lands after it clears", () => {
+    const slow = firstHitTick(newPlayer("knight", "war-hammer")); // 800ms cooldown
+    const fast = firstHitTick(newPlayer("rogue", "kris"));        // 250ms cooldown
+
+    expect(fast.tick).toBeGreaterThan(0);
+    expect(slow.tick).toBeGreaterThan(fast.tick); // the heavy telegraphs longer
+    expect(slow.windingUpAtHit).toBe(false);      // the hold is over once it strikes
+  });
+
   it("ends the swing after its window, so isAttacking is not stuck on", () => {
     const p = newPlayer("knight", "broadsword");
     const window = Math.ceil(WEAPON_REGISTRY["broadsword"].attackCooldownMs / SERVER_TICK_MS);
