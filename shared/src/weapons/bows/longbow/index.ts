@@ -8,5 +8,4 @@ export class Longbow extends Bow {
   readonly id = "longbow";
   readonly name = "Longbow";
   get damage() { return 10; }
-  get attackCooldownMs() { return 550; }
 }

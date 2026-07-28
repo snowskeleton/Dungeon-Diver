@@ -7,7 +7,6 @@ export abstract class Bow extends Weapon {
   get category(): WeaponCategory { return "bow"; }
   get fxType(): AttackFXType { return "long-slash"; }
   get damage() { return 0; }
-  get attackCooldownMs() { return 400; }
   get attackForce() { return 0; }
   get iconAngle() { return 0; }
   get ammoId(): string { return "arrow"; }

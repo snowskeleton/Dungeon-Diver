@@ -5,5 +5,4 @@ import { Staff } from "../base";
 export class Cane extends Staff {
   readonly id = "cane";
   readonly name = "Cane";
-  get attackCooldownMs() { return 440; }
 }

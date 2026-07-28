@@ -7,7 +7,6 @@ export abstract class Thrown extends Weapon {
   get category(): WeaponCategory { return "thrown"; }
   get fxType(): AttackFXType { return "long-slash"; }
   get damage() { return 0; }
-  get attackCooldownMs() { return 250; }
   get attackForce() { return 0; }
   get iconAngle() { return 0; }
   get rangedStyle(): RangedStyle { return "thrown"; }

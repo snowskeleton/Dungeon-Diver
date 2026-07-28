@@ -7,7 +7,6 @@ export abstract class Crossbow extends Weapon {
   get category(): WeaponCategory { return "crossbow"; }
   get fxType(): AttackFXType { return "long-slash"; }
   get damage() { return 0; }
-  get attackCooldownMs() { return 600; }
   get attackForce() { return 0; }
   get iconAngle() { return 0; }
   get ammoId(): string { return "steel-arrow"; }

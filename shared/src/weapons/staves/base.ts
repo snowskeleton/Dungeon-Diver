@@ -7,7 +7,6 @@ export abstract class Staff extends Weapon {
   get category(): WeaponCategory { return "staff"; }
   get fxType(): AttackFXType { return "nova"; }
   get damage() { return 0; }
-  get attackCooldownMs() { return 600; }
   get attackForce() { return 0; }
   get iconAngle() { return 0; }
   get ammoId(): string { return "magic-bolt"; }

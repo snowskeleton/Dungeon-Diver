@@ -6,5 +6,4 @@ export class CrystalWand extends Staff {
   readonly id = "crystal-wand";
   readonly name = "Crystal Wand";
   get ammoId() { return "frost-bolt"; }
-  get attackCooldownMs() { return 760; }
 }

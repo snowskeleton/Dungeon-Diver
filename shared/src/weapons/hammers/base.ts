@@ -7,7 +7,6 @@ export abstract class Hammer extends Weapon {
   get category(): WeaponCategory { return "hammer"; }
   get fxType(): AttackFXType { return "slash"; }
   get damage() { return 35; }
-  get attackCooldownMs() { return 800; }
   get attackForce() { return 15; }
   // The hammer art is drawn already upright (handle down, head up), unlike the
   // swords/axes/maces whose blades point up-RIGHT at 45°. So it needs no

@@ -7,7 +7,6 @@ export abstract class Spear extends Weapon {
   get category(): WeaponCategory { return "spear"; }
   get fxType(): AttackFXType { return "long-stab"; }
   get damage() { return 18; }
-  get attackCooldownMs() { return 700; }
   get attackForce() { return 8; }
   // Spear art (spear/lance/javelin/trident) is drawn pointing up-RIGHT at 45°,
   // exactly like the swords/axes/maces — not upright like the hammer. The 0 it

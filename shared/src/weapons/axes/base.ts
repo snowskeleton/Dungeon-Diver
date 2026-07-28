@@ -7,7 +7,6 @@ export abstract class Axe extends Weapon {
   get category(): WeaponCategory { return "axe"; }
   get fxType(): AttackFXType { return "slash"; }
   get damage() { return 22; }
-  get attackCooldownMs() { return 600; }
   get attackForce() { return 9; }
   get iconAngle() { return -45; }
 }

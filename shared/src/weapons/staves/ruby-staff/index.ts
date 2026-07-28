@@ -5,5 +5,4 @@ export class RubyStaff extends Staff {
   readonly id = "ruby-staff";
   readonly name = "Ruby Staff";
   get ammoId() { return "flame-bolt"; }
-  get attackCooldownMs() { return 620; }
 }
