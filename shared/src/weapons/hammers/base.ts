@@ -4,10 +4,10 @@ import { Weapon, WeaponCategory, AttackFXType } from "../base";
 // Category base — the defaults every hammer inherits; a concrete
 // weapon overrides only what makes it distinct.
 export abstract class Hammer extends Weapon {
+  get damage() { return 24; }
+  get attackCooldownMs() { return 240; }
   get category(): WeaponCategory { return "hammer"; }
   get fxType(): AttackFXType { return "slash"; }
-  get damage() { return 35; }
-  get attackForce() { return 15; }
   // The hammer art is drawn already upright (handle down, head up), unlike the
   // swords/axes/maces whose blades point up-RIGHT at 45°. So it needs no
   // corrective tilt — 0 leaves it resting head-up like a shouldered sword;

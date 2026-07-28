@@ -52,6 +52,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       { kind: "ui", text: "Buffs now show a short description of what they do when you pick them up (and in the inventory screen), not just a name" },
       { kind: "feature", text: "Melee weapons now wind up before they strike: pressing attack instantly rears the weapon back and holds it for the weapon's speed, then swings — heavy weapons telegraph clearly, light ones stay snappy, and your input always shows immediate feedback" },
       { kind: "feature", text: "Attacks now buffer: press slightly early during a swing and the next hit still fires the instant the weapon is free, so fast combos no longer need frame-perfect timing (tunable, or off, via the new Attack buffer option)" },
+      { kind: "balance", text: "First pass as weapon speed/damage balance. Didn't touch knockback" },
     ],
   },
 ];

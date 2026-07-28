@@ -6,7 +6,5 @@ import { Weapon, WeaponCategory, AttackFXType } from "../base";
 export abstract class Sword extends Weapon {
   get category(): WeaponCategory { return "sword"; }
   get fxType(): AttackFXType { return "slash"; }
-  get damage() { return 20; }
-  get attackForce() { return 7; }
   get iconAngle() { return -45; }
 }

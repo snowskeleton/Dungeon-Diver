@@ -98,9 +98,9 @@ export abstract class Weapon {
   abstract get category(): WeaponCategory;
 
   get fxType(): AttackFXType { return "slash"; }
-  get damage(): number { return 10; }
-  get attackCooldownMs(): number { return 350; }
-  get attackForce(): number { return 5; }
+  get damage(): number { return 12; }
+  get attackCooldownMs(): number { return 120; }
+  get attackForce(): number { return 6; }
   /**
    * Rotation offset (degrees) applied to the weapon icon on top of the base
    * facing rotation. The base rotation points the icon toward the attack target

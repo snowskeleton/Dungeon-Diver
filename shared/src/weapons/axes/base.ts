@@ -4,9 +4,9 @@ import { Weapon, WeaponCategory, AttackFXType } from "../base";
 // Category base — the defaults every axe inherits; a concrete
 // weapon overrides only what makes it distinct.
 export abstract class Axe extends Weapon {
+  get damage() { return 18; }
+  get attackCooldownMs() { return 180; }
   get category(): WeaponCategory { return "axe"; }
   get fxType(): AttackFXType { return "slash"; }
-  get damage() { return 22; }
-  get attackForce() { return 9; }
   get iconAngle() { return -45; }
 }
