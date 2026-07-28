@@ -1,6 +1,6 @@
 import { Room, Client } from "colyseus";
 import {
-  InputMessage, SERVER_TICK_MS, MAX_CLIENTS, TILE, DEFAULT_COMBO_WINDOW_MS, DEFAULT_CHARGE_HOLD_MS,
+  InputMessage, SERVER_TICK_MS, MAX_CLIENTS, TILE, DEFAULT_COMBO_WINDOW_MS, DEFAULT_CHARGE_HOLD_MS, DEFAULT_ATTACK_BUFFER_MS,
   generateDungeon, DungeonResult, DungeonOptions, FloorChangeMessage,
   MAP_SEED, AMMO_REGISTRY, RoomType,
   TRAP_MIN_FLOORS, TRAP_MAX_FLOORS,
@@ -118,10 +118,11 @@ export class GameRoom extends Room<GameState> {
 
     // Per-player melee tuning (combo grace window + charge-hold threshold), from the
     // sender's client Options. Sent on join; the Player clamps both.
-    this.onMessage("meleeTuning", (client, msg: { comboWindowMs: number; chargeHoldMs: number }) => {
+    this.onMessage("meleeTuning", (client, msg: { comboWindowMs: number; chargeHoldMs: number; attackBufferMs: number }) => {
       this.players.get(client.sessionId)?.setMeleeTuning(
         msg?.comboWindowMs ?? DEFAULT_COMBO_WINDOW_MS,
         msg?.chargeHoldMs ?? DEFAULT_CHARGE_HOLD_MS,
+        msg?.attackBufferMs ?? DEFAULT_ATTACK_BUFFER_MS,
       );
     });
 

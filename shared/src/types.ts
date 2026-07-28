@@ -125,6 +125,13 @@ export const DEFAULT_COMBO_WINDOW_MS = 600;
 // this is surfaced as a universal, tunable Option (gameOptions.chargeHoldMs) the
 // client sends to the server; this is the fallback default.
 export const DEFAULT_CHARGE_HOLD_MS = 600;
+// Attack input buffer (ms). A press that can't fire yet — the weapon is still mid-
+// swing or on cooldown — is REMEMBERED for this long and fires the instant the
+// weapon frees up, so a slightly-early second tap isn't dropped. This is the
+// "carry forward a keypress that wasn't valid on first send" window. Surfaced as a
+// tunable Option (gameOptions.attackBufferMs) the client sends; this is the
+// fallback default. 0 disables buffering (strictly press-when-ready).
+export const DEFAULT_ATTACK_BUFFER_MS = 150;
 // When a deferred enemy is revealed (a player walks into its room) it doesn't act
 // immediately: it emerges from its dust puff over this long, holding in place and
 // dealing no contact damage, then starts moving. Shared so the client can pace the

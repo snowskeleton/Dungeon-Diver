@@ -182,6 +182,50 @@ describe("melee: tap swings now, hold-then-release adds a hard swing", () => {
   });
 });
 
+describe("the attack input buffer", () => {
+  it("buffers an early second tap and fires it once the swing frees up", () => {
+    const a = arena();
+    const p = a.addPlayer("p1", armedPlayer(a.physics, 300, 300, "knight", "guy", "broadsword"));
+    // A generous buffer so the remembered press survives until the weapon is free.
+    p.setMeleeTuning(DEFAULT_COMBO_WINDOW_MS, DEFAULT_CHARGE_HOLD_MS, 500);
+
+    a.stepWithInput("p1", 0, 0, true); // first swing fires
+    const seq1 = p.state.attackSeq;
+    a.stepWithInput("p1", 0, 0, false); // release
+    expect(p.state.isAttacking).toBe(true); // still mid-swing
+
+    // Early second tap: the weapon is busy, so it can't fire — it gets buffered.
+    a.stepWithInput("p1", 0, 0, true);
+    expect(p.state.attackSeq).toBe(seq1); // nothing fired on the early press
+
+    // Hold released; the buffered swing fires the instant the weapon frees, and it
+    // advances the combo exactly as a real tap would.
+    let fired = false;
+    for (let t = 0; t < 40 && !fired; t++) {
+      a.stepWithInput("p1", 0, 0, false);
+      if (p.state.attackSeq !== seq1) fired = true;
+    }
+    expect(fired).toBe(true);
+    expect(p.state.comboStep).toBe(1);
+  });
+
+  it("with the buffer off, an early tap during a swing is dropped", () => {
+    const a = arena();
+    const p = a.addPlayer("p1", armedPlayer(a.physics, 300, 300, "knight", "guy", "broadsword"));
+    p.setMeleeTuning(DEFAULT_COMBO_WINDOW_MS, DEFAULT_CHARGE_HOLD_MS, 0);
+
+    a.stepWithInput("p1", 0, 0, true); // first swing fires
+    const seq1 = p.state.attackSeq;
+    a.stepWithInput("p1", 0, 0, false); // release
+    expect(p.state.isAttacking).toBe(true); // still mid-swing
+    a.stepWithInput("p1", 0, 0, true); // early tap — nothing buffers it
+
+    // Never presses again; with buffering off the early tap is simply lost.
+    for (let t = 0; t < 40; t++) a.stepWithInput("p1", 0, 0, false);
+    expect(p.state.attackSeq).toBe(seq1);
+  });
+});
+
 describe("the finisher hits harder", () => {
   it("deals its multiplier more damage than the first swing", () => {
     const a = arena();

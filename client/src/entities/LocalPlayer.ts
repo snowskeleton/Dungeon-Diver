@@ -117,7 +117,7 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     // Tell the server this player's melee tuning (combo window + charge hold) —
     // client Options that govern server-authoritative timing.
     const opts = loadOptions();
-    this.room.send("meleeTuning", { comboWindowMs: opts.comboWindowMs, chargeHoldMs: opts.chargeHoldMs });
+    this.room.send("meleeTuning", { comboWindowMs: opts.comboWindowMs, chargeHoldMs: opts.chargeHoldMs, attackBufferMs: opts.attackBufferMs });
   }
 
   update() {

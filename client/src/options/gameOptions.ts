@@ -5,7 +5,7 @@ import { FieldSpec } from "../ui/FieldPanel";
 // chargeHoldMs: they govern server-authoritative melee timing, so LocalPlayer sends
 // them to the room (a "meleeTuning" message) on join. They live here because they
 // are player preferences the player tunes, not map/balance constants.
-import { DEFAULT_COMBO_WINDOW_MS, DEFAULT_CHARGE_HOLD_MS } from "shared";
+import { DEFAULT_COMBO_WINDOW_MS, DEFAULT_CHARGE_HOLD_MS, DEFAULT_ATTACK_BUFFER_MS } from "shared";
 
 export interface GameOptions {
   showHitboxes: boolean;
@@ -17,6 +17,10 @@ export interface GameOptions {
   /** How long (ms) a melee attack must be held before releasing a hard (charged)
    *  swing instead of a regular one. Sent to the server; see the note above. */
   chargeHoldMs: number;
+  /** How long (ms) an early attack press is remembered and fired once the weapon
+   *  frees up, so a slightly-too-fast second tap isn't dropped. 0 disables it.
+   *  Sent to the server; see the note above. */
+  attackBufferMs: number;
 }
 
 export const DEFAULT_OPTIONS: GameOptions = {
@@ -25,6 +29,7 @@ export const DEFAULT_OPTIONS: GameOptions = {
   showMinimap: true,
   comboWindowMs: DEFAULT_COMBO_WINDOW_MS,
   chargeHoldMs: DEFAULT_CHARGE_HOLD_MS,
+  attackBufferMs: DEFAULT_ATTACK_BUFFER_MS,
 };
 
 export const OPTION_FIELDS: FieldSpec<GameOptions>[] = [
@@ -46,6 +51,11 @@ export const OPTION_FIELDS: FieldSpec<GameOptions>[] = [
     kind: "number", key: "chargeHoldMs", label: "Hard-swing hold (ms)",
     help: "How long to hold the attack before releasing a heavy charged swing. Below this, a release is a normal swing.",
     min: 50, max: 3000, step: 50,
+  },
+  {
+    kind: "number", key: "attackBufferMs", label: "Attack buffer (ms)",
+    help: "Remember an early attack press this long and fire it the instant the weapon is free, so fast taps aren't dropped. 0 turns it off.",
+    min: 0, max: 1000, step: 25,
   },
 ];
 

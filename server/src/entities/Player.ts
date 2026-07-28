@@ -2,7 +2,7 @@ import {
   InputMessage, CharacterClass, CharacterType, Character, getCharacter,
   Weapon, WeaponInstance, WeaponMod, WEAPON_REGISTRY, AMMO_REGISTRY,
   PLAYER_BODY_PROFILE, PLAYER_ATTACK_AFFECTS, Facing, Attack, foldStat,
-  ComboSwing, DEFAULT_COMBO_WINDOW_MS, DEFAULT_CHARGE_HOLD_MS,
+  ComboSwing, DEFAULT_COMBO_WINDOW_MS, DEFAULT_CHARGE_HOLD_MS, DEFAULT_ATTACK_BUFFER_MS,
   canClassUseWeapon,
 } from "shared";
 import { PlayerState, UpgradeSlotState } from "../schema/PlayerState";
@@ -68,6 +68,13 @@ export class Player extends Entity implements Caster {
   // is waiting to fire the moment the weapon is free (its cooldown may still run).
   private hardQueued = false;
   private pendingHard = false;
+  // Attack input buffer: a fresh press that couldn't fire (the weapon is mid-swing
+  // or on cooldown) is remembered for this many ms and fires the instant the weapon
+  // frees up, so a slightly-early second tap isn't dropped. bufferedSwingMs counts
+  // that remembered press down; 0 = nothing buffered. A client Option like the two
+  // above; 0 disables buffering entirely.
+  private attackBufferMs = DEFAULT_ATTACK_BUFFER_MS;
+  private bufferedSwingMs = 0;
 
   constructor(
     physics: PhysicsWorld,
@@ -170,9 +177,10 @@ export class Player extends Entity implements Caster {
 
   /** Set this player's melee tuning (ms). Both come from the client's Options and
    *  are clamped so a bad value can't disable or unboundedly stretch either. */
-  setMeleeTuning(comboWindowMs: number, chargeHoldMs: number): void {
+  setMeleeTuning(comboWindowMs: number, chargeHoldMs: number, attackBufferMs?: number): void {
     if (Number.isFinite(comboWindowMs)) this.comboWindowMs = Math.max(0, Math.min(2000, comboWindowMs));
     if (Number.isFinite(chargeHoldMs)) this.chargeHoldMs = Math.max(50, Math.min(3000, chargeHoldMs));
+    if (Number.isFinite(attackBufferMs)) this.attackBufferMs = Math.max(0, Math.min(1000, attackBufferMs));
   }
 
   /** Advance (or reset) the melee combo for a swing released at caster-clock `now`.
@@ -195,12 +203,20 @@ export class Player extends Entity implements Caster {
     const now = this.spellCaster.now;
     const spell = this.spellFor(this.weapon!);
 
-    // Fresh press: swing right away and begin charging a hard follow-up.
-    if (risingEdge && !this.spellCaster.busy && spell.isReady(now)) {
-      this.fireSwing(false, now, aim, dtMs);
-      this.charging = true;
-      this.chargeMs = 0;
-      return;
+    // Age out any buffered press.
+    if (this.bufferedSwingMs > 0) this.bufferedSwingMs = Math.max(0, this.bufferedSwingMs - dtMs);
+
+    // Fresh press: swing right away and begin charging a hard follow-up. If it
+    // can't fire this instant (the previous swing is still in flight or on
+    // cooldown), remember the press for attackBufferMs so an early tap isn't lost.
+    if (risingEdge) {
+      if (!this.spellCaster.busy && spell.isReady(now)) {
+        this.fireSwing(false, now, aim, dtMs);
+        this.charging = true;
+        this.chargeMs = 0;
+        return;
+      }
+      this.bufferedSwingMs = this.attackBufferMs;
     }
 
     if (this.charging) {
@@ -221,6 +237,17 @@ export class Player extends Entity implements Caster {
     this.state.charging = this.charging && !this.spellCaster.busy;
     this.state.chargeHard = armed && !this.spellCaster.busy;
 
+    // A buffered press (an early tap that couldn't fire when it arrived) fires the
+    // moment the weapon is free, as a fresh swing that advances the combo and begins
+    // its own charge — exactly as if the tap had landed on this tick.
+    if (this.bufferedSwingMs > 0 && !this.spellCaster.busy && spell.isReady(now)) {
+      this.bufferedSwingMs = 0;
+      this.fireSwing(false, now, aim, dtMs);
+      this.charging = true;
+      this.chargeMs = 0;
+      return;
+    }
+
     // A queued hard swing fires as soon as the weapon is free (the initial swing's
     // cooldown may still be running when the button is released).
     if (this.hardQueued && !this.spellCaster.busy && spell.isReady(now)) {
@@ -232,10 +259,11 @@ export class Player extends Entity implements Caster {
   /** Drop a charge / queued hard swing without firing (stun, downed, or a swap to
    *  a non-melee weapon mid-hold). Idempotent. */
   private cancelCharge(): void {
-    if (!this.charging && !this.hardQueued) return;
+    if (!this.charging && !this.hardQueued && this.bufferedSwingMs === 0) return;
     this.charging = false;
     this.chargeMs = 0;
     this.hardQueued = false;
+    this.bufferedSwingMs = 0;
     this.state.charging = false;
     this.state.chargeHard = false;
   }
