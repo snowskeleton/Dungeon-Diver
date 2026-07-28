@@ -290,15 +290,15 @@ describe("weaponSpell", () => {
   const sword = WEAPON_REGISTRY["broadsword"];
   const bow = WEAPON_REGISTRY["longbow"];
 
-  it("spends a melee weapon's cooldown as a wind-up hold before a swing-length strike", () => {
-    // The swing arc is the FX animation's own length; the cooldown left over becomes
-    // a visible cocked-back wind-up, so total cadence stays the weapon's cooldown.
+  it("holds a melee weapon's cooldown as a pure wind-up before a swing-length strike", () => {
+    // attackCooldownMs is a feel dial: it IS the wind-up hold, full stop. The swing
+    // arc is the FX animation's own length, so total cadence is cooldown + arc.
     const inst = new WeaponInstance(sword, "a");
     const s = weaponSpell(inst);
     const swing = swingDurationMs(inst.comboSwings[0].fxType);
     expect(s.activeMs).toBe(swing);
-    expect(s.windUpMs).toBe(inst.attackCooldownMs - swing);
-    expect(s.windUpMs + s.activeMs).toBe(inst.attackCooldownMs); // cadence preserved
+    expect(s.windUpMs).toBe(inst.attackCooldownMs);
+    expect(s.windUpMs + s.activeMs).toBe(inst.attackCooldownMs + swing); // cadence
     expect(s.fireMode).toBe("press"); // one swing per press
   });
 
@@ -313,10 +313,9 @@ describe("weaponSpell", () => {
     const hasted = weaponSpell(new WeaponInstance(sword, "b", [new Faster()]));
     const swing = swingDurationMs(sword.comboSwings[0].fxType);
 
-    // The wind-up is the live-tracked part (cooldown − swing length); a faster
-    // cooldown shrinks it, clamped at 0 once the swing alone fills the cooldown.
-    expect(base.windUpMs).toBe(sword.attackCooldownMs - swing);
-    expect(hasted.windUpMs).toBe(Math.max(0, sword.attackCooldownMs / 2 - swing));
+    // The wind-up IS the cooldown, read live; a faster cooldown shrinks it directly.
+    expect(base.windUpMs).toBe(sword.attackCooldownMs);
+    expect(hasted.windUpMs).toBe(sword.attackCooldownMs / 2);
     expect(hasted.activeMs).toBe(swing); // the arc length never changes
   });
 

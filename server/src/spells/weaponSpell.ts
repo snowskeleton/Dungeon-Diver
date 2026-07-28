@@ -42,13 +42,16 @@ class WeaponSpell extends Spell {
 }
 
 /**
- * A melee swing spends the weapon's attack cooldown as a VISIBLE wind-up: the
- * character snaps to the cocked-back first frame (instant feedback that the input
- * landed) and holds it, THEN plays the swing arc that carries the hitbox. So the
- * active phase is just the swing animation's own length, and the wind-up soaks up
- * whatever cooldown is left over — the total cadence stays the weapon's cooldown,
- * but the previously-invisible dead time before you can swing again is now shown
- * as a telegraphed hold (a hammer visibly rears back, a dagger barely pauses).
+ * A melee swing is a VISIBLE wind-up, then the swing arc that carries the hitbox:
+ * on press the character snaps to the cocked-back first frame (instant feedback
+ * that the input landed) and holds it for `attackCooldownMs`, THEN plays the swing
+ * arc. So `attackCooldownMs` is a pure FEEL dial — it dictates the wind-up hold
+ * and nothing else — and the total cadence is `attackCooldownMs + swingMs`. A
+ * hammer with a long cooldown visibly rears back; a dagger with a short one barely
+ * pauses. (This is deliberately NOT cadence-first: the cooldown number no longer
+ * equals the weapon's rate of fire, so DPS math has to add the arc length back in
+ * — a trade we took to make the number tune telegraph in isolation. Balance is a
+ * later, separate pass.)
  *
  * All four FX strips are the same length today, so `swingMs` is effectively a
  * constant; the max keeps a longer finisher/hard strip from being cut short if
@@ -67,7 +70,7 @@ class MeleeWeaponSpell extends WeaponSpell {
   }
 
   override get windUpMs(): number {
-    return Math.max(0, this.inst.attackCooldownMs - this.swingMs);
+    return this.inst.attackCooldownMs;
   }
   override get activeMs(): number {
     return this.swingMs;

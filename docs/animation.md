@@ -31,16 +31,18 @@ Two related server rules in the same method:
 A melee weapon no longer spends its `attackCooldownMs` as an invisible re-fire lockout.
 Instead a swing is a **wind-up hold → swing arc**: on press the character instantly
 snaps to the cocked-back first swing frame (immediate feedback that the input landed) and
-**holds it for the weapon's leftover cooldown**, then plays the swing arc that carries the
-hitbox. The active phase is just the FX animation's own length (`swingDurationMs`), and
-the wind-up soaks up whatever cooldown is left over — so the **total cadence is still the
-weapon's cooldown**, but the old invisible dead time is now a telegraphed pose (a hammer
-visibly rears back; a dagger whose swing animation already fills its cooldown winds up for
-0ms and stays snappy).
+**holds it for `attackCooldownMs`**, then plays the swing arc that carries the hitbox. The
+active phase is just the FX animation's own length (`swingDurationMs`). So
+`attackCooldownMs` is a pure **feel dial** — it dictates the wind-up hold and nothing else
+— and the **total cadence is `attackCooldownMs + swingDurationMs`** (a hammer with a long
+cooldown visibly rears back; a dagger with a short one barely pauses). This is deliberately
+**not** cadence-first: the cooldown number is no longer the weapon's rate of fire, so DPS
+reasoning has to add the arc length back in — a trade taken so the number tunes telegraph
+in isolation, with balance a later separate pass.
 
-- Server: `MeleeWeaponSpell` (`server/src/spells/weaponSpell.ts`) derives
-  `windUpMs = max(0, attackCooldownMs − swingDurationMs)` and `activeMs = swingDurationMs`,
-  both as live getters so an attack-speed mod still applies (the wind-up shrinks first).
+- Server: `MeleeWeaponSpell` (`server/src/spells/weaponSpell.ts`) uses
+  `windUpMs = attackCooldownMs` and `activeMs = swingDurationMs`, both as live getters so
+  an attack-speed mod still shrinks the wind-up.
 - The wind-up phase is synced as `PlayerState.windingUp`; the client holds the cocked-back
   first frame during it via the **same** `setChargePose` machinery the heavy charge uses
   (`meleeWindupPose` picks the args for both poses). When it flips false the swing arc's

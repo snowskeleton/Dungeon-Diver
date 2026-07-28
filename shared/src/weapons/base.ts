@@ -99,7 +99,7 @@ export abstract class Weapon {
 
   get fxType(): AttackFXType { return "slash"; }
   get damage(): number { return 10; }
-  get attackCooldownMs(): number { return 200; }
+  get attackCooldownMs(): number { return 350; }
   get attackForce(): number { return 5; }
   /**
    * Rotation offset (degrees) applied to the weapon icon on top of the base
