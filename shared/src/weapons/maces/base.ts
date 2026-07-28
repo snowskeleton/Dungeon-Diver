@@ -4,6 +4,7 @@ import { Weapon, WeaponCategory, AttackFXType } from "../base";
 // Category base — the defaults every mace inherits; a concrete
 // weapon overrides only what makes it distinct.
 export abstract class Mace extends Weapon {
+  get attackForce() { return 14; }
   get damage() { return 18; }
   get attackCooldownMs() { return 180; }
   get category(): WeaponCategory { return "mace"; }

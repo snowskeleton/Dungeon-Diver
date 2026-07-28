@@ -4,6 +4,7 @@ import { Weapon, WeaponCategory, AttackFXType } from "../base";
 // Category base — the defaults every hammer inherits; a concrete
 // weapon overrides only what makes it distinct.
 export abstract class Hammer extends Weapon {
+  get attackForce() { return 20; }
   get damage() { return 24; }
   get attackCooldownMs() { return 240; }
   get category(): WeaponCategory { return "hammer"; }

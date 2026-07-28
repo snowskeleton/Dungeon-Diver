@@ -4,10 +4,10 @@ import { Weapon, WeaponCategory, AttackFXType, RangedStyle } from "../base";
 // Category base — the defaults every crossbow inherits; a concrete
 // weapon overrides only what makes it distinct.
 export abstract class Crossbow extends Weapon {
+  get attackForce() { return 0; }
   get category(): WeaponCategory { return "crossbow"; }
   get fxType(): AttackFXType { return "long-slash"; }
   get damage() { return 0; }
-  get attackForce() { return 0; }
   get iconAngle() { return 0; }
   get ammoId(): string { return "steel-arrow"; }
   get rangedStyle(): RangedStyle { return "held"; }

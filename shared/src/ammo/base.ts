@@ -101,7 +101,7 @@ export abstract class Ammo implements AmmoConfig {
   abstract readonly id: AmmoId;
   abstract readonly name: string;
 
-  get damage(): number { return 10; }
+  get damage(): number { return 6; }
   get speed(): number { return 300; }
   get pierce(): number { return 1; }
   get knockback(): number { return 5; }
