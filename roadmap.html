@@ -478,7 +478,7 @@
     <div class="doc-title">game-2 Roadmap</div>
     <div class="doc-subtitle">
       Roguelike · Co-op 1–4 · Top-down dungeon crawl · Public release target<br>
-      Updated 24 July 2026 — Floors 0–4 done, plus wave/timed/dark rooms, the menu + lobby/matchmaking block (22 July), the <strong>currency economy (23 July)</strong>, the <strong>tileset overhaul (24 July)</strong>, and <strong>Floor 4.5's playtest response is now all but finished (24 July)</strong>: co-op rewards, party stairs, party HP scaling, the minimap, deferred enemy spawning, downed-and-revive death, and a six-bug fix pass. Next up is Floor 5's remaining systems — class identity and puzzle rooms. Notes + decision log in <code>docs/playtest-2026-07-20.md</code>
+      Updated 27 July 2026 — Floors 0–4 done, plus wave/timed/dark rooms, the menu + lobby/matchmaking block (22 July), the <strong>currency economy (23 July)</strong>, and the <strong>tileset overhaul (24 July)</strong>. A <strong>second playtest (27 July)</strong> — solo, against the gold economy and reward-every-room loot — landed a same-day bug-fix pass (chest softlock, wall-firing, walk-out-of-room, weapon-comparison deltas, buff descriptions, weapon-flood curb) and surfaced a batch of scarcity/balance decisions now tracked in Open Questions below. Notes + decision logs in <code>docs/playtest-2026-07-20.md</code> and <code>docs/playtest-2026-07-27.md</code>
     </div>
   </header>
 
@@ -957,6 +957,11 @@
             <li><span class="tm">—</span> More upgrades: weapon enhancements, passive abilities</li>
             <li><span class="tm">—</span> <strong>Per-weapon special attacks</strong> beyond the current stab/smash — AOE blast, buckshot spread, single heavy shot. Possibly "different weapons cast different spells" rather than spells being a Mage-only pool. The nova is already built and sitting unused</li>
             <li><span class="tm">—</span> Enemy pool shifts by floor range within the dungeon theme</li>
+            <li><span class="tm">—</span> <strong>Weapon scarcity pass</strong> (27 July playtest) — target ~1&ndash;2 weapon-swap options per floor (maybe per party), an inventory cap (1 or 2), and higher-floor weapons rolling stronger. Shop-rarity + no-weapons-from-room-clears already landed (<code>65e40c6</code>); this is the rest</li>
+            <li><span class="tm">—</span> <strong>Armor / trinket slots</strong> (Armor / Helmet / Necklace / Ring) — stat-only, no art; gives gold a sink and dilutes weapon-heavy loot. Effect list being drafted</li>
+            <li><span class="tm">—</span> <strong>Status effects as weapon buffs</strong> — poison, slow, confusion, frozen, petrified, with interactions (frozen ↔ fire/blunt; petrified = long + tanky)</li>
+            <li><span class="tm">—</span> <strong>New weapons:</strong> blowgun (mid-range ranged, poison carrier), glaive (arc-swing melee). Both from the 27 July session</li>
+            <li><span class="tm">—</span> <strong>Companion / charm</strong> (parked) — a throwable one-use trinket that charms an enemy to follow and fight for you; aggro is already built, the player-vs-pet priority is the unsolved part. Floated as a possible Druid (Mage branch) — but no class branches yet</li>
           </ul>
           <div class="phase-art-note">
             <strong>Mostly landed early:</strong> the enemy roster and multiple bosses came in with the SOA2 pack. Remaining work here is the last room variants, floor-scaled enemy pools, and deeper upgrades — not art.
@@ -980,6 +985,8 @@
             <li><span class="tm">—</span> <strong>Weapon balance pass</strong> — all 42 weapons are visually final and none are balanced against each other</li>
             <li><span class="tm done">&#10003;</span> Texture variety pass so rooms are distinguishable at the locked zoom (see Floor 4.5) &mdash; done as a <strong>tileset overhaul</strong>, 24 July, using the <strong>real Super Overhead Adventure 2 dungeon art</strong> (the same pack the characters, enemies and bosses came from &mdash; so the environment finally matches the sprites). The build script (<code>assets/generate-dungeon-tiles.js</code>) <em>samples</em> the sheet's <strong>blue/cyan set</strong> (the author's own <code>Example Dungeon.png</code> is the reference) and emits the PNG <em>and</em> the frame table together: walls are one cyan brick autotiled off their eight neighbours through a complete 47-tile blob, so corners, end-caps and corridors all read as carved stone; the floor is a flat dark blue exactly as the example uses it (the decorated blocks are objects that sit on the floor, not floor fill); stairs are a recessed stairwell; locked doorways an iron portcullis. Re-skinning is repointing two source coordinates. (Earlier same-day passes drew the tiles procedurally, then tiled decorated panels as the whole floor &mdash; both replaced after review; room-by-room colour variety waits on adding more of the sheet's colour sets.)</li>
             <li><span class="tm">—</span> Difficulty balancing pass across all 10 floors</li>
+            <li><span class="tm">—</span> <strong>FPS meter</strong> (27 July playtest) — a tester reported movement/combat stutter that doesn't reproduce on my machine; can't diagnose without an on-screen frame counter. Suspected flow-field cost. Prerequisite for the perf pass</li>
+            <li><span class="tm">—</span> <strong>Descend affordances</strong> (27 July playtest) — make going down a deliberate <em>interact</em> (a tester walked onto the exit and skipped most of a floor), and warn/confirm when descending with the floor uncleared (single-keypress, gated on not-cleared only)</li>
             <li><span class="tm">—</span> Itch.io build; Steam prep if scope warrants</li>
           </ul>
           <div class="phase-milestone"><strong>Endgame &amp; replay — direction, not yet scheduled.</strong></div>
@@ -1086,6 +1093,62 @@
         <div class="q-tag">Open &mdash; direction noted</div>
         <div class="q-text">How far does weapon modification go?</div>
         <div class="q-why"><strong>Scope north-star: Souls-like breadth.</strong> Many weapon types sharing artwork, each dealing different damage types, each individually modifiable — rolled stats on spawn, upgrades applied to a specific weapon, not just to the player. This is the target the per-instance weapon work and the attack pipeline are built toward; it is deliberately <em>not</em> all being built at once. Damage types are the first deferred slice.</div>
+      </div>
+
+      <!-- Decisions surfaced by the 27 July playtest — full notes in docs/playtest-2026-07-27.md -->
+
+      <div class="q-item">
+        <div class="q-tag">Open &mdash; 27 July playtest</div>
+        <div class="q-text">What is the weapon inventory cap?</div>
+        <div class="q-why"><strong>Leaning 1 or 2.</strong> The tester finished a run holding <strong>20 weapons</strong> — weapons are noise. I want a hard, choiceful <strong>1</strong>; he wants a ranged+melee pair (<strong>2</strong>). Ties into weapon <em>scarcity</em>: target ~1&ndash;2 weapon-swap options <em>per floor</em>, possibly per party not per player. Shop-rarity + no-weapons-from-room-clears already landed (<code>65e40c6</code>); re-test density before deciding.</div>
+      </div>
+
+      <div class="q-item">
+        <div class="q-tag">Open &mdash; 27 July playtest</div>
+        <div class="q-text">Total floor count and floor size?</div>
+        <div class="q-why"><strong>Currently 10 (arbitrary; not enough bosses).</strong> Considering <strong>3&ndash;4 large floors</strong>, which the existing bosses can cover. Tester's target per-floor time: <strong>full exploration &le; 8&ndash;10 min</strong>. Floors should get bigger. Wants to time a full clear vs. a speed run to calibrate.</div>
+      </div>
+
+      <div class="q-item">
+        <div class="q-tag">Open &mdash; 27 July playtest</div>
+        <div class="q-text">Healing model — full heal every floor?</div>
+        <div class="q-why">Floors currently restore full HP on descent. Both of us think <em>some</em> healing is good but full-every-floor is too much. <strong>Lean:</strong> add other heal sources (a one-time heal station in each shop), then remove the automatic full heal.</div>
+      </div>
+
+      <div class="q-item">
+        <div class="q-tag">Open &mdash; 27 July playtest</div>
+        <div class="q-text">Ranged vs. melee balance.</div>
+        <div class="q-why">Range feels inherently stronger — bow/mage reach deep runs, melee dies in the first rooms; spears/trident have great range <em>and</em> power. <strong>Root cause:</strong> enemy damage is all touch-based (no telegraphed swings), so ranged just kites. Real fix is <strong>enemy attack swings</strong> (big). Interim levers: ranged deals less damage, weapon-specific range (bow &gt; blowgun &gt; thrown star) so nothing hits off-screen, spear combos that start short and lengthen. Slow weapons feel bad and need faster swings or to be <em>really</em> worth it.</div>
+      </div>
+
+      <div class="q-item">
+        <div class="q-tag">Open &mdash; 27 July playtest</div>
+        <div class="q-text">Buff strength — shrink magnitudes or reduce frequency?</div>
+        <div class="q-why">Stacked +40% / +40% / +20% attack in three rooms. We both <em>want</em> a buff every room, so <strong>favor smaller numbers over rarer buffs.</strong> Berserk's &minus;15% HP is the only current brake; vitality buffs felt fairly costed.</div>
+      </div>
+
+      <div class="q-item">
+        <div class="q-tag">Open &mdash; 27 July playtest</div>
+        <div class="q-text">Armor / trinket slots as a gold sink + weapon-flood diluter?</div>
+        <div class="q-why">Simple equipment slots — <strong>Armor / Helmet / Necklace / Ring</strong> — purely mechanical (no art needed; stats worn invisibly). Gives gold something to buy besides weapons (he ended with 300&ndash;400 unspent) and dilutes weapon-heavy loot with other rewards. Tester is drafting an effect list. Sub-question: which effects are <strong>player-permanent vs. weapon-bound vs. timed</strong> (emerging model: potions &rarr; player; a vial of poison &rarr; the held weapon, non-transferable, maybe timed unless your class has it natively).</div>
+      </div>
+
+      <div class="q-item">
+        <div class="q-tag">Open &mdash; 27 July playtest</div>
+        <div class="q-text">Should the Mage cast discrete spells instead of a staff bolt?</div>
+        <div class="q-why"><strong>Leaning yes.</strong> Pick up spells like weapons, swap with Q/E, favor AOE over single-target. Keybinding is easy on keyboard (1&ndash;9), unclear on controller — that's the blocker. Related flavor call: he wants mage bolts to pierce and stars not to; my intuition is the reverse (bolt stops, spinning star ricochets; boomerang already passes through).</div>
+      </div>
+
+      <div class="q-item">
+        <div class="q-tag">Open &mdash; 27 July playtest</div>
+        <div class="q-text">Trap tile reads as a shortcut, not a hazard.</div>
+        <div class="q-why">The floor-skip trap ("magic circle") looks like an alternate exit and rewards stepping on it (full heal + skip ahead), so the tester was <em>pleased</em> to hit it — backwards from intent. Needs to read as dangerous/ambiguous.</div>
+      </div>
+
+      <div class="q-item">
+        <div class="q-tag">Open &mdash; 27 July playtest</div>
+        <div class="q-text">Maze chests — gate behind a secret rather than place on the path?</div>
+        <div class="q-why">The softlock (chest on the only walkway) is fixed by making chests non-solid (<code>3337471</code>), but a chest mid-walkway still feels wrong. Both like gating it behind exploration — a <strong>pushable fake wall</strong> (Zelda-1 "burn the bush," less obscure). Needs maze-generation geometry to leave room. Longer-term: class-gated secrets as a separate main-room chest mechanic.</div>
       </div>
 
     </div>
