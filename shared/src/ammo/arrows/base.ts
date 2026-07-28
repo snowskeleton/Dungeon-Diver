@@ -11,6 +11,6 @@ export abstract class Arrow extends Ammo {
   // Forward reach stays at the visual arrow length; the side radius is widened so
   // a shot is forgiving left-to-right without reaching an enemy any sooner ahead.
   get hitRadiusForward() { return 10; }
-  get hitRadiusSide() { return 18; }
+  get hitRadiusSide() { return 12; }
   get spriteAngle() { return -90; }
 }
