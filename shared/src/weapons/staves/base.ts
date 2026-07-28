@@ -4,6 +4,7 @@ import { Weapon, WeaponCategory, AttackFXType, RangedStyle } from "../base";
 // Category base — the defaults every staff inherits; a concrete
 // weapon overrides only what makes it distinct.
 export abstract class Staff extends Weapon {
+  get attackCooldownMs() { return 400; }
   get category(): WeaponCategory { return "staff"; }
   get fxType(): AttackFXType { return "nova"; }
   get damage() { return 0; }

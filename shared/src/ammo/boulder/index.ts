@@ -9,13 +9,8 @@ import { Ammo } from "../base";
 export class Boulder extends Ammo {
   readonly id = "boulder";
   readonly name = "Boulder";
-  get damage() { return 14; }
   get speed() { return 150; }
-  get pierce() { return 1; }
-  get knockback() { return 5; }
   get lifetimeMs() { return 3000; }
-  get hitRadiusForward() { return 13; }
-  get hitRadiusSide() { return 13; }
   get spriteAngle() { return 0; }
   get spinDegPerSec() { return 160; }
 }

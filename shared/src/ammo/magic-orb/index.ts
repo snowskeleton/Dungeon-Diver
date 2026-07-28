@@ -6,12 +6,6 @@ import { Ammo } from "../base";
 export class MagicOrb extends Ammo {
   readonly id = "magic-orb";
   readonly name = "Magic Orb";
-  get damage() { return 9; }
-  get speed() { return 150; }
-  get pierce() { return 1; }
-  get knockback() { return 1; }
   get lifetimeMs() { return 3500; }
-  get hitRadiusForward() { return 11; }
-  get hitRadiusSide() { return 11; }
   get spriteAngle() { return 0; }
 }

@@ -6,7 +6,5 @@ import { Bolt } from "../base";
 export class VerdantBolt extends Bolt {
   readonly id = "verdant-bolt";
   readonly name = "Verdant Bolt";
-  get damage() { return 16; }
-  get pierce() { return 2; }
   get tint() { return 0x5fd67a; }
 }

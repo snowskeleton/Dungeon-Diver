@@ -6,5 +6,4 @@ import { Bolt } from "../base";
 export class MagicBolt extends Bolt {
   readonly id = "magic-bolt";
   readonly name = "Magic Bolt";
-  get damage() { return 14; }
 }

@@ -7,12 +7,6 @@ import { Ammo } from "../base";
 export class Fireball extends Ammo {
   readonly id = "fireball";
   readonly name = "Fireball";
-  get damage() { return 12; }
-  get speed() { return 170; }
-  get pierce() { return 1; }
-  get knockback() { return 2; }
   get lifetimeMs() { return 3000; }
-  get hitRadiusForward() { return 12; }
-  get hitRadiusSide() { return 12; }
   get spriteAngle() { return 0; }
 }

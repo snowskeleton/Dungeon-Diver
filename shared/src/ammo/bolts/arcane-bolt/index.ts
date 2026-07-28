@@ -6,7 +6,5 @@ import { Bolt } from "../base";
 export class ArcaneBolt extends Bolt {
   readonly id = "arcane-bolt";
   readonly name = "Arcane Bolt";
-  get damage() { return 20; }
-  get speed() { return 460; }
   get tint() { return 0x9d6bff; }
 }

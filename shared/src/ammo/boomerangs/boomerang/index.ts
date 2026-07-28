@@ -5,5 +5,4 @@ import { Boomerang as BoomerangBase } from "../base";
 export class Boomerang extends BoomerangBase {
   readonly id = "boomerang";
   readonly name = "Boomerang";
-  get damage() { return 15; }
 }

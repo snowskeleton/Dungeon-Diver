@@ -12,9 +12,5 @@ import { Ammo, AmmoCategory } from "../base";
 // Category base — a concrete bolt overrides only its element's damage/speed/tint.
 export abstract class Bolt extends Ammo {
   get category(): AmmoCategory { return "bolts"; }
-  get pierce() { return 1; }
-  get lifetimeMs() { return 700; }
-  get hitRadiusForward() { return 11; }
-  get hitRadiusSide() { return 14; }
   get spriteAngle() { return 0; }
 }

@@ -16,11 +16,7 @@ export class RockShard extends Ammo {
   readonly name = "Rock Shard";
   get damage() { return 0; }
   get speed() { return 0; }
-  get pierce() { return 1; }
-  get knockback() { return 0; }
   get lifetimeMs() { return 1200; }
-  get hitRadiusForward() { return 8; }
-  get hitRadiusSide() { return 8; }
   get spriteAngle() { return 0; }
   get fixedAngle() { return true; }
 }

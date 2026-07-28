@@ -6,8 +6,5 @@ import { Bolt } from "../base";
 export class FrostBolt extends Bolt {
   readonly id = "frost-bolt";
   readonly name = "Frost Bolt";
-  get damage() { return 26; }
-  get speed() { return 400; }
-  get knockback() { return 18; }
   get tint() { return 0x7fd8ef; }
 }

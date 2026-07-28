@@ -6,7 +6,4 @@ import { Bolt } from "../base";
 export class FlameBolt extends Bolt {
   readonly id = "flame-bolt";
   readonly name = "Flame Bolt";
-  get damage() { return 24; }
-  get speed() { return 360; }
-  get knockback() { return 12; }
 }
