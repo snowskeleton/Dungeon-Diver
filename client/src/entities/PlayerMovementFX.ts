@@ -20,30 +20,26 @@ const ABILITY_COLORS: Record<string, number> = {
   vault:  0x68d391, // Ranger — green leap
 };
 
-// Dust FX sprite sheets (from the SOA2 pack), played one-shot at a player's feet.
-// dust-charge = a tall kick-up cloud trailing a Knight's Charge; dust-land = a low
-// puff where a Ranger's Vault touches down.
-const CHARGE_DUST = { key: "dust-charge", file: "/sprites/dust-charge.png", fw: 20, fh: 40, frames: 16 };
+// Dust FX sprite sheet (from the SOA2 pack), played one-shot at a player's feet.
+// The same low puff is used for both a Ranger's Vault landing and each step of a
+// Knight's Charge (one is started per step and left to finish in place behind him).
 const LAND_DUST = { key: "dust-land", file: "/sprites/dust-land.png", fw: 10, fh: 10, frames: 13 };
 
 export function preloadMovementFX(scene: Phaser.Scene) {
-  scene.load.spritesheet(CHARGE_DUST.key, CHARGE_DUST.file, { frameWidth: CHARGE_DUST.fw, frameHeight: CHARGE_DUST.fh });
   scene.load.spritesheet(LAND_DUST.key, LAND_DUST.file, { frameWidth: LAND_DUST.fw, frameHeight: LAND_DUST.fh });
 }
 
 export function defineMovementFXAnimations(scene: Phaser.Scene) {
-  for (const cfg of [CHARGE_DUST, LAND_DUST]) {
-    const key = `fx-${cfg.key}`;
-    if (scene.anims.exists(key)) continue;
-    scene.anims.create({
-      key,
-      frames: scene.anims.generateFrameNumbers(cfg.key, {
-        frames: Array.from({ length: cfg.frames }, (_, i) => i),
-      }),
-      frameRate: 30,
-      repeat: 0,
-    });
-  }
+  const key = `fx-${LAND_DUST.key}`;
+  if (scene.anims.exists(key)) return;
+  scene.anims.create({
+    key,
+    frames: scene.anims.generateFrameNumbers(LAND_DUST.key, {
+      frames: Array.from({ length: LAND_DUST.frames }, (_, i) => i),
+    }),
+    frameRate: 30,
+    repeat: 0,
+  });
 }
 
 export class PlayerMovementFX {
@@ -116,18 +112,16 @@ export class PlayerMovementFX {
     });
   }
 
-  /** A one-shot dust cloud at a player's feet: "charge" is a small kick-up stamped
-   *  along a Knight's Charge (many form the trail), "land" the low puff where a
-   *  Ranger's Vault touches down. Depth 1.5 sits it UNDER the characters (depth 2),
-   *  so it reads as ground dust the player runs out ahead of. */
+  /** A one-shot dust puff at a player's feet, left to finish animating in place.
+   *  "charge" is a smaller kick-up stamped once per step along a Knight's Charge
+   *  (the wake is many of these); "land" the larger splash where a Ranger's Vault
+   *  touches down. Depth 1.5 sits it UNDER the characters (depth 2), so it reads as
+   *  ground dust the player runs out ahead of. */
   dust(x: number, y: number, kind: "charge" | "land"): void {
-    const cfg = kind === "charge" ? CHARGE_DUST : LAND_DUST;
-    const sprite = this.scene.add.sprite(x, y + 10, cfg.key).setDepth(1.5);
-    // Charge puffs are kept small so a 14px-spaced trail reads as a line of marks
-    // rather than merging into one blob; the Vault landing puff is a single splash.
-    sprite.setScale(kind === "charge" ? 0.5 : 1.6);
+    const sprite = this.scene.add.sprite(x, y + 10, LAND_DUST.key).setDepth(1.5);
+    sprite.setScale(kind === "charge" ? 1.1 : 1.6);
     sprite.setFlipX(Math.random() < 0.5);
-    sprite.play(`fx-${cfg.key}`);
+    sprite.play(`fx-${LAND_DUST.key}`);
     sprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => sprite.destroy());
   }
 
