@@ -46,6 +46,7 @@ export const CHANGELOG: ChangelogVersion[] = [
     changes: [
       { kind: "feature", text: "Each class now has a movement ability on its own cooldown (default Shift): the Knight Charges — a rushing slam that damages and knocks back anything in its path, kicking up a trail of dust; the Mage Blinks — vanishing in a puff and reappearing a short hop away, through bars and over gaps; the Rogue Dashes — a brief invulnerable dodge that slips through enemies; the Ranger Vaults — an arcing leap that sails over ground attacks and fire (but flying enemies can still catch you mid-air) and lands in a puff of dust" },
       { kind: "ui", text: "A small cooldown bar fills beneath you while a movement ability recharges and vanishes once it's ready" },
+      { kind: "ui", text: "New Options toggle: a performance meter in the bottom-right corner showing live FPS and network latency" },
       { kind: "balance", text: "The movement abilities are a touch slower and shorter, so they're easier to aim and place than the first pass" },
       { kind: "feature", text: "You can now carry at most two weapons. Picking up a new one puts it in your hand; if both slots are full, the weapon you were holding drops to the floor — walk over any dropped weapon (yours or a teammate's) and interact to pick it back up" },
       { kind: "balance", text: "Room buffs are much smaller now. You still get one nearly every room, but each is a gentler nudge — power comes from stacking many, not from a few big jumps" },
