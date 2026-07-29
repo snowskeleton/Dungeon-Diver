@@ -15,6 +15,12 @@ export interface HitSource {
   shape: HitShape;
   /** Which Layer(s) this source's hits may reach (directional — see canAffect). */
   affects: number;
+  /** Which Elevation band(s) this source reaches (GROUND / AIR — see
+   *  reachesElevation). Optional: undefined means BOTH bands (the height-agnostic
+   *  default), so existing sources are unaffected. A grounded enemy's ground
+   *  attacks are stamped GROUND (a leaping player sails over them); a flyer's
+   *  reach BOTH. GameRoom stamps the enemy default at drain time, like ownerId. */
+  reaches?: number;
   /** Owner key (player session id / enemy id) so a shot never hits its own
    *  caster. Optional: a swing that can't reach its own team needs no exclusion. */
   ownerId?: string;

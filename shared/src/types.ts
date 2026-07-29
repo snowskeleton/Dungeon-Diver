@@ -15,6 +15,11 @@ export interface InputMessage {
   dx: number;       // -1, 0, or 1
   dy: number;
   attack: boolean;
+  // The class movement ability (Charge / Blink / Dash / Vault). A discrete control
+  // — the server edge-detects the press like `attack` and fires it along the
+  // current movement heading (or facing when standing still). One field, not one
+  // per class: the player's Character decides which ability the press triggers.
+  ability: boolean;
 }
 
 // Tile IDs
@@ -164,6 +169,37 @@ export const ENTITY_RADIUS = 5;
 // it and scales a shadow beneath. A swoop drives it to 0 (claws at the floor) and
 // back. Shared so the height→dive-frame mapping and the shadow agree.
 export const FLYING_CRUISE_HEIGHT = 44;
+
+// ── Class movement abilities (Charge / Blink / Dash / Vault) ──────────────────
+// Tunables for the per-class movement ability. Distances in px, times in ms,
+// speeds in px/sec. Each class's ability is assembled from these in the server's
+// movementSpellFor() (see server/src/spells/movement.ts). Kept here beside the
+// other feel constants so the whole movement kit is tuned in one place.
+//
+// Charge (Knight): a committed offensive rush — plows through enemies dealing
+// contact damage + knockback, stopped by walls/barriers.
+export const CHARGE_SPEED = 620;
+export const CHARGE_DURATION_MS = 260;
+export const CHARGE_COOLDOWN_MS = 4000;
+export const CHARGE_DAMAGE = 12;
+export const CHARGE_KNOCKBACK = 14;
+export const CHARGE_HIT_RADIUS = 20;
+// Blink (Mage): an instant short-range teleport, clamped to the furthest walkable
+// point before any wall/barrier along the heading.
+export const BLINK_DISTANCE = 160;
+export const BLINK_COOLDOWN_MS = 3500;
+// Dash (Rogue): a short, spammable dodge — invulnerable for the whole (brief)
+// active window and phasing through enemy bodies. Pure mobility, no damage.
+export const DASH_SPEED = 560;
+export const DASH_DURATION_MS = 180;
+export const DASH_COOLDOWN_MS = 2200;
+// Vault (Ranger): an arced leap — rises to AIR elevation (dodging ground attacks
+// and fire, but not flyers), phasing over cover blocks and enemies, landing on a
+// walkable tile. Longer and higher than the Dash; a repositioning tool.
+export const VAULT_SPEED = 430;
+export const VAULT_DURATION_MS = 460;
+export const VAULT_COOLDOWN_MS = 5000;
+export const VAULT_PEAK_HEIGHT = 34;
 
 // Enemy count per combat/maze room: base + floor(floorNum/2), then scaled by player count.
 export const ENEMY_BASE_COUNT = 7;

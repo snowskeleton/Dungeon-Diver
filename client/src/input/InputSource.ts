@@ -47,7 +47,7 @@ export class KeyboardInputSource implements InputSource {
   read(): InputMessage {
     const dx = (this.down("right") ? 1 : 0) - (this.down("left") ? 1 : 0);
     const dy = (this.down("down") ? 1 : 0) - (this.down("up") ? 1 : 0);
-    return { dx, dy, attack: this.down("attack") };
+    return { dx, dy, attack: this.down("attack"), ability: this.down("ability") };
   }
 
   readActions(): InputActions {
@@ -71,7 +71,7 @@ export class GamepadInputSource implements InputSource {
 
   read(): InputMessage {
     const pad = this.scene.input.gamepad?.getPad(this.padIndex);
-    if (!pad) return { dx: 0, dy: 0, attack: false };
+    if (!pad) return { dx: 0, dy: 0, attack: false, ability: false };
 
     const lx = pad.leftStick.x;
     const ly = pad.leftStick.y;
@@ -80,8 +80,9 @@ export class GamepadInputSource implements InputSource {
     const dx = Math.abs(lx) > threshold ? Math.sign(lx) : 0;
     const dy = Math.abs(ly) > threshold ? Math.sign(ly) : 0;
     const attack = pad.buttons[0]?.pressed ?? false; // A / Cross
+    const ability = pad.buttons[1]?.pressed ?? false; // B / Circle — movement ability
 
-    return { dx, dy, attack };
+    return { dx, dy, attack, ability };
   }
 
   readActions(): InputActions {

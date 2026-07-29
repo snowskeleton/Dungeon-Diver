@@ -59,4 +59,12 @@ export class PlayerState extends EntityState implements PlayerStateView {
   // for a teammate to revive. reviveProgress is 0..1, how full the revive bar is.
   @type("boolean") downed: boolean = false;
   @type("float32") reviveProgress: number = 0;
+  // Class movement ability (Charge / Blink / Dash / Vault). abilityId names the
+  // ability being cast this instant (""=idle) for the matching FX; abilitySeq
+  // bumps once per cast so a multi-tick channel plays its FX exactly once;
+  // abilityCooldownFrac is a 0..1 fill (0 just-cast → 1 ready) driving the little
+  // cooldown bar under the player. Defaults to 1 = ready, so the bar starts hidden.
+  @type("string") abilityId: string = "";
+  @type("uint16") abilitySeq: number = 0;
+  @type("float32") abilityCooldownFrac: number = 1;
 }

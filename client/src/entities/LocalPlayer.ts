@@ -78,7 +78,7 @@ export class LocalPlayer extends Entity implements DebugDrawable {
   // state.droppedWeapons. Not class-filtered here — the prompt shows for anyone and
   // the server refuses (with an on-screen error) if this class can't use it.
   nearbyDropped: { dropId: string } | null = null;
-  private lastInput: InputMessage = { dx: 0, dy: 0, attack: false };
+  private lastInput: InputMessage = { dx: 0, dy: 0, attack: false, ability: false };
   private facing: Facing = "down";
   private prevAttack = false;
   // Attack visuals are driven by the server (authoritative about which presses
@@ -129,7 +129,7 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     // During the acquire flourish (or any input lock) the player is frozen in
     // place: zero the input and skip shop/menu actions.
     const locked = performance.now() < this.inputLockedUntil;
-    const input = locked ? { dx: 0, dy: 0, attack: false } : this.inputSource.read();
+    const input = locked ? { dx: 0, dy: 0, attack: false, ability: false } : this.inputSource.read();
     if (!locked) {
       this.updateShopProximity();
       this.updateOfferProximity();
@@ -143,7 +143,8 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     if (
       input.dx !== this.lastInput.dx ||
       input.dy !== this.lastInput.dy ||
-      input.attack !== this.lastInput.attack
+      input.attack !== this.lastInput.attack ||
+      input.ability !== this.lastInput.ability
     ) {
       this.room.send("input", input);
       this.lastInput = { ...input };
@@ -166,6 +167,7 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     const isMoving = input.dx !== 0 || input.dy !== 0;
     const action = this.serverAttacking ? "attack" : isMoving ? "walk" : "idle";
     this.playAnim(action, this.facing);
+    this.renderMovementFX();
   }
 
   // Edge-detect the discrete controls (cycle weapon, open/close the pause menu)
@@ -423,6 +425,7 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     this.reviveProgress = state.reviveProgress;
     this.setDowned(state.downed);
     this.serverAttacking = state.isAttacking;
+    this.ingestMovementState(state);
     this.checkAcquired(Array.from(state.weapons), Array.from(state.upgrades) as UpgradeSlotView[]);
     // A new attackSeq means the server accepted a fresh attack — restart the
     // swing/bow clip even if isAttacking never dropped (held-fire).

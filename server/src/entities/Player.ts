@@ -8,7 +8,10 @@ import {
 import { PlayerState, UpgradeSlotState } from "../schema/PlayerState";
 import { WeaponSlotState } from "../schema/WeaponSlotState";
 import { Entity } from "./Entity";
-import { Spell, SpellCaster, Caster, AimPoint, AttackStats, weaponSpell } from "../spells";
+import {
+  Spell, SpellCaster, Caster, AimPoint, AttackStats, weaponSpell,
+  MovementCaster, movementSpellFor,
+} from "../spells";
 import { Upgrade, StatContributor } from "../upgrades";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
 
@@ -25,7 +28,7 @@ interface PlayerStats {
   lifestealPct: number;
 }
 
-export class Player extends Entity implements Caster {
+export class Player extends Entity implements Caster, MovementCaster {
   state: PlayerState;
   readonly character: Character;
   // Wielded weapon INSTANCES (not registry templates): each carries its own
@@ -39,10 +42,24 @@ export class Player extends Entity implements Caster {
   // which is all the uid is for (spell cache key + the client's acquire diff).
   private uidCounter = 0;
   private stats: PlayerStats;
-  lastInput: InputMessage = { dx: 0, dy: 0, attack: false };
+  lastInput: InputMessage = { dx: 0, dy: 0, attack: false, ability: false };
   // Runs the active weapon's spell (the swing/shot lifecycle) — the same shared
   // runner bosses use. Attacks are just zero-wind-up spells now.
   private readonly spellCaster = new SpellCaster();
+  // The class movement ability (Charge / Blink / Dash / Vault), run by its OWN
+  // caster so it's independent of the weapon swing — you can dash mid-swing. Built
+  // once from the class and cached (the Spell owns its cooldown, which must persist).
+  private readonly movementCaster = new SpellCaster();
+  private readonly movementSpell: Spell;
+  private prevAbility = false;
+  // Set true by dashDrive() during a channelled movement ability's active tick, so
+  // applyInput knows the dash owns the body's velocity this tick and skips normal
+  // movement input. Reset each tick. Blink (instant) never sets it.
+  private drivingThisTick = false;
+  // Layer bits to drop from the body's solid mask this active phase (a Dash phases
+  // through ENEMY, a Vault through ENEMY|COVER). GameRoom ANDs this out when it
+  // recomputes the committed mask each tick. 0 = phase nothing.
+  private movementMaskDrop = 0;
   // One persistent Spell per owned weapon INSTANCE (built on first use), so its
   // per-swing dedupe state lives with that specific weapon. Keyed by uid rather
   // than weapon id so two copies of the same weapon don't share a RehitGate.
@@ -85,6 +102,7 @@ export class Player extends Entity implements Caster {
   ) {
     super();
     this.character = getCharacter(characterClass);
+    this.movementSpell = movementSpellFor(this.character.id);
     this.state = new PlayerState();
     this.state.x = startX;
     this.state.y = startY;
@@ -322,6 +340,52 @@ export class Player extends Entity implements Caster {
     this.state.health = Math.min(this.stats.maxHp, this.state.health + amount);
   }
 
+  // ── MovementCaster (the class movement ability's surface) ────────────────────
+  /** Channelled dashes call this each active tick: drive a raw fixed-speed step and
+   *  flag that the ability owns the body's velocity this tick (so applyInput skips
+   *  normal movement input). */
+  dashDrive(dirX: number, dirY: number, pxPerSec: number): void {
+    this.drivingThisTick = true;
+    this.driveAlong(dirX, dirY, pxPerSec);
+  }
+
+  /** Blink: teleport to the furthest walkable point along the heading. */
+  blinkAlong(dirX: number, dirY: number, dist: number): void {
+    const t = this.sweepBlinkTarget(dirX, dirY, dist);
+    this.teleport(t.x, t.y);
+  }
+
+  /** Drop these Layer bits from the solid mask for the active phase (phase-through). */
+  beginPhase(dropMask: number): void {
+    this.movementMaskDrop = dropMask;
+  }
+  endPhase(): void {
+    this.movementMaskDrop = 0;
+  }
+  /** The bits GameRoom should drop from this player's solid mask this tick. */
+  get activeMovementMaskDrop(): number {
+    return this.movementMaskDrop;
+  }
+
+  /** Dash grants true i-frames: untouchable while its (invulnerable) active phase
+   *  runs. Vault does NOT set this — it dodges via the AIR elevation band instead,
+   *  so flyers still connect. */
+  override get damageable(): boolean {
+    return super.damageable && !this.movementCaster.invulnerableActive;
+  }
+
+  /** Abort a movement ability in flight WITHOUT running its normal deactivate —
+   *  used when a stun or downed state cuts it short. Restores the phase mask and
+   *  drops the player out of the air so nothing is left stuck (interrupt() alone
+   *  skips the effect's onDeactivate). Idempotent. */
+  private abortMovement(): void {
+    if (!this.movementCaster.busy) return;
+    this.endPhase();
+    this.setAirHeight(0);
+    this.movementCaster.interrupt();
+    this.state.abilityId = "";
+  }
+
   /** Cycle the active weapon by `delta` (wraps). Does NOT reset the attack — you
    *  can't switch mid-swing to fire faster (the in-flight cast keeps running). */
   switchWeapon(delta: number): void {
@@ -409,6 +473,16 @@ export class Player extends Entity implements Caster {
     return spell;
   }
 
+  // Where a movement ability aims: the current movement heading if the player is
+  // pushing a direction, else the facing. A dash goes where you're steering, and
+  // falls back to where you're looking when standing still.
+  private movementAim(input: InputMessage): AimPoint {
+    if (input.dx !== 0 || input.dy !== 0) {
+      return { x: this.state.x + input.dx * 100, y: this.state.y + input.dy * 100 };
+    }
+    return this.facingAim();
+  }
+
   // A point in the facing direction — a ranged spell turns it into the shot angle.
   private facingAim(): AimPoint {
     const d = 100;
@@ -436,14 +510,19 @@ export class Player extends Entity implements Caster {
     // A downed player is frozen — no movement, no attack, no facing change —
     // until a teammate revives them (GameRoom step 10). Zero the movement intent
     // so a held key from before they fell doesn't keep the body drifting.
+    this.drivingThisTick = false;
+
     if (this.state.downed) {
       this.move(0, 0, 0);
       this.cancelCharge();
+      this.abortMovement();
       this.prevAttack = false;
+      this.prevAbility = false;
       return;
     }
 
     this.spellCaster.tickClock(dtMs);
+    this.movementCaster.tickClock(dtMs);
 
     // Hitstun freezes control — movement, attack, facing all pause — while the
     // knockback impulse (carried by commitVelocity) sweeps the player. The in-flight
@@ -451,8 +530,25 @@ export class Player extends Entity implements Caster {
     // the instant stun ends.
     if (this.updateStun(dtMs)) {
       this.cancelCharge();
+      this.abortMovement();
+      this.writeAbilityState();
       this.prevAttack = input.attack;
+      this.prevAbility = input.ability;
       return;
+    }
+
+    // Movement ability (Charge / Blink / Dash / Vault). A rising edge fires it if
+    // it's off cooldown and none is already in flight; a channel then advances one
+    // tick per applyInput. drivingThisTick tells the movement block below to yield
+    // the body's velocity to the dash.
+    const abilityEdge = input.ability && !this.prevAbility;
+    const abilityAim = this.movementAim(input);
+    if (abilityEdge && !this.movementCaster.busy && this.movementSpell.isReady(this.movementCaster.now)) {
+      this.state.abilitySeq = (this.state.abilitySeq + 1) % 65536;
+      this.movementCaster.begin(this.movementSpell, abilityAim);
+      this.movementCaster.update(this, dtMs, abilityAim); // instant Blink strikes now; a channel starts
+    } else if (this.movementCaster.busy) {
+      this.movementCaster.update(this, dtMs, abilityAim);
     }
 
     const risingEdge = input.attack && !this.prevAttack;
@@ -469,7 +565,11 @@ export class Player extends Entity implements Caster {
       else if (input.dy < 0) this.state.facing = "up";
     }
 
-    this.move(input.dx, input.dy, this.stats.speed);
+    // A channelled movement ability owns the body's velocity this tick (dashDrive
+    // set drivingThisTick), so normal movement input is suppressed for its duration.
+    if (!this.drivingThisTick) {
+      this.move(input.dx, input.dy, this.stats.speed);
+    }
 
     // Advance an in-flight attack; then — the same tick it finishes — the next one
     // may start, so the cadence is exactly the weapon's cooldown. With no weapon
@@ -479,7 +579,10 @@ export class Player extends Entity implements Caster {
     if (this.spellCaster.busy) {
       this.spellCaster.update(this, dtMs, aim);
     }
-    if (!weapon || !spell) {
+    if (this.drivingThisTick) {
+      // Committed dash: no new swing starts, but an in-flight one keeps advancing.
+      this.cancelCharge();
+    } else if (!weapon || !spell) {
       // No weapon yet — drop any charge and do nothing else.
       this.cancelCharge();
     } else if (!weapon.isRanged && !weapon.isAoe) {
@@ -509,7 +612,19 @@ export class Player extends Entity implements Caster {
     const isMelee = !!weapon && !weapon.isRanged && !weapon.isAoe;
     this.state.windingUp = isMelee && this.spellCaster.windingUp;
 
+    this.writeAbilityState();
     this.prevAttack = input.attack;
+    this.prevAbility = input.ability;
+  }
+
+  /** Mirror the movement ability's live state to the schema: which ability is
+   *  casting right now (for its FX), and the cooldown as a 0..1 fill (0 just after
+   *  a cast → 1 ready) driving the little bar under the player. */
+  private writeAbilityState(): void {
+    this.state.abilityId = this.movementCaster.busy ? this.movementSpell.id : "";
+    const cd = this.movementSpell.cooldownMs;
+    const remaining = this.movementSpell.cooldownRemaining(this.movementCaster.now);
+    this.state.abilityCooldownFrac = cd > 0 ? Math.max(0, Math.min(1, 1 - remaining / cd)) : 1;
   }
 }
 

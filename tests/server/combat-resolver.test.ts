@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Layer, Attack, HitShape, PLAYER_ATTACK_AFFECTS, ENEMY_ATTACK_AFFECTS } from "shared";
+import { Layer, Attack, HitShape, PLAYER_ATTACK_AFFECTS, ENEMY_ATTACK_AFFECTS, Elevation } from "shared";
 import { CombatSystem, CombatTarget } from "../../server/src/combat/CombatSystem";
 import { HitSource } from "../../server/src/combat/HitSource";
 import { RehitGate } from "../../server/src/combat/RehitGate";
@@ -11,6 +11,9 @@ import { RehitGate } from "../../server/src/combat/RehitGate";
 class Dummy implements CombatTarget {
   state: { x: number; y: number };
   damageable = true;
+  /** Grounded by default, as a real player/enemy on the floor is. Set to AIR to
+   *  exercise the elevation gate. */
+  elevation = Elevation.GROUND;
   taken: Attack[] = [];
   /** Set to mitigate, so "damage actually dealt" can be told apart from asked. */
   mitigate = 0;
@@ -52,6 +55,37 @@ describe("CombatSystem.resolve", () => {
 
     expect(enemy.taken).toHaveLength(1);
     expect(hits).toEqual([{ x: 10, y: 0, targetId: "e1", ownerId: undefined, damage: 10 }]);
+  });
+
+  it("gates on elevation — a GROUND source misses an AIR target but a both-band source lands", () => {
+    const combat = new CombatSystem();
+    // A grounded slam (reaches GROUND) vs an airborne (Vaulting) target.
+    const airborne = new Dummy(0, 0);
+    airborne.elevation = Elevation.AIR;
+    combat.resolve([source({ affects: ENEMY_ATTACK_AFFECTS, reaches: Elevation.GROUND })],
+      groups(new Map([["p1", airborne]]), new Map()));
+    expect(airborne.taken).toHaveLength(0); // leapt over the ground attack
+
+    // A both-band source (a flyer's contact) reaches the same airborne target.
+    combat.resolve([source({ affects: ENEMY_ATTACK_AFFECTS, reaches: Elevation.GROUND | Elevation.AIR })],
+      groups(new Map([["p1", airborne]]), new Map()));
+    expect(airborne.taken).toHaveLength(1);
+
+    // And a GROUND source still lands on a grounded target.
+    const grounded = new Dummy(0, 0);
+    combat.resolve([source({ affects: ENEMY_ATTACK_AFFECTS, reaches: Elevation.GROUND })],
+      groups(new Map([["p2", grounded]]), new Map()));
+    expect(grounded.taken).toHaveLength(1);
+  });
+
+  it("treats an unset reaches as both bands (height-agnostic default)", () => {
+    const combat = new CombatSystem();
+    const airborne = new Dummy(0, 0);
+    airborne.elevation = Elevation.AIR;
+    // source() sets no `reaches` — an existing swing/projectile hits regardless of height.
+    combat.resolve([source({ affects: ENEMY_ATTACK_AFFECTS })],
+      groups(new Map([["p1", airborne]]), new Map()));
+    expect(airborne.taken).toHaveLength(1);
   });
 
   it("spares layers the source's affects mask does not reach", () => {

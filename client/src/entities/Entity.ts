@@ -3,6 +3,7 @@ import { TILE_SIZE, Facing, RangedStyle, FOOT_OFFSET, ENTITY_RADIUS, WEAPON_REGI
 import { DEBUG_COLORS, type DebugShape } from "../debug/DebugDraw";
 import { AttackFXType } from "./AttackFXSprites";
 import { WeaponVisual, createWeaponVisual, createNoWeaponVisual } from "./WeaponVisuals";
+import { PlayerMovementFX } from "./PlayerMovementFX";
 
 const HP_BAR_W = 24;
 const HP_BAR_H = 4;
@@ -252,6 +253,55 @@ export abstract class Entity {
     this.weaponVisual.playAttack(this.sprite.x, this.sprite.y, facing, this.pendingComboSwing);
   }
 
+  // ── Class movement ability visuals (players only) ────────────────────────────
+  // Lazily created — enemies never call the ingest/render hooks below, so they pay
+  // nothing. The player subclasses feed the synced movement fields in from their
+  // state ingest and render the shadow / cooldown bar / air-lift each frame.
+  private moveFx?: PlayerMovementFX;
+  private movementAirHeight = 0;
+  private movementCooldownFrac = 1;
+  private lastAbilitySeq = -1;
+
+  private movementFx(): PlayerMovementFX {
+    if (!this.moveFx) this.moveFx = new PlayerMovementFX(this.scene);
+    return this.moveFx;
+  }
+
+  /** Player subclasses call this from their state ingest: cache the movement fields
+   *  and fire the one-shot ability burst when abilitySeq advances. */
+  protected ingestMovementState(v: {
+    airHeight: number;
+    abilityCooldownFrac: number;
+    abilityId: string;
+    abilitySeq: number;
+  }): void {
+    this.movementAirHeight = v.airHeight;
+    this.movementCooldownFrac = v.abilityCooldownFrac;
+    if (v.abilitySeq !== this.lastAbilitySeq) {
+      // Skip the very first observation (no cast happened) and any idle bump.
+      if (this.lastAbilitySeq !== -1 && v.abilityId) {
+        this.movementFx().burst(this.sprite.x, this.sprite.y, v.abilityId);
+      }
+      this.lastAbilitySeq = v.abilitySeq;
+    }
+  }
+
+  /** Player subclasses call this at the END of their per-frame update (after
+   *  positioning + HP bar + anim): lift the sprite for a Vault and update the
+   *  shadow + cooldown bar. */
+  protected renderMovementFX(): void {
+    const h = this.movementAirHeight;
+    // Absolute (not incremental) so it can't accumulate across frames — LocalPlayer
+    // repositions the sprite every frame but only refreshes the HP bar on server
+    // sync, so we lift the sprite (whose y was just reset by syncSpritePosition) and
+    // leave the overhead HP bar where it is. syncSpritePosition already ran via
+    // playAnim, so charSprite.y == sprite.y here when grounded.
+    if (this.charSprite && h > 0) {
+      this.charSprite.y = this.sprite.y - h;
+    }
+    this.movementFx().sync(this.sprite.x, this.sprite.y, h, this.movementCooldownFrac);
+  }
+
   private downedShown = false;
 
   /** Ghost + blue-tint a downed player so a collapsed teammate reads at a glance.
@@ -312,5 +362,6 @@ export abstract class Entity {
     this.weaponVisual.destroy();
     this.hpBar.destroy();
     this.hpBarBg.destroy();
+    this.moveFx?.destroy();
   }
 }
