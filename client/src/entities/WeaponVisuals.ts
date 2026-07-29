@@ -37,6 +37,9 @@ export interface WeaponVisual {
    *  cocked back at the swing's first keyframe). No-op for weapons that don't
    *  charge. `swing` hints which swing is being wound up (hard vs combo). */
   showWindup(x: number, y: number, facing: Facing, swing?: ComboSwing | null): void;
+  /** Show/hide every piece of this visual — used to make a Blinking player vanish
+   *  during the teleport gap. No-op for visuals with nothing held (thrown / nova). */
+  setVisible?(visible: boolean): void;
   destroy(): void;
 }
 
@@ -118,6 +121,13 @@ class HeldWeaponVisual implements WeaponVisual {
     poseWeaponIconWindup(this.icon, fx, x, y, facing, this.iconAngle, swing?.mirrored ?? false);
   }
 
+  setVisible(visible: boolean): void {
+    this.icon?.setVisible(visible);
+    // Hide any strip mid-swing too; on show, leave it hidden — sync() re-poses the
+    // icon at rest next frame, and a 130ms Blink rarely overlaps a live swing.
+    if (!visible) this.activeSprite?.setVisible(false);
+  }
+
   destroy(): void {
     for (const s of this.fxSprites.values()) s.destroy();
     this.icon?.destroy();
@@ -154,6 +164,10 @@ class HeldBowVisual implements WeaponVisual {
 
   showWindup(): void {} // ranged weapons don't charge
 
+  setVisible(visible: boolean): void {
+    this.bowSprite.setVisible(visible);
+  }
+
   destroy(): void {
     this.bowSprite.destroy();
   }
@@ -177,6 +191,10 @@ class HeldStaffVisual implements WeaponVisual {
   }
 
   showWindup(): void {} // staves cast, they don't charge a melee swing
+
+  setVisible(visible: boolean): void {
+    this.castSprite.setVisible(visible);
+  }
 
   destroy(): void {
     this.castSprite.destroy();

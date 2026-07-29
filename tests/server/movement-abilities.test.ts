@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   Elevation, ELEVATION_ALL, Layer, TILE,
-  BLINK_DISTANCE, VAULT_PEAK_HEIGHT, AIRBORNE_HEIGHT_THRESHOLD,
-  TILE_SIZE, TileId,
+  BLINK_DISTANCE, BLINK_HIDDEN_MS, VAULT_PEAK_HEIGHT, AIRBORNE_HEIGHT_THRESHOLD,
+  SERVER_TICK_MS, TILE_SIZE, TileId,
 } from "shared";
 import { Player } from "../../server/src/entities/Player";
 import { GooGreen } from "../../server/src/entities/enemies/goos";
@@ -19,6 +19,15 @@ import { PhysicsWorld } from "../../server/src/physics/PhysicsWorld";
 // first tick; hold ability false afterwards to let a channel run to completion.
 function pressAbility(a: ReturnType<typeof arena>, id: string, dx: number, dy: number) {
   a.stepWithInput(id, dx, dy, false, true);
+}
+
+// Blink is no longer instant: the Mage vanishes on the press, is gone for the
+// BLINK_HIDDEN_MS gap, then teleports as that gap ends. Fire the press, then hold
+// ability false long enough for the gap to run out and the relocation to land.
+function castBlink(a: ReturnType<typeof arena>, id: string, dx: number, dy: number) {
+  pressAbility(a, id, dx, dy);
+  const gapTicks = Math.ceil(BLINK_HIDDEN_MS / SERVER_TICK_MS) + 1;
+  for (let t = 0; t < gapTicks; t++) a.stepWithInput(id, dx, dy, false, false);
 }
 
 describe("elevation: which band an attack reaches", () => {
@@ -81,14 +90,29 @@ describe("elevation: which band an attack reaches", () => {
   });
 });
 
-describe("Blink (Mage): instant clamped teleport", () => {
+describe("Blink (Mage): delayed clamped teleport", () => {
   it("relocates roughly the blink distance along the heading", () => {
     const a = arena();
     const p = new Player(a.physics, 300, 300, "mage", "skeleton-mage");
     a.addPlayer("m", p);
-    pressAbility(a, "m", 1, 0);
+    castBlink(a, "m", 1, 0);
     expect(p.state.x).toBeGreaterThan(300 + BLINK_DISTANCE * 0.8);
     expect(p.state.y).toBeCloseTo(300, 0);
+  });
+
+  it("is gone (hidden + frozen at the origin) during the gap, then jumps", () => {
+    const a = arena();
+    const p = new Player(a.physics, 300, 300, "mage", "skeleton-mage");
+    a.addPlayer("m", p);
+    // The press starts the gap: hidden, still at the origin (no teleport yet).
+    pressAbility(a, "m", 1, 0);
+    expect(p.state.blinkHidden).toBe(true);
+    expect(p.state.x).toBeCloseTo(300, 0);
+    // Run the gap out — reappears at the destination, no longer hidden.
+    const gapTicks = Math.ceil(BLINK_HIDDEN_MS / SERVER_TICK_MS) + 1;
+    for (let t = 0; t < gapTicks; t++) a.stepWithInput("m", 1, 0, false, false);
+    expect(p.state.blinkHidden).toBe(false);
+    expect(p.state.x).toBeGreaterThan(300 + BLINK_DISTANCE * 0.8);
   });
 
   it("never lands inside a wall — clamps short", () => {
@@ -104,7 +128,7 @@ describe("Blink (Mage): instant clamped teleport", () => {
     const startX = startCol * TILE_SIZE + 16;
     const p = new Player(physics, startX, 300, "mage", "skeleton-mage");
     a.addPlayer("m", p);
-    pressAbility(a, "m", 1, 0);
+    castBlink(a, "m", 1, 0);
     // Landed short of the wall, and on a walkable tile.
     expect(p.state.x).toBeLessThan(wallCol * TILE_SIZE);
     expect(p.state.x).toBeGreaterThan(startX); // still moved some
@@ -114,12 +138,11 @@ describe("Blink (Mage): instant clamped teleport", () => {
     const a = arena();
     const p = new Player(a.physics, 300, 300, "mage", "skeleton-mage");
     a.addPlayer("m", p);
-    pressAbility(a, "m", 1, 0);
+    castBlink(a, "m", 1, 0);
     const afterFirst = p.state.x;
     expect(p.state.abilityCooldownFrac).toBeLessThan(1); // on cooldown now
-    // Release then press again immediately — still cooling down, so no teleport.
-    a.stepWithInput("m", 1, 0, false, false);
-    a.stepWithInput("m", 1, 0, false, true);
+    // Press again immediately — still cooling down, so no second teleport.
+    castBlink(a, "m", 1, 0);
     expect(p.state.x).toBeCloseTo(afterFirst, 0);
   });
 

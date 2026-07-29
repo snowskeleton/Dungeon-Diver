@@ -121,6 +121,9 @@ export interface PlayerStateView extends EntityStateView {
   /** Movement-ability cooldown as a 0..1 fill: 0 right after a cast, climbing to 1
    *  when ready. The client draws a bar under the player and hides it at 1. */
   readonly abilityCooldownFrac: number;
+  /** True while a Mage Blink is in its disappearance gap: the client hides the
+   *  sprite (the Mage is "nowhere") and poofs at the departure and arrival. */
+  readonly blinkHidden: boolean;
 }
 
 export interface EnemyStateView extends EntityStateView {

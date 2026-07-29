@@ -20,6 +20,7 @@ import { CLIENT_CHARACTER_VISUAL_REGISTRY } from "../characters";
 import { preloadAttackFX, defineAttackFXAnimations } from "../entities/AttackFXSprites";
 import { HitFX, preloadHitFX, defineHitFXAnimation } from "../entities/HitFX";
 import { SpawnFX, preloadSpawnFX, defineSpawnFXAnimation } from "../entities/SpawnFX";
+import { preloadMovementFX, defineMovementFXAnimations } from "../entities/PlayerMovementFX";
 import { CoinEntity, CoinFX, preloadCoin, defineCoinAnimations } from "../entities/CoinEntity";
 import { preloadBowSheet, defineBowAnimation } from "../entities/RangedWeaponFX";
 import { CLIENT_ENEMY_REGISTRY } from "../enemies";
@@ -167,6 +168,7 @@ export class GameScene extends Phaser.Scene {
     preloadAttackFX(this);
     preloadHitFX(this);
     preloadSpawnFX(this);
+    preloadMovementFX(this);
     preloadCoin(this);
     preloadChest(this);
 
@@ -208,6 +210,7 @@ export class GameScene extends Phaser.Scene {
     defineAttackFXAnimations(this);
     defineHitFXAnimation(this);
     defineSpawnFXAnimation(this);
+    defineMovementFXAnimations(this);
     defineCoinAnimations(this);
     defineChestAnimations(this);
 

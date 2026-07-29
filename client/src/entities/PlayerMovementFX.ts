@@ -20,6 +20,32 @@ const ABILITY_COLORS: Record<string, number> = {
   vault:  0x68d391, // Ranger — green leap
 };
 
+// Dust FX sprite sheets (from the SOA2 pack), played one-shot at a player's feet.
+// dust-charge = a tall kick-up cloud trailing a Knight's Charge; dust-land = a low
+// puff where a Ranger's Vault touches down.
+const CHARGE_DUST = { key: "dust-charge", file: "/sprites/dust-charge.png", fw: 20, fh: 40, frames: 16 };
+const LAND_DUST = { key: "dust-land", file: "/sprites/dust-land.png", fw: 10, fh: 10, frames: 13 };
+
+export function preloadMovementFX(scene: Phaser.Scene) {
+  scene.load.spritesheet(CHARGE_DUST.key, CHARGE_DUST.file, { frameWidth: CHARGE_DUST.fw, frameHeight: CHARGE_DUST.fh });
+  scene.load.spritesheet(LAND_DUST.key, LAND_DUST.file, { frameWidth: LAND_DUST.fw, frameHeight: LAND_DUST.fh });
+}
+
+export function defineMovementFXAnimations(scene: Phaser.Scene) {
+  for (const cfg of [CHARGE_DUST, LAND_DUST]) {
+    const key = `fx-${cfg.key}`;
+    if (scene.anims.exists(key)) continue;
+    scene.anims.create({
+      key,
+      frames: scene.anims.generateFrameNumbers(cfg.key, {
+        frames: Array.from({ length: cfg.frames }, (_, i) => i),
+      }),
+      frameRate: 30,
+      repeat: 0,
+    });
+  }
+}
+
 export class PlayerMovementFX {
   private readonly shadow: Phaser.GameObjects.Ellipse;
   private readonly barBg: Phaser.GameObjects.Rectangle;
@@ -71,6 +97,34 @@ export class PlayerMovementFX {
       duration: 260,
       onComplete: () => ring.destroy(),
     });
+  }
+
+  /** The Mage Blink's two-ended poof. "leave" collapses inward where the Mage
+   *  vanishes; "arrive" bursts outward where it reappears — fired on the synced
+   *  blinkHidden going true then false, so a real beat of absence sits between them. */
+  blinkPoof(x: number, y: number, kind: "leave" | "arrive"): void {
+    const color = ABILITY_COLORS.blink;
+    const ring = this.scene.add.ellipse(x, y + 8, 26, 15, color, 0.7).setDepth(2);
+    const to = kind === "leave" ? 0.1 : 3;
+    this.scene.tweens.add({
+      targets: ring,
+      scaleX: to,
+      scaleY: to,
+      alpha: 0,
+      duration: 240,
+      onComplete: () => ring.destroy(),
+    });
+  }
+
+  /** A one-shot dust cloud at a player's feet: "charge" is the tall kick-up trailing
+   *  a Knight's Charge, "land" the low puff where a Ranger's Vault touches down. */
+  dust(x: number, y: number, kind: "charge" | "land"): void {
+    const cfg = kind === "charge" ? CHARGE_DUST : LAND_DUST;
+    const sprite = this.scene.add.sprite(x, y + 10, cfg.key).setDepth(2);
+    sprite.setScale(kind === "charge" ? 0.9 : 1.6);
+    sprite.setFlipX(Math.random() < 0.5);
+    sprite.play(`fx-${cfg.key}`);
+    sprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => sprite.destroy());
   }
 
   destroy(): void {

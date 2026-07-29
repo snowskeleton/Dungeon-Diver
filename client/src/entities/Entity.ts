@@ -261,6 +261,12 @@ export abstract class Entity {
   private movementAirHeight = 0;
   private movementCooldownFrac = 1;
   private lastAbilitySeq = -1;
+  private movementAbilityId = "";
+  // Blink absence: the last synced blinkHidden, so a rising edge poofs the departure
+  // and a falling edge poofs the arrival (and hides/shows the sprite in between).
+  private blinkHidden = false;
+  // Charge dust trail: ms since the last puff, so the trail is paced not per-frame.
+  private chargeDustMs = 0;
 
   private movementFx(): PlayerMovementFX {
     if (!this.moveFx) this.moveFx = new PlayerMovementFX(this.scene);
@@ -274,12 +280,24 @@ export abstract class Entity {
     abilityCooldownFrac: number;
     abilityId: string;
     abilitySeq: number;
+    blinkHidden: boolean;
   }): void {
     this.movementAirHeight = v.airHeight;
     this.movementCooldownFrac = v.abilityCooldownFrac;
+    this.movementAbilityId = v.abilityId;
+
+    // Blink is driven by its blinkHidden transitions, not abilitySeq: the departure
+    // poof fires as the Mage vanishes (still at the origin), the arrival poof as it
+    // reappears (now teleported), with a beat of absence between.
+    if (v.blinkHidden !== this.blinkHidden) {
+      this.movementFx().blinkPoof(this.sprite.x, this.sprite.y, v.blinkHidden ? "leave" : "arrive");
+      this.blinkHidden = v.blinkHidden;
+    }
+
     if (v.abilitySeq !== this.lastAbilitySeq) {
-      // Skip the very first observation (no cast happened) and any idle bump.
-      if (this.lastAbilitySeq !== -1 && v.abilityId) {
+      // Skip the very first observation (no cast happened) and any idle bump. Blink
+      // handles its own FX above, so the generic burst is only for the other three.
+      if (this.lastAbilitySeq !== -1 && v.abilityId && v.abilityId !== "blink") {
         this.movementFx().burst(this.sprite.x, this.sprite.y, v.abilityId);
       }
       this.lastAbilitySeq = v.abilitySeq;
@@ -289,6 +307,8 @@ export abstract class Entity {
   /** Player subclasses call this at the END of their per-frame update (after
    *  positioning + HP bar + anim): lift the sprite for a Vault and update the
    *  shadow + cooldown bar. */
+  private prevAirHeight = 0;
+
   protected renderMovementFX(): void {
     const h = this.movementAirHeight;
     // Absolute (not incremental) so it can't accumulate across frames — LocalPlayer
@@ -299,6 +319,32 @@ export abstract class Entity {
     if (this.charSprite && h > 0) {
       this.charSprite.y = this.sprite.y - h;
     }
+
+    // Vault landing: a low dust puff the frame the leap touches back down.
+    if (this.prevAirHeight > 1 && h <= 1) {
+      this.movementFx().dust(this.sprite.x, this.sprite.y, "land");
+    }
+    this.prevAirHeight = h;
+
+    // Charge dust trail: a kick-up cloud dropped at the feet every ~60ms while the
+    // Knight is rushing, so the whole charge leaves a wake.
+    if (this.movementAbilityId === "charge") {
+      this.chargeDustMs += this.scene.game.loop.delta;
+      if (this.chargeDustMs >= 60) {
+        this.chargeDustMs = 0;
+        this.movementFx().dust(this.sprite.x, this.sprite.y, "charge");
+      }
+    } else {
+      this.chargeDustMs = 60; // so the next charge puffs immediately on its first frame
+    }
+
+    // Blink absence: hide the whole player (body + weapon + HP bar) while gone.
+    const hidden = this.blinkHidden;
+    this.charSprite?.setVisible(!hidden);
+    this.weaponVisual.setVisible?.(!hidden);
+    this.hpBar.setVisible(!hidden);
+    this.hpBarBg.setVisible(!hidden);
+
     this.movementFx().sync(this.sprite.x, this.sprite.y, h, this.movementCooldownFrac);
   }
 

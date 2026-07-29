@@ -67,4 +67,7 @@ export class PlayerState extends EntityState implements PlayerStateView {
   @type("string") abilityId: string = "";
   @type("uint16") abilitySeq: number = 0;
   @type("float32") abilityCooldownFrac: number = 1;
+  // True during a Mage Blink's disappearance gap — the client hides the sprite and
+  // poofs at both ends. Only the Blink sets it; every other ability leaves it false.
+  @type("boolean") blinkHidden: boolean = false;
 }

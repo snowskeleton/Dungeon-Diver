@@ -178,26 +178,31 @@ export const FLYING_CRUISE_HEIGHT = 44;
 //
 // Charge (Knight): a committed offensive rush — plows through enemies dealing
 // contact damage + knockback, stopped by walls/barriers.
-export const CHARGE_SPEED = 620;
-export const CHARGE_DURATION_MS = 260;
+export const CHARGE_SPEED = 340;
+export const CHARGE_DURATION_MS = 230;
 export const CHARGE_COOLDOWN_MS = 4000;
 export const CHARGE_DAMAGE = 12;
 export const CHARGE_KNOCKBACK = 14;
 export const CHARGE_HIT_RADIUS = 20;
 // Blink (Mage): an instant short-range teleport, clamped to the furthest walkable
 // point before any wall/barrier along the heading.
-export const BLINK_DISTANCE = 160;
+export const BLINK_DISTANCE = 110;
 export const BLINK_COOLDOWN_MS = 3500;
+// The teleport is not instant: the Mage vanishes, is gone (invisible + untargetable)
+// for this brief gap, then reappears at the destination. Reads as a real blink
+// rather than a snap. The player is frozen at the origin during the gap; the jump
+// itself happens the instant it ends.
+export const BLINK_HIDDEN_MS = 130;
 // Dash (Rogue): a short, spammable dodge — invulnerable for the whole (brief)
 // active window and phasing through enemy bodies. Pure mobility, no damage.
-export const DASH_SPEED = 560;
-export const DASH_DURATION_MS = 180;
+export const DASH_SPEED = 400;
+export const DASH_DURATION_MS = 165;
 export const DASH_COOLDOWN_MS = 2200;
 // Vault (Ranger): an arced leap — rises to AIR elevation (dodging ground attacks
 // and fire, but not flyers), phasing over cover blocks and enemies, landing on a
 // walkable tile. Longer and higher than the Dash; a repositioning tool.
-export const VAULT_SPEED = 430;
-export const VAULT_DURATION_MS = 460;
+export const VAULT_SPEED = 235;
+export const VAULT_DURATION_MS = 360;
 export const VAULT_COOLDOWN_MS = 5000;
 export const VAULT_PEAK_HEIGHT = 34;
 

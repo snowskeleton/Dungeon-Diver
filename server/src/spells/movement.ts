@@ -1,7 +1,7 @@
 import {
   CharacterClass, Layer,
   CHARGE_SPEED, CHARGE_DURATION_MS, CHARGE_COOLDOWN_MS, CHARGE_DAMAGE, CHARGE_KNOCKBACK, CHARGE_HIT_RADIUS,
-  BLINK_DISTANCE, BLINK_COOLDOWN_MS,
+  BLINK_DISTANCE, BLINK_COOLDOWN_MS, BLINK_HIDDEN_MS,
   DASH_SPEED, DASH_DURATION_MS, DASH_COOLDOWN_MS,
   VAULT_SPEED, VAULT_DURATION_MS, VAULT_COOLDOWN_MS, VAULT_PEAK_HEIGHT,
 } from "shared";
@@ -27,6 +27,10 @@ export interface MovementCaster extends Caster {
   /** Instantly relocate along (dirX, dirY) up to `dist`, clamped to the furthest
    *  walkable point before any wall/barrier (Blink). */
   blinkAlong(dirX: number, dirY: number, dist: number): void;
+  /** Hide the caster (invisible + untargetable) for the Blink's disappearance gap;
+   *  cleared when it reappears at the destination. The client reads the synced flag
+   *  to poof and hide the sprite. */
+  setBlinkHidden(hidden: boolean): void;
   /** Set the airborne height (px); a Vault arcs this up and back to 0. */
   setAirHeight(px: number): void;
   /** Drop these Layer bits from the body's solid mask for the active phase, so the
@@ -86,24 +90,37 @@ function charge(): Spell {
   });
 }
 
-// Blink (Mage): an instant teleport. No active phase — the whole effect is the
-// relocation on the strike frame, clamped so it never lands in a wall or past a
-// shut door (but happily crosses a bar or gap in between).
+// Blink (Mage): a teleport with a beat of absence. The heading is locked and the
+// Mage vanishes on the strike frame (hidden + untouchable, frozen at the origin);
+// after the BLINK_HIDDEN_MS gap it reappears at the destination — the relocation
+// itself is the deactivate, clamped so it never lands in a wall or past a shut door
+// (but happily crosses a bar or gap in between).
 function blink(): Spell {
+  let dirX = 0;
+  let dirY = 0;
   const effect: SpellEffect = {
     onActivate: (caster, aim) => {
       const h = heading(caster, aim);
-      (caster as MovementCaster).blinkAlong(h.x, h.y, BLINK_DISTANCE);
+      dirX = h.x;
+      dirY = h.y;
+      (caster as MovementCaster).setBlinkHidden(true);
+    },
+    onDeactivate: (caster) => {
+      const mc = caster as MovementCaster;
+      mc.blinkAlong(dirX, dirY, BLINK_DISTANCE);
+      mc.setBlinkHidden(false);
     },
   };
   return new Spell({
     id: "blink",
     windUpMs: 0,
-    activeMs: 0,
+    activeMs: BLINK_HIDDEN_MS, // the gap the Mage is gone for
     recoverMs: 0,
     cooldownMs: BLINK_COOLDOWN_MS,
     range: 0,
     aimLockMs: 0,
+    knockbackImmuneWhileActive: true,
+    invulnerableWhileActive: true, // untargetable in the gap (true i-frames)
     fireMode: "press",
     effect,
   });

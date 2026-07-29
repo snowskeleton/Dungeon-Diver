@@ -355,6 +355,13 @@ export class Player extends Entity implements Caster, MovementCaster {
     this.teleport(t.x, t.y);
   }
 
+  /** Blink's disappearance gap: hidden + untargetable, mirrored to the schema so
+   *  the client poofs and hides the sprite. Invulnerability is handled by the
+   *  spell's invulnerableWhileActive (see `damageable`). */
+  setBlinkHidden(hidden: boolean): void {
+    this.state.blinkHidden = hidden;
+  }
+
   /** Drop these Layer bits from the solid mask for the active phase (phase-through). */
   beginPhase(dropMask: number): void {
     this.movementMaskDrop = dropMask;
@@ -382,6 +389,7 @@ export class Player extends Entity implements Caster, MovementCaster {
     if (!this.movementCaster.busy) return;
     this.endPhase();
     this.setAirHeight(0);
+    this.setBlinkHidden(false); // a Blink cut short mid-gap reappears at the origin
     this.movementCaster.interrupt();
     this.state.abilityId = "";
   }
@@ -567,7 +575,12 @@ export class Player extends Entity implements Caster, MovementCaster {
 
     // A channelled movement ability owns the body's velocity this tick (dashDrive
     // set drivingThisTick), so normal movement input is suppressed for its duration.
-    if (!this.drivingThisTick) {
+    // A Blink freezes the player at the origin through its disappearance gap.
+    if (this.drivingThisTick) {
+      // dashDrive already committed this tick's velocity.
+    } else if (this.state.blinkHidden) {
+      this.move(0, 0, 0);
+    } else {
       this.move(input.dx, input.dy, this.stats.speed);
     }
 
