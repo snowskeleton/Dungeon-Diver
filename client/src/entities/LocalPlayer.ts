@@ -3,7 +3,7 @@ import { Room } from "colyseus.js";
 import {
   InputMessage, CharacterClass, CharacterType, Character, getCharacter,
   WeaponId, Weapon, WeaponView, WeaponSlotView, UpgradeSlotView, WEAPON_REGISTRY, Facing,
-  GameStateView, PlayerStateView, ShopStateView, ShopItemStateView, OfferStateView, RewardStateView, ChestStateView,
+  GameStateView, PlayerStateView, ShopStateView, ShopItemStateView, OfferStateView, RewardStateView, ChestStateView, DroppedWeaponStateView,
   PLAYER_HURT_BOUNDS,
 } from "shared";
 import { Entity } from "./Entity";
@@ -73,6 +73,11 @@ export class LocalPlayer extends Entity implements DebugDrawable {
   // The unopened maze chest this player is standing on (if any). Carries only the
   // room id — a chest's contents are never synced, so there is nothing to preview.
   nearbyChest: { roomId: string } | null = null;
+
+  // The dropped weapon this player is standing on (if any). Keyed by drop id into
+  // state.droppedWeapons. Not class-filtered here — the prompt shows for anyone and
+  // the server refuses (with an on-screen error) if this class can't use it.
+  nearbyDropped: { dropId: string } | null = null;
   private lastInput: InputMessage = { dx: 0, dy: 0, attack: false };
   private facing: Facing = "down";
   private prevAttack = false;
@@ -131,6 +136,7 @@ export class LocalPlayer extends Entity implements DebugDrawable {
       this.updateRewardProximity();
       this.updateSupplyProximity();
       this.updateChestProximity();
+      this.updateDroppedProximity();
       this.handleActions();
     }
 
@@ -182,6 +188,8 @@ export class LocalPlayer extends Entity implements DebugDrawable {
         this.room.send("claimSupply", { supplyId: this.nearbySupply.supplyId });
       } else if (this.nearbyChest) {
         this.room.send("chestOpen", { roomId: this.nearbyChest.roomId });
+      } else if (this.nearbyDropped) {
+        this.room.send("pickupWeapon", { dropId: this.nearbyDropped.dropId });
       } else if (this.nearbyShopItem) {
         this.room.send("buy", {
           roomId: this.nearbyShopItem.roomId,
@@ -363,6 +371,26 @@ export class LocalPlayer extends Entity implements DebugDrawable {
       }
     });
     this.nearbyChest = best;
+  }
+
+  // Nearest dropped weapon within range. Same radius again, so every in-world
+  // interaction in the game shares one reach. Not class-filtered here — the server
+  // gates the pickup and flashes an error if this class can't use it.
+  private updateDroppedProximity() {
+    const dropped = this.roomState.droppedWeapons;
+    if (!dropped) { this.nearbyDropped = null; return; }
+    let best: LocalPlayer["nearbyDropped"] = null;
+    let bestDist = SHOP_BUY_RADIUS * SHOP_BUY_RADIUS;
+    dropped.forEach((drop: DroppedWeaponStateView, dropId: string) => {
+      const dx = this.sprite.x - drop.x;
+      const dy = this.sprite.y - drop.y;
+      const d = dx * dx + dy * dy;
+      if (d <= bestDist) {
+        bestDist = d;
+        best = { dropId };
+      }
+    });
+    this.nearbyDropped = best;
   }
 
   // Open the reward picker: pause the room (same handshake the inventory menu

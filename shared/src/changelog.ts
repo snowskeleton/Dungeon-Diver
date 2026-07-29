@@ -44,7 +44,8 @@ export const CHANGELOG: ChangelogVersion[] = [
     version: "Unreleased",
     released: false,
     changes: [
-      { kind: "fix", text: "You can no longer squeeze through the diagonal gap where two obstacles touch at a corner — those pinch points are now solid, so you can't clip through (or get wedged behind) cover" },
+      { kind: "feature", text: "You can now carry at most two weapons. Picking up a new one puts it in your hand; if both slots are full, the weapon you were holding drops to the floor — walk over any dropped weapon (yours or a teammate's) and interact to pick it back up" },
+      { kind: "balance", text: "Room buffs are much smaller now. You still get one nearly every room, but each is a gentler nudge — power comes from stacking many, not from a few big jumps" },
       { kind: "fix", text: "The stairs down can no longer spawn inside the boss room, and you must clear a room's fight before its stairs or trap will take you down" },
       { kind: "fix", text: "Enemies knocked hard into a wall can no longer end up stuck outside the room where you can't reach them — they're pulled back into play" },
       { kind: "fix", text: "Your health bar no longer reads past full after +max-HP upgrades; the bar's full mark now follows your real max health" },

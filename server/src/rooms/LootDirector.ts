@@ -1,7 +1,7 @@
 import {
   TILE, TILE_SIZE, tileCenter,
   DungeonResult, RoomData, mazeDeepestTile,
-  WEAPON_REGISTRY, WeaponId, WeaponInstance, Weapon,
+  WEAPON_REGISTRY, WeaponId, WeaponInstance, WeaponMod, Weapon,
   AMMO_REGISTRY,
   SHOP_TIERS,
   CharacterClass, partyRollableWeaponIds, firstRollWeaponIds,
@@ -12,6 +12,7 @@ import { ShopState, ShopItemState } from "../schema/ShopState";
 import { OfferState, OfferChoiceState } from "../schema/OfferState";
 import { RewardState } from "../schema/RewardState";
 import { ChestState } from "../schema/ChestState";
+import { DroppedWeaponState } from "../schema/DroppedWeaponState";
 import { Player, resolveTemplate, slotStateFor } from "../entities/Player";
 import { upgradeById, upgradePool, rollWeaponMod } from "../upgrades";
 
@@ -57,6 +58,9 @@ export const WRONG_CLASS_MSG = "Your class can't use that weapon.";
  *  silent no-op or success. */
 export class LootDirector {
   private dungeon!: DungeonResult;
+  // Monotonic id source for dropped-weapon keys. Scoped to the run — uniqueness is
+  // all it's for, so it never resets (a floor change clears the map, not this).
+  private dropCounter = 0;
 
   constructor(
     private readonly state: GameState,
@@ -176,6 +180,35 @@ export class LootDirector {
     this.state.supplies.clear();
   }
 
+  /** Wipe the previous floor's dropped weapons. Loot doesn't ride the stairs down
+   *  — a weapon left on the floor is forfeit, same as an unclaimed pedestal. */
+  resetDroppedWeapons() {
+    this.state.droppedWeapons.clear();
+  }
+
+  /** The one path every weapon grant routes through, so the cap-and-drop rule lives
+   *  in a single place. Adds the weapon to the player (making it the one in hand);
+   *  if they were already at the cap, the weapon that was in hand is set down on the
+   *  floor where they stand, for anyone to pick back up. */
+  private acquireWeapon(player: Player, template: Weapon, mods: WeaponMod[] = []) {
+    const { displaced } = player.addWeapon(template, mods);
+    if (displaced) this.dropWeapon(player.state.x, player.state.y, displaced);
+  }
+
+  /** Put a weapon instance on the floor as a pickup. Previews resolved stats like a
+   *  reward pedestal; the instance itself rides along (server-only) so a pickup
+   *  re-mints it identically. */
+  private dropWeapon(x: number, y: number, inst: WeaponInstance) {
+    const drop = new DroppedWeaponState();
+    drop.x = x;
+    drop.y = y;
+    drop.weaponId = inst.id;
+    drop.name = inst.name;
+    drop.weapon = slotStateFor(inst);
+    drop.instance = inst;
+    this.state.droppedWeapons.set(`drop:${this.dropCounter++}`, drop);
+  }
+
   /** Lay the floor-1 supply pedestals: one weapon per player, spread across the
    *  supply (start) room, each rolled from that player's UNIQUE weapon categories
    *  (its first-weapon pool). Called from GameRoom.startRun once the party is
@@ -266,7 +299,7 @@ export class LootDirector {
     // copy is strictly worthless gold spent. If shop pedestals ever roll modifiers
     // this guard stops matching on its own and buying two becomes a real choice.
     if (player.ownsUnmodified(template.id)) return null;
-    player.addWeapon(template);
+    this.acquireWeapon(player, template);
     this.state.gold -= item.cost;
     item.purchased = true;
     return null;
@@ -311,7 +344,7 @@ export class LootDirector {
         // The rolled modifiers ride along on the choice (server-only field), so
         // the weapon granted is precisely the one previewed on the card — never
         // rebuilt from the synced labels.
-        player.addWeapon(template, choice.mods);
+        this.acquireWeapon(player, template, choice.mods);
         break;
       }
     }
@@ -361,7 +394,7 @@ export class LootDirector {
         // The mods rolled at drop time ride along on the reward (server-only), so
         // the weapon granted is precisely the one previewed on the pedestal — a
         // second copy is a genuinely different weapon, so no ownsUnmodified guard.
-        player.addWeapon(template, reward.mods);
+        this.acquireWeapon(player, template, reward.mods);
         return null;
       }
       case "upgrade": {
@@ -393,8 +426,26 @@ export class LootDirector {
     if (!player.canEquip(template.id)) return WRONG_CLASS_MSG;
     // The mods rolled at floor generation are handed over as-is, so the weapon
     // granted is the one the chest has been holding all along.
-    player.addWeapon(template, chest.mods);
+    this.acquireWeapon(player, template, chest.mods);
     chest.opened = true;
+    return null;
+  }
+
+  // Pick a weapon back up off the floor. Class-gated like every weapon pickup (a
+  // teammate may have dropped one this class can't use); proximity re-validated
+  // here, the client prompt is only a hint. Granting may itself displace THIS
+  // player's held weapon if they're at the cap — that one drops where they stand,
+  // so a swap is a genuine trade, not a way to hoard. The picked-up drop is removed
+  // whether or not that happened. `opened`-style dedupe isn't needed: removing the
+  // map entry is the whole concurrency story — a racing second message finds it gone.
+  pickupWeapon(player: Player, msg: { dropId: string }): string | null {
+    const drop = this.state.droppedWeapons.get(msg?.dropId);
+    if (!drop) return null;
+    if (!isNear(player, drop.x, drop.y)) return null;
+    if (!player.canEquip(drop.weaponId)) return WRONG_CLASS_MSG;
+    // Re-mint the exact instance that was set down (template + rolled mods).
+    this.acquireWeapon(player, drop.instance.template, drop.instance.weaponMods);
+    this.state.droppedWeapons.delete(msg.dropId);
     return null;
   }
 

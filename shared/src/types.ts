@@ -116,6 +116,11 @@ export const KNOCKBACK_STUN_MS_PER_UNIT = 60; // ms of stun per unit of overage
 export const KNOCKBACK_STUN_MAX_MS = 3000;    // cap so big hits don't stun-lock forever
 export const SERVER_TICK_MS = 50;   // 20 Hz
 export const MAX_CLIENTS = 4;
+// How many weapons a player may carry at once (27 July playtest — a run used to
+// end with 20). At the cap, taking a new weapon drops the one currently in hand
+// onto the floor, where anyone can pick it back up. Two lets a player keep a
+// melee + ranged pair without turning the inventory into a stockpile.
+export const MAX_WEAPONS = 2;
 // Melee combo grace window (ms). A swing continues the combo (first → reverse →
 // finisher) only if the next swing lands within the weapon's cooldown PLUS this
 // grace; wait longer and the chain resets to the first swing. The default here is

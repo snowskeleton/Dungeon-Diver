@@ -7,56 +7,61 @@ import { Upgrade } from "./Upgrade";
 // early and compound, so the two feel different at the moment of the pick rather
 // than being reskins of one another. Nothing here is floor-gated yet except the
 // percent tiers, which are dead weight on floor 1.
+//
+// Magnitudes are deliberately SMALL (27 July playtest): a buff drops every room,
+// so a run stacks a dozen-plus of these. The knob we turned is frequency, not
+// size — three of a buff should read as "meaningfully stronger," not "doubled."
+// Keep new upgrades in this same modest range.
 
 export class IronSkin extends Upgrade {
   readonly id = "iron-skin";
   readonly name = "Iron Skin";
-  readonly description = "Ignore 2 damage from every hit.";
-  override get armorFlat() { return 2; }
+  readonly description = "Ignore 1 damage from every hit.";
+  override get armorFlat() { return 1; }
 }
 
 export class Toughness extends Upgrade {
   readonly id = "toughness";
   readonly name = "Toughness";
-  readonly description = "+20 max health, and heal for it now.";
-  override get maxHpFlat() { return 20; }
+  readonly description = "+8 max health, and heal for it now.";
+  override get maxHpFlat() { return 8; }
 }
 
 export class Vitality extends Upgrade {
   readonly id = "vitality";
   readonly name = "Vitality";
-  readonly description = "+25% max health.";
-  override get maxHpPct() { return 0.25; }
+  readonly description = "+8% max health.";
+  override get maxHpPct() { return 0.08; }
   override get minFloor() { return 2; }
 }
 
 export class SwiftBoots extends Upgrade {
   readonly id = "swift-boots";
   readonly name = "Swift Boots";
-  readonly description = "+15% movement speed.";
-  override get speedPct() { return 0.15; }
+  readonly description = "+6% movement speed.";
+  override get speedPct() { return 0.06; }
 }
 
 export class KeenEdge extends Upgrade {
   readonly id = "keen-edge";
   readonly name = "Keen Edge";
-  readonly description = "+3 damage on every attack.";
-  override get damageFlat() { return 3; }
+  readonly description = "+1 damage on every attack.";
+  override get damageFlat() { return 1; }
 }
 
 export class Ferocity extends Upgrade {
   readonly id = "ferocity";
   readonly name = "Ferocity";
-  readonly description = "+20% damage.";
-  override get damagePct() { return 0.2; }
+  readonly description = "+6% damage.";
+  override get damagePct() { return 0.06; }
   override get minFloor() { return 2; }
 }
 
 export class Bloodthirst extends Upgrade {
   readonly id = "bloodthirst";
   readonly name = "Bloodthirst";
-  readonly description = "Heal for 10% of the damage you deal.";
-  override get lifestealPct() { return 0.1; }
+  readonly description = "Heal for 4% of the damage you deal.";
+  override get lifestealPct() { return 0.04; }
   override get minFloor() { return 2; }
 }
 
@@ -65,8 +70,8 @@ export class Bloodthirst extends Upgrade {
 export class Berserk extends Upgrade {
   readonly id = "berserk";
   readonly name = "Berserk";
-  readonly description = "+40% damage, but -15% max health.";
-  override get damagePct() { return 0.4; }
-  override get maxHpPct() { return -0.15; }
+  readonly description = "+12% damage, but -6% max health.";
+  override get damagePct() { return 0.12; }
+  override get maxHpPct() { return -0.06; }
   override get minFloor() { return 3; }
 }

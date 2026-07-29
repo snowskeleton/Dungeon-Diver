@@ -6,6 +6,7 @@ import { ShopState } from "./ShopState";
 import { OfferState } from "./OfferState";
 import { RewardState } from "./RewardState";
 import { ChestState } from "./ChestState";
+import { DroppedWeaponState } from "./DroppedWeaponState";
 import { CoinState } from "./CoinState";
 import { RoomChallengeState } from "./RoomChallengeState";
 import { GameStateView, RunPhase } from "shared";
@@ -31,6 +32,10 @@ export class GameState extends Schema implements GameStateView {
   // Treasure chests keyed by room id — one at the deep end of every maze room,
   // placed at floor generation and openable anytime, rebuilt per floor.
   @type({ map: ChestState }) chests = new MapSchema<ChestState>();
+  // Weapons set down on the floor, keyed by a per-drop id. Created when a player at
+  // the weapon cap takes a new weapon (their held one drops here); removed when
+  // someone picks it back up. Rebuilt per floor.
+  @type({ map: DroppedWeaponState }) droppedWeapons = new MapSchema<DroppedWeaponState>();
   // Active room objectives keyed by room id — one per room whose type carries a
   // RoomChallenge, rebuilt per floor.
   @type({ map: RoomChallengeState }) challenges = new MapSchema<RoomChallengeState>();

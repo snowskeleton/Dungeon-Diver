@@ -863,12 +863,14 @@ describe("loot messages reach the directors", () => {
     const h = await startedRoom(1, { debug: debug({ enemiesPerRoom: 0 }) });
     const p = guts(h).players.get("s0")!;
     // Two weapons so the switch has somewhere to go (players start empty-handed).
+    // The second pickup (longbow) is auto-equipped, so a switch moves back to the
+    // broadsword.
     p.addWeapon(WEAPON_REGISTRY["broadsword"]);
     p.addWeapon(WEAPON_REGISTRY["longbow"]);
 
     h.send(h.clients[0], "switchWeapon", { delta: 1 });
 
-    expect(p.weapon!.id).toBe("longbow");
+    expect(p.weapon!.id).toBe("broadsword");
     h.dispose();
   });
 

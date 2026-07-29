@@ -9,6 +9,7 @@ import {
   TILE_SIZE,
   mazeDeepestTile,
   CharacterClass,
+  MAX_WEAPONS,
   DEFAULT_DEBUG_CONFIG,
 } from "shared";
 import { LootDirector, WRONG_CLASS_MSG } from "../../server/src/rooms/LootDirector";
@@ -649,5 +650,70 @@ describe("class restriction blocks incompatible pickups everywhere", () => {
     expect(f.loot.chestOpen(knight, { roomId: f.room.id })).toBe(WRONG_CLASS_MSG);
     expect(chest.opened).toBe(false); // left closed and unspoiled for a Mage
     expect(knight.weapons).toHaveLength(0);
+  });
+});
+
+describe("dropped weapons (the two-weapon cap)", () => {
+  function shopFloor() {
+    const f = floor("shop");
+    f.loot.spawnShops();
+    return { ...f, shop: f.state.shops.get(f.room.id)! };
+  }
+
+  // Buy every pedestal in the shop with one player, standing on each in turn. The
+  // shop stocks distinct weapons, so nothing is refused as a duplicate.
+  function buyWholeShop(loot: LootDirector, shop: ReturnType<typeof shopFloor>["shop"], room: any, p: Player) {
+    shop.items.forEach((item: any, i: number) => {
+      p.teleport(item.x, item.y);
+      loot.buy(p, { roomId: room.id, itemIndex: i });
+    });
+  }
+
+  it("drops the weapon in hand — not a stowed one — when a capped player takes a new one", () => {
+    const { state, loot, physics, room, shop } = shopFloor();
+    expect(shop.items.length).toBeGreaterThan(MAX_WEAPONS); // enough to overflow
+
+    const p = playerAt(physics, shop.items[0].x, shop.items[0].y);
+    buyWholeShop(loot, shop, room, p);
+
+    // Inventory capped; the overflow bought weapons are on the floor, one per extra
+    // purchase beyond the cap.
+    expect(p.weapons).toHaveLength(MAX_WEAPONS);
+    expect(state.droppedWeapons.size).toBe(shop.items.length - MAX_WEAPONS);
+    // The last thing bought is the one in hand — a drop is never the newest weapon.
+    const heldIds = p.weapons.map(w => w.id);
+    expect(heldIds[heldIds.length - 1]).toBe(shop.items[shop.items.length - 1].weaponId);
+  });
+
+  it("lets a player pick a dropped weapon back up, re-minting it identically", () => {
+    const { state, loot, physics, room, shop } = shopFloor();
+    const p = playerAt(physics, shop.items[0].x, shop.items[0].y);
+    buyWholeShop(loot, shop, room, p);
+
+    const [dropId, drop] = [...state.droppedWeapons.entries()][0];
+    const wantId = drop.weaponId;
+
+    // A teammate standing on it picks it up — the drop is not owner-locked.
+    const other = playerAt(physics, drop.x, drop.y);
+    expect(loot.pickupWeapon(other, { dropId })).toBeNull();
+    expect(other.weapons.map(w => w.id)).toContain(wantId);
+    // The ground pickup is gone once taken; a racing second pickup is a no-op.
+    expect(state.droppedWeapons.has(dropId)).toBe(false);
+    expect(loot.pickupWeapon(other, { dropId })).toBeNull();
+  });
+
+  it("refuses a dropped weapon this class can't wield, leaving it on the floor", () => {
+    const { state, loot, physics, room, shop } = shopFloor();
+    const p = playerAt(physics, shop.items[0].x, shop.items[0].y);
+    buyWholeShop(loot, shop, room, p);
+    const [dropId, drop] = [...state.droppedWeapons.entries()][0];
+
+    // A mage can't use a knight-rolled weapon; the drop stays put for someone who can.
+    const mage = new Player(physics, drop.x, drop.y, "mage", "gal");
+    if (!mage.canEquip(drop.weaponId)) {
+      expect(loot.pickupWeapon(mage, { dropId })).toBe(WRONG_CLASS_MSG);
+      expect(state.droppedWeapons.has(dropId)).toBe(true);
+      expect(mage.weapons).toHaveLength(0);
+    }
   });
 });

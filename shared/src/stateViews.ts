@@ -201,6 +201,22 @@ export interface ChestStateView extends SyncedSchema {
   readonly gold: boolean;
 }
 
+/** A weapon lying on the floor, keyed in GameState.droppedWeapons by a drop id.
+ *  Dropped when a player at the weapon cap takes a new weapon; anyone whose class
+ *  can wield it may pick it back up. Like RewardState (kind "weapon") it carries
+ *  the resolved stats so the ground item previews exactly what you'd get; the
+ *  WeaponMods that produced them stay server-side (see DroppedWeaponState.instance),
+ *  so a pickup re-mints the identical weapon. */
+export interface DroppedWeaponStateView extends SyncedSchema {
+  readonly x: number;
+  readonly y: number;
+  /** Template id, so the client can pick the icon. */
+  readonly weaponId: string;
+  readonly name: string;
+  /** Resolved stats for the ground preview (mods folded in). */
+  readonly weapon: WeaponSlotView;
+}
+
 export interface RoomChallengeStateView extends SyncedSchema {
   readonly roomId: string;
   readonly text: string;
@@ -229,6 +245,9 @@ export interface GameStateView extends SyncedSchema {
    *  room-clear reward (RewardState, kind "weapon") — one per player. */
   readonly supplies: SyncedMap<RewardStateView>;
   readonly chests: SyncedMap<ChestStateView>;
+  /** Weapons dropped on the floor (a capped player swapping in a new one), keyed
+   *  by drop id. Anyone whose class can wield one may pick it back up. */
+  readonly droppedWeapons: SyncedMap<DroppedWeaponStateView>;
   readonly challenges: SyncedMap<RoomChallengeStateView>;
   /** Loose coins on the floor, keyed by coin id. */
   readonly coins: SyncedMap<CoinStateView>;

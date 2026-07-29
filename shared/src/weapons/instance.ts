@@ -167,6 +167,13 @@ export class WeaponInstance implements WeaponView {
     return this.mods.map(m => m.label);
   }
 
+  /** The modifiers this instance carries, so a dropped weapon can be re-minted
+   *  identically when someone picks it back up. Behaviour (getters), never synced —
+   *  same reason RewardState.mods stays server-side. */
+  get weaponMods(): WeaponMod[] {
+    return this.mods;
+  }
+
   /** True when this weapon differs from its template at all. */
   get isModified(): boolean {
     return this.mods.length > 0;

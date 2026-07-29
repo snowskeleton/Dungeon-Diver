@@ -1,6 +1,6 @@
 import {
   InputMessage, CharacterClass, CharacterType, Character, getCharacter,
-  Weapon, WeaponInstance, WeaponMod, WEAPON_REGISTRY, AMMO_REGISTRY,
+  Weapon, WeaponInstance, WeaponMod, WEAPON_REGISTRY, AMMO_REGISTRY, MAX_WEAPONS,
   PLAYER_BODY_PROFILE, PLAYER_ATTACK_AFFECTS, Facing, Attack, foldStat,
   ComboSwing, DEFAULT_COMBO_WINDOW_MS, DEFAULT_CHARGE_HOLD_MS, DEFAULT_ATTACK_BUFFER_MS,
   canClassUseWeapon,
@@ -348,17 +348,35 @@ export class Player extends Entity implements Caster {
     this.state.health = Math.max(1, this.state.health - amount);
   }
 
-  /** Mint a weapon instance from a template and add it. Duplicates are allowed —
-   *  two broadswords with different rolls are two different weapons, which is the
-   *  whole point of instancing. Returns the new instance. */
-  addWeapon(template: Weapon, mods: WeaponMod[] = []): WeaponInstance {
-    const inst = new WeaponInstance(template, `w${this.uidCounter++}`, mods);
-    this.weapons.push(inst);
-    this.state.weapons.push(slotStateFor(inst));
-    if (this.weapons.length === 1) {
-      this.state.weaponId = inst.id;
-    }
-    return inst;
+  /** Mint a weapon instance from a template and add it, making it the weapon in
+   *  hand. Duplicates are allowed — two broadswords with different rolls are two
+   *  different weapons, which is the whole point of instancing.
+   *
+   *  Players carry at most MAX_WEAPONS (27 July playtest). At the cap, the weapon
+   *  currently in hand is DISPLACED — removed and returned as `displaced` — so the
+   *  caller can set it down on the floor; the new weapon takes the freed slot and
+   *  becomes active. `displaced` is null when there was a free slot. */
+  addWeapon(template: Weapon, mods: WeaponMod[] = []): { added: WeaponInstance; displaced: WeaponInstance | null } {
+    const added = new WeaponInstance(template, `w${this.uidCounter++}`, mods);
+    const displaced = this.weapons.length >= MAX_WEAPONS ? this.removeActiveForSwap() : null;
+    this.weapons.push(added);
+    this.state.weapons.push(slotStateFor(added));
+    // The picked-up weapon becomes the one in hand — "you pick up the new one".
+    this.activeIndex = this.weapons.length - 1;
+    this.state.activeWeaponIndex = this.activeIndex;
+    this.state.weaponId = added.id;
+    return { added, displaced };
+  }
+
+  /** Remove the weapon currently in hand to make room for a new one, returning it
+   *  so the caller can drop it on the floor. Prunes its cached Spell (its per-swing
+   *  dedupe state dies with it). activeIndex is left dangling — addWeapon resets it
+   *  to the newly pushed slot immediately, so it is never read in between. */
+  private removeActiveForSwap(): WeaponInstance {
+    const [removed] = this.weapons.splice(this.activeIndex, 1);
+    this.state.weapons.splice(this.activeIndex, 1);
+    this.weaponSpells.delete(removed.uid);
+    return removed;
   }
 
   /** True when an unmodified copy of this template is already held. Distinct from

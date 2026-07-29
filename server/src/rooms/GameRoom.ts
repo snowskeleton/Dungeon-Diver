@@ -159,6 +159,11 @@ export class GameRoom extends Room<GameState> {
       if (player) relayError(client, this.loot.chestOpen(player, msg));
     });
 
+    this.onMessage("pickupWeapon", (client, msg: { dropId: string }) => {
+      const player = this.players.get(client.sessionId);
+      if (player) relayError(client, this.loot.pickupWeapon(player, msg));
+    });
+
     // Inventory/stats menu pause. Handlers still run while paused, so the menu
     // can be closed and weapons switched; only tick() simulation is frozen.
     this.onMessage("setPause", (client, msg: { paused: boolean }) => {
@@ -366,6 +371,7 @@ export class GameRoom extends Room<GameState> {
     this.loot.spawnChests();
     this.loot.resetRoomRewards();
     this.loot.resetSupplies();
+    this.loot.resetDroppedWeapons();
     this.initChallenges();
   }
 

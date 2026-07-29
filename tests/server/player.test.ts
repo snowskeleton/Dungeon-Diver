@@ -70,11 +70,12 @@ describe("the weapon list", () => {
   it("mints a distinct instance per pickup, so duplicates are real duplicates", () => {
     const p = newPlayer();
     const a = p.weapon!;
-    const b = p.addWeapon(WEAPON_REGISTRY["broadsword"]);
-    const c = p.addWeapon(WEAPON_REGISTRY["broadsword"]);
+    const { added: b } = p.addWeapon(WEAPON_REGISTRY["broadsword"]);
 
-    expect(p.weapons).toHaveLength(3);
-    expect(new Set([a.uid, b.uid, c.uid]).size).toBe(3);
+    // Two copies of one weapon are held side by side (within the cap), each its own
+    // instance — an id-based dedupe would have swallowed the second.
+    expect(p.weapons).toHaveLength(2);
+    expect(new Set([a.uid, b.uid]).size).toBe(2);
   });
 
   it("keeps two copies of one weapon independently modifiable", () => {
@@ -83,8 +84,8 @@ describe("the weapon list", () => {
       override get damageFlat() { return 5; }
     }
     const p = newPlayer();
-    const plain = p.addWeapon(WEAPON_REGISTRY["broadsword"]);
-    const rolled = p.addWeapon(WEAPON_REGISTRY["broadsword"], [new Plus()]);
+    const { added: plain } = p.addWeapon(WEAPON_REGISTRY["broadsword"]);
+    const { added: rolled } = p.addWeapon(WEAPON_REGISTRY["broadsword"], [new Plus()]);
 
     expect(rolled.damage).toBe(plain.damage + 5);
   });
@@ -98,17 +99,15 @@ describe("the weapon list", () => {
 
   it("cycles the active weapon and wraps in both directions", () => {
     const p = newPlayer("knight", "broadsword");
-    p.addWeapon(WEAPON_REGISTRY["longbow"]);
-    p.addWeapon(WEAPON_REGISTRY["hatchet"]);
+    p.addWeapon(WEAPON_REGISTRY["longbow"]); // picked up → now the one in hand
 
-    p.switchWeapon(1);
     expect(p.weapon!.id).toBe("longbow");
     p.switchWeapon(1);
-    expect(p.weapon!.id).toBe("hatchet");
-    p.switchWeapon(1);
     expect(p.weapon!.id).toBe("broadsword"); // wrapped forward
+    p.switchWeapon(1);
+    expect(p.weapon!.id).toBe("longbow");    // wrapped again
     p.switchWeapon(-1);
-    expect(p.weapon!.id).toBe("hatchet");    // and backward
+    expect(p.weapon!.id).toBe("broadsword"); // and backward
   });
 
   it("does nothing when there is only one weapon to switch to", () => {
@@ -117,12 +116,29 @@ describe("the weapon list", () => {
     expect(p.state.activeWeaponIndex).toBe(0);
   });
 
+  it("holds a picked-up weapon in hand, and caps the inventory by dropping the held one", () => {
+    const p = newPlayer("knight", "broadsword"); // broadsword in hand
+    p.addWeapon(WEAPON_REGISTRY["longbow"]);      // longbow now in hand, 2 held
+    expect(p.weapons.map(w => w.id)).toEqual(["broadsword", "longbow"]);
+    expect(p.weapon!.id).toBe("longbow");
+
+    // At the cap, the third pickup displaces the weapon in hand (longbow), not the
+    // stowed one — and returns it so the caller can drop it on the floor.
+    const { added, displaced } = p.addWeapon(WEAPON_REGISTRY["hatchet"]);
+    expect(displaced!.id).toBe("longbow");
+    expect(added.id).toBe("hatchet");
+    expect(p.weapons.map(w => w.id)).toEqual(["broadsword", "hatchet"]);
+    expect(p.weapon!.id).toBe("hatchet");
+  });
+
   it("syncs the active weapon id on every switch", () => {
     const p = newPlayer("knight", "broadsword");
-    p.addWeapon(WEAPON_REGISTRY["longbow"]);
-    p.switchWeapon(1);
+    p.addWeapon(WEAPON_REGISTRY["longbow"]); // auto-equipped on pickup
     expect(p.state.weaponId).toBe("longbow");
     expect(p.state.activeWeaponIndex).toBe(1);
+    p.switchWeapon(1);
+    expect(p.state.weaponId).toBe("broadsword");
+    expect(p.state.activeWeaponIndex).toBe(0);
   });
 
   it("tells an unmodified duplicate apart from a rolled one", () => {
@@ -327,7 +343,7 @@ describe("the wire shape of a weapon slot", () => {
       override get damageFlat() { return 7; }
     }
     const p = newPlayer();
-    const inst = p.addWeapon(WEAPON_REGISTRY["broadsword"], [new Plus()]);
+    const { added: inst } = p.addWeapon(WEAPON_REGISTRY["broadsword"], [new Plus()]);
     const slot = slotStateFor(inst);
 
     expect(slot.damage).toBe(WEAPON_REGISTRY["broadsword"].damage + 7);

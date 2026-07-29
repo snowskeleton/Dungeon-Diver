@@ -6,7 +6,7 @@ import {
   WEAPON_REGISTRY, AMMO_REGISTRY, DungeonOptions, DungeonResult, toDungeonOptions,
   RoomType, DebugConfig, DEFAULT_DEBUG_CONFIG,
   GameStateView, PlayerStateView, EnemyStateView, ProjectileStateView,
-  ShopStateView, ShopItemStateView, OfferStateView, RewardStateView, ChestStateView, CoinStateView,
+  ShopStateView, ShopItemStateView, OfferStateView, RewardStateView, ChestStateView, DroppedWeaponStateView, CoinStateView,
 } from "shared";
 import { DarknessOverlay } from "../map/DarknessOverlay";
 import { BarrierOverlays } from "../map/BarrierOverlays";
@@ -34,6 +34,7 @@ import { ShopItemEntity } from "../entities/ShopItemEntity";
 import { OfferPedestalEntity } from "../entities/OfferPedestalEntity";
 import { RewardPedestalEntity } from "../entities/RewardPedestalEntity";
 import { ChestEntity, preloadChest, defineChestAnimations } from "../entities/ChestEntity";
+import { DroppedWeaponEntity } from "../entities/DroppedWeaponEntity";
 import { Party } from "../net/Party";
 import { PauseMenu } from "../ui/PauseMenu";
 import { GameOptions, OPTION_FIELDS, loadOptions, saveOptions } from "../options/gameOptions";
@@ -75,6 +76,7 @@ export class GameScene extends Phaser.Scene {
   private rewardPedestals = new Map<string, RewardPedestalEntity>();
   private supplyPedestals = new Map<string, RewardPedestalEntity>();
   private chests = new Map<string, ChestEntity>();
+  private droppedWeapons = new Map<string, DroppedWeaponEntity>();
   private coins = new Map<string, CoinEntity>();
   private hitboxDebug!: HitboxDebug;
   /** The current floor's dungeon. The scene HOLDS the floor rather than treating
@@ -148,6 +150,7 @@ export class GameScene extends Phaser.Scene {
     this.rewardPedestals.clear();
     this.supplyPedestals.clear();
     this.chests.clear();
+    this.droppedWeapons.clear();
     this.coins.clear();
     this.localSessionIds.clear();
 
@@ -738,6 +741,20 @@ export class GameScene extends Phaser.Scene {
       this.chests.get(roomId)?.destroy();
       this.chests.delete(roomId);
     });
+
+    // Weapons dropped on the floor (a capped player swapping in a new one), keyed by
+    // drop id. This map both grows (a drop appears mid-fight) and shrinks (someone
+    // picks it up), so both callbacks matter — none of its fields change in place,
+    // so there's no onChange.
+    state.droppedWeapons.onAdd((drop: DroppedWeaponStateView, dropId: string) => {
+      const view = new DroppedWeaponEntity(this, drop.x, drop.y, drop.weaponId, drop.name);
+      this.droppedWeapons.set(dropId, view);
+    });
+
+    state.droppedWeapons.onRemove((_: DroppedWeaponStateView, dropId: string) => {
+      this.droppedWeapons.get(dropId)?.destroy();
+      this.droppedWeapons.delete(dropId);
+    });
   }
 
   /** Which rooms the minimap should paint as cleared. A room is cleared once
@@ -831,18 +848,21 @@ export class GameScene extends Phaser.Scene {
     const nearReward = new Set<string>();
     const nearSupply = new Set<string>();
     const nearChest = new Set<string>();
+    const nearDropped = new Set<string>();
     for (const p of this.localManager.getAll()) {
       if (p.nearbyShopItem) nearShop.add(`${p.nearbyShopItem.roomId}:${p.nearbyShopItem.itemIndex}`);
       if (p.nearbyOffer) nearOffer.add(p.nearbyOffer.roomId);
       if (p.nearbyReward) nearReward.add(p.nearbyReward.roomId);
       if (p.nearbySupply) nearSupply.add(p.nearbySupply.supplyId);
       if (p.nearbyChest) nearChest.add(p.nearbyChest.roomId);
+      if (p.nearbyDropped) nearDropped.add(p.nearbyDropped.dropId);
     }
     this.shopItems.forEach((view, key) => view.setPromptShown(nearShop.has(key)));
     this.offerPedestals.forEach((view, roomId) => view.setPromptShown(nearOffer.has(roomId)));
     this.rewardPedestals.forEach((view, roomId) => view.setPromptShown(nearReward.has(roomId)));
     this.supplyPedestals.forEach((view, id) => view.setPromptShown(nearSupply.has(id)));
     this.chests.forEach((view, roomId) => view.setPromptShown(nearChest.has(roomId)));
+    this.droppedWeapons.forEach((view, dropId) => view.setPromptShown(nearDropped.has(dropId)));
   }
 
 }
