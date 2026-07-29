@@ -116,12 +116,16 @@ export class PlayerMovementFX {
     });
   }
 
-  /** A one-shot dust cloud at a player's feet: "charge" is the tall kick-up trailing
-   *  a Knight's Charge, "land" the low puff where a Ranger's Vault touches down. */
+  /** A one-shot dust cloud at a player's feet: "charge" is a small kick-up stamped
+   *  along a Knight's Charge (many form the trail), "land" the low puff where a
+   *  Ranger's Vault touches down. Depth 1.5 sits it UNDER the characters (depth 2),
+   *  so it reads as ground dust the player runs out ahead of. */
   dust(x: number, y: number, kind: "charge" | "land"): void {
     const cfg = kind === "charge" ? CHARGE_DUST : LAND_DUST;
-    const sprite = this.scene.add.sprite(x, y + 10, cfg.key).setDepth(2);
-    sprite.setScale(kind === "charge" ? 0.9 : 1.6);
+    const sprite = this.scene.add.sprite(x, y + 10, cfg.key).setDepth(1.5);
+    // Charge puffs are kept small so a 14px-spaced trail reads as a line of marks
+    // rather than merging into one blob; the Vault landing puff is a single splash.
+    sprite.setScale(kind === "charge" ? 0.5 : 1.6);
     sprite.setFlipX(Math.random() < 0.5);
     sprite.play(`fx-${cfg.key}`);
     sprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => sprite.destroy());

@@ -8,6 +8,11 @@ import { PlayerMovementFX } from "./PlayerMovementFX";
 const HP_BAR_W = 24;
 const HP_BAR_H = 4;
 
+// Spacing (px of travel) between dust puffs stamped along a Knight's Charge — small
+// enough to read as a continuous trail, large enough that they don't overlap into
+// one blob. Roughly half a tile.
+const CHARGE_DUST_STEP = 14;
+
 export type CharacterAction = "idle" | "walk" | "attack";
 
 export interface CharacterSpriteConfig {
@@ -265,8 +270,11 @@ export abstract class Entity {
   // Blink absence: the last synced blinkHidden, so a rising edge poofs the departure
   // and a falling edge poofs the arrival (and hides/shows the sprite in between).
   private blinkHidden = false;
-  // Charge dust trail: ms since the last puff, so the trail is paced not per-frame.
-  private chargeDustMs = 0;
+  // Charge dust trail: puffs are stamped by DISTANCE, not time, so a fast Charge
+  // still leaves an evenly-spaced line of dust behind it (each stamp is a settling
+  // puff left in place). This tracks where the last stamp landed; -1 = not charging.
+  private lastChargeDustX = -1;
+  private lastChargeDustY = -1;
 
   private movementFx(): PlayerMovementFX {
     if (!this.moveFx) this.moveFx = new PlayerMovementFX(this.scene);
@@ -326,16 +334,21 @@ export abstract class Entity {
     }
     this.prevAirHeight = h;
 
-    // Charge dust trail: a kick-up cloud dropped at the feet every ~60ms while the
-    // Knight is rushing, so the whole charge leaves a wake.
+    // Charge dust trail: drop a settling puff at the feet every CHARGE_DUST_STEP px
+    // of travel, so the rush leaves an evenly-spaced line of dust behind it (each
+    // puff stamped in place, not following the player). Distance-paced so a fast
+    // Charge doesn't clump its whole wake at the start.
     if (this.movementAbilityId === "charge") {
-      this.chargeDustMs += this.scene.game.loop.delta;
-      if (this.chargeDustMs >= 60) {
-        this.chargeDustMs = 0;
+      const first = this.lastChargeDustX < 0;
+      const moved = Math.hypot(this.sprite.x - this.lastChargeDustX, this.sprite.y - this.lastChargeDustY);
+      if (first || moved >= CHARGE_DUST_STEP) {
         this.movementFx().dust(this.sprite.x, this.sprite.y, "charge");
+        this.lastChargeDustX = this.sprite.x;
+        this.lastChargeDustY = this.sprite.y;
       }
     } else {
-      this.chargeDustMs = 60; // so the next charge puffs immediately on its first frame
+      this.lastChargeDustX = -1; // reset so the next Charge stamps from its first frame
+      this.lastChargeDustY = -1;
     }
 
     // Blink absence: hide the whole player (body + weapon + HP bar) while gone.
