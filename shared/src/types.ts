@@ -192,7 +192,7 @@ export const BLINK_COOLDOWN_MS = 3500;
 // for this brief gap, then reappears at the destination. Reads as a real blink
 // rather than a snap. The player is frozen at the origin during the gap; the jump
 // itself happens the instant it ends.
-export const BLINK_HIDDEN_MS = 130;
+export const BLINK_HIDDEN_MS = 240;
 // Dash (Rogue): a short, spammable dodge — invulnerable for the whole (brief)
 // active window and phasing through enemy bodies. Pure mobility, no damage.
 export const DASH_SPEED = 400;
