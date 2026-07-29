@@ -70,6 +70,9 @@ export interface EntityStateView extends SyncedSchema {
   readonly health: number;
   readonly speedMultiplier: number;
   readonly stunned: boolean;
+  /** Airborne height in px (0 = grounded). A flyer cruises here; a Vaulting
+   *  player arcs it. The client lifts the sprite + shadow by it. */
+  readonly airHeight: number;
 }
 
 export interface PlayerStateView extends EntityStateView {
@@ -109,6 +112,15 @@ export interface PlayerStateView extends EntityStateView {
   readonly downed: boolean;
   /** Revive-bar fill, 0..1, while a teammate stands over a downed player. */
   readonly reviveProgress: number;
+  /** The class movement ability being cast right now (""=idle) — the client reads
+   *  it to pick the matching one-shot FX. */
+  readonly abilityId: string;
+  /** Bumped once each time the movement ability fires, so the client plays its FX
+   *  exactly once even though the cast spans several ticks. */
+  readonly abilitySeq: number;
+  /** Movement-ability cooldown as a 0..1 fill: 0 right after a cast, climbing to 1
+   *  when ready. The client draws a bar under the player and hides it at 1. */
+  readonly abilityCooldownFrac: number;
 }
 
 export interface EnemyStateView extends EntityStateView {
@@ -123,7 +135,6 @@ export interface EnemyStateView extends EntityStateView {
   readonly telegraph: boolean;
   readonly abilityId: string;
   readonly channeling: boolean;
-  readonly airHeight: number;
 }
 
 export interface ProjectileStateView extends EntityStateView {

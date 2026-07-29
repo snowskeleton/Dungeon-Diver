@@ -262,11 +262,13 @@ export class PhysicsWorld {
     Matter.Composite.add(this.engine.world, body);
   }
 
-  /** Toggle whether this player body is held in by exit barriers. */
-  setPlayerCommitted(body: Matter.Body, committed: boolean): void {
-    body.collisionFilter.mask = committed
-      ? PLAYER_COMMITTED_SOLID_MASK
-      : PLAYER_BODY_PROFILE.solidMask;
+  /** Set this player body's solid mask from its commitment plus any movement-ability
+   *  phase-through. `committed` adds the one-way exit-barrier bit; `dropMask` removes
+   *  bits for the current tick (a Dash phases through ENEMY, a Vault through
+   *  ENEMY|COVER). Recomputed every tick, so the drop is inherently transient. */
+  setPlayerCommitted(body: Matter.Body, committed: boolean, dropMask = 0): void {
+    const base = committed ? PLAYER_COMMITTED_SOLID_MASK : PLAYER_BODY_PROFILE.solidMask;
+    body.collisionFilter.mask = base & ~dropMask;
   }
 
   /** Is this point inside a standing barrier? Projectiles are not matter bodies,

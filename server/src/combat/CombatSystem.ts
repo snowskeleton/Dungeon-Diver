@@ -1,4 +1,4 @@
-import { Attack, canAffect, shapeHitsBox, HurtBounds } from "shared";
+import { Attack, canAffect, shapeHitsBox, HurtBounds, ELEVATION_ALL, reachesElevation } from "shared";
 import { HitSource } from "./HitSource";
 
 // A thing a HitSource can land on: a body with a position, a hurt radius, a
@@ -13,6 +13,9 @@ export interface CombatTarget {
   readonly hurtBounds: HurtBounds;
   /** False while dead/dying so a corpse takes no further hits. */
   readonly damageable: boolean;
+  /** The Elevation band this target occupies (GROUND / AIR), from its airHeight.
+   *  A source only lands if its `reaches` mask includes this band. */
+  readonly elevation: number;
   /** Applies the hit; returns the damage actually dealt (see Entity.takeHit). */
   takeHit(attack: Attack): number;
 }
@@ -62,6 +65,7 @@ export class CombatSystem {
         group.targets.forEach((target, id) => {
           if (!target.damageable) return;
           if (src.ownerId === id) return;
+          if (!reachesElevation(src.reaches ?? ELEVATION_ALL, target.elevation)) return;
           const hb = target.hurtBounds;
           const box = {
             cx: target.state.x + hb.offsetX,

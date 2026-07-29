@@ -70,7 +70,7 @@ export interface Arena {
   /** One full combat step, mirroring GameRoom.tick's drain → advance → resolve. */
   step(): HitEvent[];
   /** Run a player's input and then one combat step. */
-  stepWithInput(id: string, dx: number, dy: number, attack: boolean): HitEvent[];
+  stepWithInput(id: string, dx: number, dy: number, attack: boolean, ability?: boolean): HitEvent[];
   addPlayer(id: string, p: Player): Player;
   addEnemy(id: string, e: Enemy): Enemy;
 }
@@ -81,9 +81,16 @@ export function arena(physics: PhysicsWorld = flatWorld()): Arena {
   const projectiles: Projectile[] = [];
   const combat = new CombatSystem();
 
-  const drain = (ownerId: string, affects: number, effects: ReturnType<Player["drainEffects"]>) => {
+  const drain = (
+    ownerId: string,
+    affects: number,
+    effects: ReturnType<Player["drainEffects"]>,
+    reaches?: number,
+  ) => {
     for (const e of effects) {
       if (e.kind === "hit") {
+        if (e.source.ownerId === undefined) e.source.ownerId = ownerId;
+        if (e.source.reaches === undefined && reaches !== undefined) e.source.reaches = reaches;
         sources.push(e.source);
       } else if (e.kind === "projectile") {
         projectiles.push(new Projectile(
@@ -109,7 +116,7 @@ export function arena(physics: PhysicsWorld = flatWorld()): Arena {
     enemies.forEach((e, id) => {
       const c = e.contactHitSource(id);
       if (c) sources.push(c);
-      drain(id, ENEMY_ATTACK_AFFECTS, e.drainEffects());
+      drain(id, ENEMY_ATTACK_AFFECTS, e.drainEffects(), e.elevationReach);
     });
     for (const p of projectiles) p.tick(SERVER_TICK_MS);
     for (const p of projectiles) if (!p.dead) sources.push(p.hitSource());
@@ -126,8 +133,8 @@ export function arena(physics: PhysicsWorld = flatWorld()): Arena {
     projectiles,
     combat,
     step,
-    stepWithInput(id, dx, dy, attack) {
-      players.get(id)!.applyInput({ dx, dy, attack }, SERVER_TICK_MS);
+    stepWithInput(id, dx, dy, attack, ability = false) {
+      players.get(id)!.applyInput({ dx, dy, attack, ability }, SERVER_TICK_MS);
       return step();
     },
     addPlayer(id, p) {

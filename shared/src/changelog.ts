@@ -44,6 +44,8 @@ export const CHANGELOG: ChangelogVersion[] = [
     version: "Unreleased",
     released: false,
     changes: [
+      { kind: "feature", text: "Each class now has a movement ability on its own cooldown (default Shift): the Knight Charges — a rushing slam that damages and knocks back anything in its path; the Mage Blinks a short teleport through bars and over gaps; the Rogue Dashes — a brief invulnerable dodge that slips through enemies; the Ranger Vaults — an arcing leap that sails over ground attacks and fire (but flying enemies can still catch you mid-air)" },
+      { kind: "ui", text: "A small cooldown bar fills beneath you while a movement ability recharges and vanishes once it's ready" },
       { kind: "fix", text: "You can no longer squeeze through the diagonal gap where two obstacles touch at a corner — those pinch points are now solid, so you can't clip through (or get wedged behind) cover" },
       { kind: "fix", text: "The stairs down can no longer spawn inside the boss room, and you must clear a room's fight before its stairs or trap will take you down" },
       { kind: "fix", text: "Enemies knocked hard into a wall can no longer end up stuck outside the room where you can't reach them — they're pulled back into play" },

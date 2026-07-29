@@ -710,7 +710,11 @@ export class GameRoom extends Room<GameState> {
     //     while a player still outside ignores it and can walk in late. This is
     //     re-evaluated every tick, so clearing the room releases everyone.
     this.players.forEach((player, sid) => {
-      this.physics.setPlayerCommitted(player.body, this.updateCommitment(sid, player));
+      this.physics.setPlayerCommitted(
+        player.body,
+        this.updateCommitment(sid, player),
+        player.activeMovementMaskDrop,
+      );
     });
 
     // 2. Enemy AI — per-enemy visibility: a player is hidden only from enemies
@@ -741,13 +745,17 @@ export class GameRoom extends Room<GameState> {
     // Summons are deferred out of the enemies.forEach below: spawning would mutate
     // the map mid-iteration. Collected here, then materialized after the loop.
     const summons: { ownerId: string; effect: Extract<PendingEffect, { kind: "summon" }> }[] = [];
-    const drain = (ownerId: string, affects: number, effects: PendingEffect[]) => {
+    const drain = (ownerId: string, affects: number, effects: PendingEffect[], reaches?: number) => {
       for (const e of effects) {
         if (e.kind === "hit") {
           // Stamp the attacker so the resolver reports it in the HitEvent (for aggro
           // threat below). Harmless to resolution: a player source only affects
           // ENEMY|PROP, so its owner id can never match a target and self-exclude.
           if (e.source.ownerId === undefined) e.source.ownerId = ownerId;
+          // Stamp the elevation reach the same way: a grounded enemy's ground slam
+          // is GROUND-only (a Vaulting player leaps it) unless the spell set its own
+          // reach. Players pass undefined → BOTH bands (they hit high and low).
+          if (e.source.reaches === undefined && reaches !== undefined) e.source.reaches = reaches;
           sources.push(e.source);
         }
         else if (e.kind === "summon") summons.push({ ownerId, effect: e });
@@ -759,7 +767,7 @@ export class GameRoom extends Room<GameState> {
       if (!enemy.spawned) return;
       const contact = enemy.contactHitSource(id);
       if (contact) sources.push(contact);
-      drain(id, ENEMY_ATTACK_AFFECTS, enemy.drainEffects());
+      drain(id, ENEMY_ATTACK_AFFECTS, enemy.drainEffects(), enemy.elevationReach);
     });
     for (const s of summons) this.spawner.summonEnemy(s.ownerId, s.effect.enemy, s.effect.x, s.effect.y);
 

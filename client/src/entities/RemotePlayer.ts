@@ -59,6 +59,7 @@ export class RemotePlayer extends Entity implements DebugDrawable {
     this.facing = state.facing;
     this.isAttacking = state.isAttacking;
     this.setDowned(state.downed);
+    this.ingestMovementState(state);
     // Active weapon changed on the server — hot-swap the visuals to match.
     if (weaponId && weaponId !== this.activeWeaponId) {
       const w = WEAPON_REGISTRY[weaponId as WeaponId];
@@ -99,6 +100,7 @@ export class RemotePlayer extends Entity implements DebugDrawable {
 
     const isMoving = Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5;
     this.playAnim(this.isAttacking ? "attack" : isMoving ? "walk" : "idle", this.facing);
+    this.renderMovementFX();
   }
 
   collectDebugShapes(): DebugShape[] {

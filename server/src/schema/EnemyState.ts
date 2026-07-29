@@ -24,8 +24,6 @@ export class EnemyState extends EntityState implements EnemyStateView {
   // extended active phase — the boss is mid-strike, not winding up. Drives the
   // client's action animation (spin) separately from the wind-up tint.
   @type("boolean") channeling: boolean = false;
-  // Flying bosses only: airborne height in px above the ground plane. The client
-  // lifts the sprite by this and scales a shadow beneath (the airborne illusion);
-  // a swoop drives it to 0 (claws hit the floor) and back. 0 = grounded.
-  @type("number") airHeight: number = 0;
+  // airHeight moved up to EntityState — a flyer cruises there, a swoop drives it
+  // to 0 and back, and now a Vaulting player uses the same field.
 }

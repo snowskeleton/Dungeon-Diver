@@ -21,6 +21,7 @@ export type BindableAction =
   | "left"
   | "right"
   | "attack"
+  | "ability"
   | "prevSlot"
   | "nextSlot"
   | "menu"
@@ -39,6 +40,7 @@ export const BINDABLE_ACTIONS: { action: BindableAction; label: string }[] = [
   { action: "left",     label: "Move Left" },
   { action: "right",    label: "Move Right" },
   { action: "attack",   label: "Attack" },
+  { action: "ability",  label: "Movement Ability" },
   { action: "prevSlot", label: "Previous Weapon" },
   { action: "nextSlot", label: "Next Weapon" },
   { action: "menu",     label: "Inventory / Menu" },
@@ -54,6 +56,7 @@ export const DEFAULT_BINDINGS: KeyBindings = {
   left:     [K.A, K.LEFT],
   right:    [K.D, K.RIGHT],
   attack:   [K.SPACE, K.ENTER],
+  ability:  [K.SHIFT, K.FORWARD_SLASH],
   prevSlot: [K.Q, K.OPEN_BRACKET],
   nextSlot: [K.E, K.CLOSED_BRACKET],
   menu:     [K.I, K.BACK_SLASH],

@@ -2,7 +2,7 @@ import type Matter from "matter-js";
 import {
   TILE_PROPS, TileId, TILE_SIZE, FOOT_OFFSET, TILE_DAMAGE_INTERVAL_MS, InteractionProfile, Attack,
   KNOCKBACK_SCALE, KNOCKBACK_MIN_FRACTION, KNOCKBACK_STUN_MS_PER_UNIT, KNOCKBACK_STUN_MAX_MS, SERVER_TICK_MS,
-  HurtBounds, PLAYER_HURT_BOUNDS,
+  HurtBounds, PLAYER_HURT_BOUNDS, Elevation, elevationAt,
 } from "shared";
 import { EntityState } from "../schema/EntityState";
 import { HitSource } from "../combat/HitSource";
@@ -67,6 +67,52 @@ export abstract class Entity {
   addKnockback(vx: number, vy: number): void {
     this.knockbackVel.x = vx;
     this.knockbackVel.y = vy;
+  }
+
+  /** Set this tick's movement intent to a RAW px/sec vector along (dirX, dirY),
+   *  bypassing speedMultiplier — used by dash/charge/vault abilities that travel a
+   *  fixed, committed distance regardless of the mud they cross. Physics still
+   *  resolves it against walls, so the move stops at a wall like any other. */
+  driveAlong(dirX: number, dirY: number, pxPerSec: number): void {
+    const len = Math.hypot(dirX, dirY);
+    if (len === 0) return;
+    this.moveVel.x = (dirX / len) * pxPerSec;
+    this.moveVel.y = (dirY / len) * pxPerSec;
+  }
+
+  /** Set the airborne height (px above the ground plane). Drives the elevation
+   *  band and the client's sprite lift. A Vault arcs this up and back down. */
+  setAirHeight(px: number): void {
+    if (this.state.airHeight !== px) this.state.airHeight = px;
+  }
+
+  /** Sprite-centre landing point of a teleport that starts at this body's FEET and
+   *  travels up to `dist` px along (dirX, dirY), stopping at the furthest point
+   *  still walkable (and before any locked barrier) — so a Blink can cross a bar or
+   *  gap but never lands inside a wall or beyond a shut door. Returns the current
+   *  position unchanged when the very first step is blocked (nowhere to go). */
+  protected sweepBlinkTarget(dirX: number, dirY: number, dist: number): { x: number; y: number } {
+    const len = Math.hypot(dirX, dirY);
+    if (len === 0) return { x: this.state.x, y: this.state.y };
+    const ux = dirX / len;
+    const uy = dirY / len;
+    const cx = this.footX;
+    const cy = this.footY;
+    // Sample in ≤half-tile steps so no wall can hide between two samples.
+    const steps = Math.max(1, Math.ceil(dist / (TILE_SIZE / 2)));
+    let bestFootX = cx;
+    let bestFootY = cy;
+    for (let i = 1; i <= steps; i++) {
+      const t = (i / steps) * dist;
+      const px = cx + ux * t;
+      const py = cy + uy * t;
+      if (this.spawnBlockedAt(px, py)) break;
+      bestFootX = px;
+      bestFootY = py;
+    }
+    // Convert the foot landing back to a sprite-centre position (teleport takes
+    // sprite-centre coords; the feet sit FOOT_OFFSET below the centre).
+    return { x: bestFootX, y: bestFootY - FOOT_OFFSET };
   }
 
   // Called once per tick by GameRoom, just before the engine step.
@@ -182,6 +228,14 @@ export abstract class Entity {
   }
 
   applyTileEffects(dtMs: number): void {
+    // Airborne: not touching the floor, so tile hazards (fire, slow mud) don't
+    // apply — a Vaulting player leaps over fire, a flyer cruises above it. Keep
+    // the speed multiplier neutral while up there.
+    if (this.airborne) {
+      this.state.speedMultiplier = 1;
+      this.timeSinceLastDamage = 0;
+      return;
+    }
     const tile = this.tileAt(this.state.x, this.state.y);
     if (tile === null) return;
     const props = TILE_PROPS[tile];
@@ -348,6 +402,20 @@ export abstract class Entity {
    *  on their death animation (isDying) rather than raw health. */
   get damageable(): boolean {
     return !this.isDead;
+  }
+
+  /** True while above the airborne threshold — used to gate tile hazards and to
+   *  pick the elevation band below. Reads the synced airHeight so it tracks a
+   *  swoop / vault in flight. */
+  get airborne(): boolean {
+    return this.elevation === Elevation.AIR;
+  }
+
+  /** The Elevation band (GROUND / AIR) this body occupies, from its airHeight.
+   *  The combat resolver reaches a target only if the source's `reaches` mask
+   *  includes this band (see CombatSystem / shared/combat/elevation). */
+  get elevation(): number {
+    return elevationAt(this.state.airHeight);
   }
 
   /** Sprite-centre world position (the schema x/y). Convenience for combat/spell

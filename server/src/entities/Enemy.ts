@@ -1,4 +1,4 @@
-import { AiState, SERVER_TICK_MS, EnemyType, EnemyFacingMode, ENEMY_BODY_PROFILE, AIRBORNE_ENEMY_BODY_PROFILE, ENEMY_ATTACK_AFFECTS , ENEMY_HURT_BOUNDS, PLAYER_HURT_BOUNDS, HurtBounds, ENEMY_SPAWN_EMERGE_MS, TILE_SIZE } from "shared";
+import { AiState, SERVER_TICK_MS, EnemyType, EnemyFacingMode, ENEMY_BODY_PROFILE, AIRBORNE_ENEMY_BODY_PROFILE, ENEMY_ATTACK_AFFECTS , ENEMY_HURT_BOUNDS, PLAYER_HURT_BOUNDS, HurtBounds, ENEMY_SPAWN_EMERGE_MS, TILE_SIZE, Elevation, ELEVATION_ALL } from "shared";
 import { EnemyState } from "../schema/EnemyState";
 import { PlayerState } from "../schema/PlayerState";
 import { Entity } from "./Entity";
@@ -129,6 +129,15 @@ export abstract class Enemy extends Entity {
    *  active phase); the client lifts the sprite by it and draws a shadow beneath.
    *  The collision body stays at the ground point, so height is purely visual. */
   protected get cruiseHeight(): number { return 0; }
+
+  /** Which Elevation band(s) this enemy's attacks reach. A grounded enemy hits
+   *  only the GROUND band, so a Vaulting player (AIR) sails over its touch and
+   *  ground slams; a flyer (cruiseHeight > 0) reaches BOTH bands, so it still
+   *  catches an airborne player. GameRoom stamps this onto the enemy's drained
+   *  hit sources; contactHitSource sets it directly. */
+  get elevationReach(): number {
+    return this.cruiseHeight > 0 ? ELEVATION_ALL : Elevation.GROUND;
+  }
 
   /** This enemy's id, read from the concrete subclass's `static readonly type`. */
   protected get typeId(): EnemyType {
@@ -353,6 +362,7 @@ export abstract class Enemy extends Entity {
         r: Math.max(0, this.attackRadius - PLAYER_HURT_BOUNDS.halfW),
       },
       affects: ENEMY_ATTACK_AFFECTS,
+      reaches: this.elevationReach,
       ownerId: id,
       // Contact deals no knockback to players — only telegraphed attacks shove.
       attack: { damage: this.attackDamage, knockback: 0, sourceX: this.state.x, sourceY: this.state.y },
