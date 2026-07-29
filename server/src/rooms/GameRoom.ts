@@ -180,6 +180,13 @@ export class GameRoom extends Room<GameState> {
       client.send("barrier_state", this.floorManager.barrierSnapshot());
     });
 
+    // Latency probe: echo the client's timestamp straight back so it can measure
+    // round-trip time. Cheap and stateless — the client owns the clock, we just
+    // reflect it.
+    this.onMessage("ping", (client, msg: { t: number }) => {
+      client.send("pong", { t: msg?.t ?? 0 });
+    });
+
     // ── Lobby messages ──────────────────────────────────────────────────────
     // All four are refused outright once the run starts. That refusal is what
     // makes the lobby meaningful: a party's composition is settled before the

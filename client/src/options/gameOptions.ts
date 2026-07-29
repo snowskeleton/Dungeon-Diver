@@ -11,6 +11,8 @@ export interface GameOptions {
   showHitboxes: boolean;
   showControlsHint: boolean;
   showMinimap: boolean;
+  /** Show a live FPS + network-latency readout in the corner. */
+  showPerfMeter: boolean;
   /** Extra grace (ms) for continuing a melee combo beyond the weapon's cooldown.
    *  Sent to the server; see the note above. */
   comboWindowMs: number;
@@ -27,6 +29,7 @@ export const DEFAULT_OPTIONS: GameOptions = {
   showHitboxes: false,
   showControlsHint: true,
   showMinimap: true,
+  showPerfMeter: false,
   comboWindowMs: DEFAULT_COMBO_WINDOW_MS,
   chargeHoldMs: DEFAULT_CHARGE_HOLD_MS,
   attackBufferMs: DEFAULT_ATTACK_BUFFER_MS,
@@ -41,6 +44,10 @@ export const OPTION_FIELDS: FieldSpec<GameOptions>[] = [
   {
     kind: "toggle", key: "showMinimap", label: "Minimap",
     help: "Show the dungeon minimap in the top-right corner",
+  },
+  {
+    kind: "toggle", key: "showPerfMeter", label: "Performance meter",
+    help: "Show live FPS and network latency in the bottom-right corner",
   },
   {
     kind: "number", key: "comboWindowMs", label: "Combo window (ms)",

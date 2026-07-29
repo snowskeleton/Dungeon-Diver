@@ -29,10 +29,16 @@ export class GameHud {
   private readonly stairsPrompt: Phaser.GameObjects.Text;
   private readonly downedBanner: Phaser.GameObjects.Text;
   private readonly gameOverText: Phaser.GameObjects.Text;
+  private readonly perfText: Phaser.GameObjects.Text;
   private readonly scene: Phaser.Scene;
   private toastTimer?: Phaser.Time.TimerEvent;
 
-  constructor(scene: Phaser.Scene, ui: UiLayer, showControlsHint: boolean) {
+  constructor(
+    scene: Phaser.Scene,
+    ui: UiLayer,
+    showControlsHint: boolean,
+    showPerfMeter: boolean,
+  ) {
     this.scene = scene;
     this.hpText = ui.add(
       scene.add
@@ -132,6 +138,20 @@ export class GameHud {
         .setVisible(false),
     );
 
+    // FPS + latency, pinned to the bottom-right so it never fights the top-left
+    // readouts or the minimap. Hidden unless the Options toggle is on.
+    this.perfText = ui.add(
+      scene.add
+        .text(scene.scale.width - 8, scene.scale.height - 8, "", {
+          fontSize: "11px", color: "#9fe0a0", backgroundColor: "#00000088",
+          align: "right",
+        })
+        .setOrigin(1, 1)
+        .setDepth(10)
+        .setPadding(6, 4)
+        .setVisible(showPerfMeter),
+    );
+
     if (showControlsHint) {
       // Was anchored to the bottom of the MAP, so it sat wherever the last tile
       // row happened to be rather than on screen. It's a HUD line — pin it to the
@@ -185,6 +205,14 @@ export class GameHud {
     this.pausedText.setVisible(opts.paused);
     this.updateStairsPrompt(opts.playersOnStairs, opts.stairsPartySize);
     this.updateStoreCard(opts.players[0]);
+  }
+
+  /** Live FPS + round-trip latency. `latencyMs` is null until the first pong
+   *  lands. Does nothing while the meter is hidden. */
+  updatePerf(fps: number, latencyMs: number | null): void {
+    if (!this.perfText.visible) return;
+    const ping = latencyMs == null ? "-- ms" : `${Math.round(latencyMs)} ms`;
+    this.perfText.setText(`${Math.round(fps)} fps   ${ping}`);
   }
 
   /** The whole party fell — freeze a GAME OVER card over everything. */

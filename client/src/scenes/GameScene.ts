@@ -88,6 +88,8 @@ export class GameScene extends Phaser.Scene {
   private ui!: UiLayer;
   private hud!: GameHud;
   private minimap!: Minimap;
+  /** Latest measured round-trip latency (ms), or null before the first pong. */
+  private latencyMs: number | null = null;
   /** Rooms the party has stood in this floor — the minimap's "explored" set.
    *  Client-side only, derived from the camera's per-frame room cell. */
   private exploredRooms = new Set<string>();
@@ -358,7 +360,8 @@ export class GameScene extends Phaser.Scene {
     this.inventoryHud = new InventoryHud(this, 82, this.ui);
     this.challengeBanner = new ChallengeBanner(this, 400, 96, this.ui);
     this.darkness = new DarknessOverlay(this);
-    this.hud = new GameHud(this, this.ui, options.showControlsHint);
+    this.hud = new GameHud(this, this.ui, options.showControlsHint, options.showPerfMeter);
+    if (options.showPerfMeter) this.startLatencyProbe();
 
     // Loot errors (e.g. picking up a weapon this class can't use) come back to the
     // ONE client that acted. Couch players each hold their own connection but share
@@ -370,6 +373,23 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.ready = true;
+  }
+
+  /** Poll the server for round-trip latency: send a timestamped ping every
+   *  second, measure the delay when its pong echoes back. Uses the observer
+   *  room's connection — the same one all rendering reads from. */
+  private startLatencyProbe() {
+    const room = this.observerRoom;
+    if (!room) return;
+    room.onMessage("pong", (msg: { t: number }) => {
+      this.latencyMs = this.time.now - msg.t;
+    });
+    this.time.addEvent({
+      delay: 1000,
+      loop: true,
+      callback: () => room.send("ping", { t: this.time.now }),
+    });
+    room.send("ping", { t: this.time.now });
   }
 
   private rebuildMap(seed: number) {
@@ -837,6 +857,8 @@ export class GameScene extends Phaser.Scene {
       playersOnStairs: obs?.playersOnStairs ?? 0,
       stairsPartySize: obs?.stairsPartySize ?? 0,
     });
+
+    this.hud.updatePerf(this.game.loop.actualFps, this.latencyMs);
 
     this.updateInteractPrompts();
   }
