@@ -46,6 +46,10 @@ export class PlayerState extends EntityState implements PlayerStateView {
   @type("uint8") activeWeaponIndex: number = 0;
   // Folded max HP — the client HUD draws the bar against this, and upgrades move it.
   @type("uint16") maxHp: number = 100;
+  // Folded damage buffs from upgrades — synced so the inventory menu can show a
+  // weapon's ACTUAL damage (base folded through these), not just its template base.
+  @type("float32") damageFlat: number = 0;
+  @type("float32") damagePct: number = 0;
   @type([UpgradeSlotState]) upgrades = new ArraySchema<UpgradeSlotState>();
   // Lobby identity. Both survive into the run: the name because the HUD and the
   // party roster want it, `ready` because nothing reads it once the run starts.

@@ -12,7 +12,7 @@ import { CLIENT_CHARACTER_VISUAL_REGISTRY } from "../characters";
 import { DebugDrawable, DebugShape, DEBUG_COLORS, hurtBoxShape } from "../debug/DebugDraw";
 import { meleeHurtboxShapes } from "../debug/hurtboxShapes";
 import { meleeWindupPose } from "./meleeWindupPose";
-import { AcquireFX, ACQUIRE_MS } from "./AcquireFX";
+import { AcquireFX } from "./AcquireFX";
 import { InventoryMenu } from "../ui/InventoryMenu";
 import { OfferPicker, OfferChoiceView } from "../ui/OfferPicker";
 import { viewFromSlot } from "../ui/weaponStats";
@@ -212,6 +212,7 @@ export class LocalPlayer extends Entity implements DebugDrawable {
       Array.from(ps.weapons) as WeaponSlotView[],
       ps.activeWeaponIndex,
       Array.from(ps.upgrades) as UpgradeSlotView[],
+      { flat: ps.damageFlat ?? 0, pct: ps.damagePct ?? 0 },
       () => this.setMenuPaused(false),
       (index) => this.room.send("selectWeapon", { index }),
     );
@@ -424,6 +425,10 @@ export class LocalPlayer extends Entity implements DebugDrawable {
       }
     }
     this.setPosition(state.x, state.y);
+    // Track the SYNCED max HP so +max-HP upgrades move the bar's full mark — the
+    // character base is only the starting value, and leaving it fixed made a
+    // buffed player's bar read past full (looked like HP grew without limit).
+    if (state.maxHp) this.maxHp = state.maxHp;
     this.updateHpBar(state.health);
   }
 
@@ -445,8 +450,9 @@ export class LocalPlayer extends Entity implements DebugDrawable {
       this.knownWeaponUids.add(slot.uid);
       // The starting weapon is already in the first sync — don't flourish it.
       if (!this.sawFirstSync) continue;
+      // The flourish (icon + text panel) plays, but the player is NOT frozen —
+      // stopping movement for the acquire beat felt like a hitch.
       AcquireFX.weapon(this.scene, this.sprite, slot);
-      this.inputLockedUntil = performance.now() + ACQUIRE_MS;
     }
     this.knownWeaponUids = new Set(weapons.map(w => w.uid));
 
@@ -454,7 +460,6 @@ export class LocalPlayer extends Entity implements DebugDrawable {
       // Any upgrades in the first sync are pre-owned — don't flourish them.
       if (!this.sawFirstSync) continue;
       AcquireFX.upgrade(this.scene, this.sprite, upgrades[i]);
-      this.inputLockedUntil = performance.now() + ACQUIRE_MS;
     }
     this.knownUpgradeCount = upgrades.length;
 

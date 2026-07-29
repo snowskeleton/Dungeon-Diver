@@ -64,15 +64,17 @@ export class RewardPedestalEntity {
     else this.prompt.hide();
   }
 
-  /** Ghost out once claimed. The pulsing glow has to be stopped first — its tween
-   *  drives alpha every frame and would otherwise fight setAlpha and keep shining. */
+  /** Once claimed the reward is GONE — the pedestal vanishes entirely rather than
+   *  ghosting to a faint shadow (a claimed one-shot reward has nothing left to
+   *  show). The pulsing glow tween has to be stopped first — it drives alpha every
+   *  frame and would otherwise fight setVisible/setAlpha and keep shining. */
   setClaimed(claimed: boolean) {
     if (claimed) this.prompt.hide();
     if (claimed && this.glowTween) {
       this.glowTween.stop();
       this.glowTween = undefined;
     }
-    this.objects.forEach((o) => (o as any).setAlpha?.(claimed ? 0.15 : 1));
+    this.objects.forEach((o) => (o as any).setVisible?.(!claimed));
   }
 
   destroy() {

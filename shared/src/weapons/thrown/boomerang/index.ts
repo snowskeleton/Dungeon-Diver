@@ -5,6 +5,5 @@ import { Thrown } from "../base";
 export class Boomerang extends Thrown {
   readonly id = "boomerang";
   readonly name = "Boomerang";
-  get attackCooldownMs() { return 400; }
   get ammoId() { return "boomerang"; }
 }

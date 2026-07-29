@@ -4,6 +4,7 @@ import {
   generateDungeon, DungeonResult, DungeonOptions, FloorChangeMessage,
   MAP_SEED, AMMO_REGISTRY, RoomType,
   TRAP_MIN_FLOORS, TRAP_MAX_FLOORS,
+  MAX_FLOORS,
   DebugConfig, toDungeonOptions,
   Layer, PLAYER_ATTACK_AFFECTS, ENEMY_ATTACK_AFFECTS,
   CreateRoomOptions, JoinRoomOptions, RoomMetadata,
@@ -501,10 +502,15 @@ export class GameRoom extends Room<GameState> {
    *  built, which is exactly what "you missed them" should mean. */
   private advanceFloor(steps = 1) {
     if (this.stairsActive) return;
-    this.stairsActive = true;
 
-    const newSeed = this.currentSeed + steps;
-    const newFloor = this.state.floor + steps;
+    // Clamp to the final floor — the run has no floor past MAX_FLOORS, so a trap
+    // near the end can't overshoot it and stairs on the last floor go nowhere.
+    const newFloor = Math.min(this.state.floor + steps, MAX_FLOORS);
+    const clampedSteps = newFloor - this.state.floor;
+    if (clampedSteps <= 0) return;
+    const newSeed = this.currentSeed + clampedSteps;
+
+    this.stairsActive = true;
 
     this.enemies.forEach((enemy) => this.physics.removeBody(enemy.body));
     this.enemies.clear();
@@ -910,12 +916,17 @@ export class GameRoom extends Room<GameState> {
     //    Traps are NOT a choice and fire the instant a single player lands on
     //    one, skipping several floors. `stairsActive` gates both, so two
     //    players landing on tiles in the same tick still only advance once.
+    //    Descending is gated on the room being CLEARED: you can't skip a fight by
+    //    running to the stairs/trap through an unlocked doorway. A player standing
+    //    on a tile whose room still has live enemies simply doesn't count.
     let onStairs = 0;
     let living = 0;
     let trapDepth = 0;
     this.players.forEach((player) => {
       if (player.isDead) return;
       living += 1;
+      const room = this.floorManager.roomAt(player.state.x, player.state.y);
+      if (room && !this.floorManager.isRoomCleared(room.id)) return;
       const tile = this.physics.tileAt(player.state.x, player.state.y);
       if (tile === TILE.STAIRS) onStairs += 1;
       else if (tile === TILE.TRAP) trapDepth = this.rollTrapDepth();

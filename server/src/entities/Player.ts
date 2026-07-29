@@ -95,6 +95,8 @@ export class Player extends Entity implements Caster {
     this.stats = this.foldStats();
     this.state.health = this.stats.maxHp;
     this.state.maxHp = this.stats.maxHp;
+    this.state.damageFlat = this.stats.damageFlat;
+    this.state.damagePct = this.stats.damagePct;
 
     // Players start EMPTY-HANDED — no default weapon, no starting weapon pick. The
     // first weapon is claimed from a supply-room pedestal on floor 1 (see
@@ -141,6 +143,8 @@ export class Player extends Entity implements Caster {
     if (delta > 0) this.state.health += delta;
     this.state.health = Math.min(this.state.health, this.stats.maxHp);
     this.state.maxHp = this.stats.maxHp;
+    this.state.damageFlat = this.stats.damageFlat;
+    this.state.damagePct = this.stats.damagePct;
   }
 
   get maxHp(): number {

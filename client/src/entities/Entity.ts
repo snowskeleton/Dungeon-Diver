@@ -272,7 +272,9 @@ export abstract class Entity {
     }
     this.lastHp = hp;
 
-    const ratio = Math.max(0, hp / this.maxHp);
+    // Clamped to [0,1]: health is server-capped at maxHp, but a stale maxHp (or a
+    // one-tick lag between a heal and a max-HP sync) must never draw a bar past full.
+    const ratio = Math.min(1, Math.max(0, hp / this.maxHp));
     this.hpBar.width = HP_BAR_W * ratio;
     this.hpBar.setFillStyle(ratio > 0.5 ? 0x48bb78 : ratio > 0.25 ? 0xed8936 : 0xe53e3e);
     this.repositionHpBar(ratio);
@@ -288,7 +290,7 @@ export abstract class Entity {
   setPosition(x: number, y: number) {
     this.sprite.x = x;
     this.sprite.y = y;
-    const ratio = this.lastHp !== undefined ? Math.max(0, this.lastHp / this.maxHp) : 1;
+    const ratio = this.lastHp !== undefined ? Math.min(1, Math.max(0, this.lastHp / this.maxHp)) : 1;
     this.repositionHpBar(ratio);
   }
 

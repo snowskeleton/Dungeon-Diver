@@ -54,6 +54,8 @@ export class RemotePlayer extends Entity implements DebugDrawable {
     this.targetX = state.x;
     this.targetY = state.y;
     this.currentHp = state.health;
+    // Follow the synced max HP so upgrades move the bar's full mark (see LocalPlayer).
+    if (state.maxHp) this.maxHp = state.maxHp;
     this.facing = state.facing;
     this.isAttacking = state.isAttacking;
     this.setDowned(state.downed);

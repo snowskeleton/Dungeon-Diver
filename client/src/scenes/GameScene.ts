@@ -423,6 +423,14 @@ export class GameScene extends Phaser.Scene {
     // painting and the minimap looks like the previous floor's map.
     this.exploredRooms.clear();
     this.rebuildMap(msg.seed);
+    // Snap the local players onto the new floor's spawn immediately. The server
+    // has already teleported them there (respawnAll), but its position sync is a
+    // tick behind — without this snap the camera/centroid lingers on the OLD
+    // room's coordinates for a few frames and marks the wrong room explored on the
+    // minimap. Matters most after a TRAP, which fires from an arbitrary room far
+    // from spawn. The spawn point rides on the same floor_change the stairs use, so
+    // both descents share this one path.
+    this.localManager.getAll().forEach((p) => p.setPosition(msg.spawnX, msg.spawnY));
     // The new floor's pre-clear broadcast arrived BEFORE this message — i.e.
     // before the map it refers to existed — so ask again rather than trusting it.
     this.observerRoom?.send("requestBarrierState");

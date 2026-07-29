@@ -4,6 +4,7 @@ import { Weapon, WeaponCategory, AttackFXType, RangedStyle } from "../base";
 // Category base — the defaults every thrown inherits; a concrete
 // weapon overrides only what makes it distinct.
 export abstract class Thrown extends Weapon {
+  get attackCooldownMs() { return 400; }
   get category(): WeaponCategory { return "thrown"; }
   get fxType(): AttackFXType { return "long-slash"; }
   get damage() { return 0; }

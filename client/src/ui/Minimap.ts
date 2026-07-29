@@ -33,15 +33,19 @@ export interface MinimapStatus {
 const MARGIN = 10;
 /** Side of one room square, in screen px. */
 const CELL = 13;
-/** Gap between adjacent room squares. */
-const GAP = 4;
+/** Gap between adjacent room squares. Wide on purpose: rooms are laid out on a
+ *  grid but only some neighbours are actually connected, so the map has to show
+ *  the passages between them, not imply that every touching pair is walkable.
+ *  A generous gap turns each connector into a visible segment and leaves the
+ *  non-connected sides plainly blank. */
+const GAP = 10;
 const PAD = 6;
 
 const DEPTH = 40;
 
 const COLORS = {
   panel: 0x0b0b16,
-  connector: 0x3a3a52,
+  connector: 0x8a8ab0,
   unexplored: 0x23233a,
   cleared: 0x3f7050,
   locked: 0x9a6f34,
@@ -173,8 +177,9 @@ export class Minimap {
     g.clear();
 
     // Connectors first, under the room squares. Both endpoints must be explored
-    // for a passage to show — an undiscovered door stays hidden.
-    g.lineStyle(2, COLORS.connector, 1);
+    // for a passage to show — an undiscovered door stays hidden. Drawn thick and
+    // bright so a real passage reads clearly across the wide inter-room gap.
+    g.lineStyle(4, COLORS.connector, 1);
     for (const conn of this.dungeon.connections) {
       if (!status.explored.has(conn.parentRoomId)) continue;
       if (!status.explored.has(conn.childRoomId)) continue;

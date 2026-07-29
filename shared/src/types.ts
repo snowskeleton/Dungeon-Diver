@@ -48,6 +48,10 @@ export const TILE_PROPS: Record<TileId, TileProps> = {
 export const TRAP_MIN_FLOORS = 1;
 export const TRAP_MAX_FLOORS = 3;
 
+// The run ends at this floor — there is no floor beyond it. Descending (stairs or
+// a trap) never carries the party past it.
+export const MAX_FLOORS = 10;
+
 export type RoomType =
   | "combat"
   | "maze"

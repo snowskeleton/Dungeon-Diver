@@ -11,7 +11,9 @@ export const ROOM_H = 16;
 const DEFAULT_NEIGHBOR_CHANCE = 60;
 const DEFAULT_MIN_ROOMS = 4;
 // Room types that place objects on their floor tiles — never put the stairs there.
-const STAIRS_AVOID_TYPES: RoomType[] = ["shop", "shrine"];
+// The boss room is excluded too: the stairs must sit behind the boss fight, never
+// spawn inside it (which let the party descend without fighting).
+const STAIRS_AVOID_TYPES: RoomType[] = ["shop", "shrine", "boss"];
 // Percent chance that each eligible room hides a trap tile. Deliberately low: a
 // trap should be a rare gut-punch, not a tax on exploring.
 const TRAP_ROOM_CHANCE = 1;

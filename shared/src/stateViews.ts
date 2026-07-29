@@ -97,6 +97,8 @@ export interface PlayerStateView extends EntityStateView {
   readonly weapons: SyncedList<WeaponSlotView>;
   readonly activeWeaponIndex: number;
   readonly maxHp: number;
+  readonly damageFlat: number;
+  readonly damagePct: number;
   readonly upgrades: SyncedList<UpgradeSlotView>;
   /** Display name, chosen in the lobby. Never empty — the server substitutes a
    *  default rather than letting a blank row appear in the roster. */

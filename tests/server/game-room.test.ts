@@ -602,9 +602,15 @@ describe("descending", () => {
     const h = await startedRoom(1, { debug: debug({ enemiesPerRoom: 1 }) });
     const seed0 = h.state.seed;
     const enemies0 = [...guts(h).enemies.keys()];
+    // Descending is gated on the exit room being CLEARED (you can't skip its
+    // fight by running to the stairs). Stand on the stairs to reveal that room's
+    // enemy, kill everything, then the party — still on the stairs — descends.
     standOnStairs(h);
-
-    h.tick(2);
+    h.tick(1);
+    for (const e of guts(h).enemies.values()) {
+      e.takeHit({ damage: 9999, knockback: 0, sourceX: 0, sourceY: 0 });
+    }
+    h.tick(12);
 
     expect(h.state.seed).toBe(seed0 + 1);
     // The old floor's creatures are gone, and new ones exist.

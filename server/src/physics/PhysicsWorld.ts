@@ -131,6 +131,17 @@ function rectToBody(r: WallRect, label: string, category: number, chamferRadius 
   );
 }
 
+/** A small static blocker sealing a diagonal corner pinch (see buildWallBodies).
+ *  Categorised as WALL so it blocks whatever a wall does, for players and enemies
+ *  alike. */
+function cornerPlug(vx: number, vy: number, radius: number): Matter.Body {
+  return Matter.Bodies.circle(vx, vy, radius, {
+    isStatic: true,
+    label: "corner-plug",
+    collisionFilter: { category: Layer.WALL, mask: WALL_SOLID_MASK },
+  });
+}
+
 function buildWallBodies(
   mapData: TileId[][],
   mapCols: number,
@@ -147,6 +158,30 @@ function buildWallBodies(
     ...mergeWallRects(mapCols, mapRows, (c, r) => kindAt(c, r) === "cover")
       .map(r => rectToBody(r, "cover", Layer.COVER, COVER_CHAMFER)),
   ];
+
+  // Corner plugs. Two obstacles that touch only at a diagonal corner leave a
+  // pinch a round body can squeeze through — worsened by the cover chamfer above,
+  // which rounds those very corners away. Wherever two diagonally-adjacent cells
+  // are solid but the two cells sharing their corner are BOTH open, drop a small
+  // static blocker on the shared vertex so the diagonal gap can't be walked (or
+  // knocked) through. The condition is exact for a pinch, so this never touches an
+  // ordinary wall corner.
+  const solid = (c: number, r: number) =>
+    c >= 0 && r >= 0 && c < mapCols && r < mapRows && kindAt(c, r) !== null;
+  const PLUG_R = ENTITY_RADIUS + 1;
+  for (let r = 0; r < mapRows; r++) {
+    for (let c = 0; c < mapCols; c++) {
+      if (!solid(c, r)) continue;
+      // Down-right diagonal: vertex at the bottom-right corner of (c,r).
+      if (solid(c + 1, r + 1) && !solid(c + 1, r) && !solid(c, r + 1)) {
+        bodies.push(cornerPlug((c + 1) * TILE_SIZE, (r + 1) * TILE_SIZE, PLUG_R));
+      }
+      // Down-left diagonal: vertex at the bottom-left corner of (c,r).
+      if (solid(c - 1, r + 1) && !solid(c - 1, r) && !solid(c, r + 1)) {
+        bodies.push(cornerPlug(c * TILE_SIZE, (r + 1) * TILE_SIZE, PLUG_R));
+      }
+    }
+  }
 
   const w = mapCols * TILE_SIZE;
   const h = mapRows * TILE_SIZE;

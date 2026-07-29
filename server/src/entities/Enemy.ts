@@ -1,4 +1,4 @@
-import { AiState, SERVER_TICK_MS, EnemyType, EnemyFacingMode, ENEMY_BODY_PROFILE, AIRBORNE_ENEMY_BODY_PROFILE, ENEMY_ATTACK_AFFECTS , ENEMY_HURT_BOUNDS, PLAYER_HURT_BOUNDS, HurtBounds, ENEMY_SPAWN_EMERGE_MS } from "shared";
+import { AiState, SERVER_TICK_MS, EnemyType, EnemyFacingMode, ENEMY_BODY_PROFILE, AIRBORNE_ENEMY_BODY_PROFILE, ENEMY_ATTACK_AFFECTS , ENEMY_HURT_BOUNDS, PLAYER_HURT_BOUNDS, HurtBounds, ENEMY_SPAWN_EMERGE_MS, TILE_SIZE } from "shared";
 import { EnemyState } from "../schema/EnemyState";
 import { PlayerState } from "../schema/PlayerState";
 import { Entity } from "./Entity";
@@ -230,6 +230,24 @@ export abstract class Enemy extends Entity {
 
   private homeBounds: RoomBounds | null = null;
 
+  /** Safety net against being knocked clean out of the world. move() clips walking
+   *  intent at the interior edge, but knockback is (deliberately) NOT clipped — a
+   *  hard enough hit can shove an enemy through a wall into the void between rooms,
+   *  where the flow field can't pull it back and no player can reach it, softlocking
+   *  the floor (you can never clear the room). So each tick we hard-clamp any enemy
+   *  that has ended up past its home room's OUTER extent back to that edge. The
+   *  extent is the interior box grown by one tile, so a knockback can still blast a
+   *  creature into the wall ring / a doorway (the intended combat feel) — it just
+   *  can't leave the room entirely. */
+  private containToHome(): void {
+    const b = this.homeBounds;
+    if (!b) return;
+    const m = TILE_SIZE;
+    const x = Math.min(Math.max(this.state.x, b.xMin - m), b.xMax + m);
+    const y = Math.min(Math.max(this.state.y, b.yMin - m), b.yMax + m);
+    if (x !== this.state.x || y !== this.state.y) this.teleport(x, y);
+  }
+
   // ── Navigation + aggro ──────────────────────────────────────────────────────
   // The flow-field navigator and this enemy's home room id, both set by
   // SpawnDirector alongside confineTo. Null for an enemy built directly against a
@@ -367,6 +385,7 @@ export abstract class Enemy extends Entity {
   // (contactHitSource) and applied by the combat resolver.
   tick(players: Map<string, PlayerState>, dtMs: number): void {
     this.applyFlightBaseline();
+    this.containToHome();
     if (this.state.isDying) return;
     if (this.updateStun(dtMs)) return;
 

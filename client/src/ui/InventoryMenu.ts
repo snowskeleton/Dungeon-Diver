@@ -1,4 +1,4 @@
-import { WeaponSlotView, UpgradeSlotView } from "shared";
+import { WeaponSlotView, UpgradeSlotView, foldStat } from "shared";
 import { weaponStatLines, viewFromSlot } from "./weaponStats";
 import { addStyle, button, el, menuPanel, MenuPanel } from "./menuDom";
 
@@ -28,6 +28,10 @@ export class InventoryMenu {
     weapons: WeaponSlotView[],
     activeIndex: number,
     upgrades: UpgradeSlotView[],
+    // The player's folded damage buffs (from global upgrades like Keen Edge /
+    // Ferocity). Applied on top of a weapon's own stats at attack time, so they
+    // don't live on the slot — passed in here to show ACTUAL vs base damage.
+    damageBuff: { flat: number; pct: number },
     onClose: () => void,
     onSelect: (index: number) => void,
   ) {
@@ -77,7 +81,18 @@ export class InventoryMenu {
         ]),
         el("div", {
           className: "m-row-detail",
-          html: weaponStatLines(weapon).map((s) => `<span>${s.label}: ${s.value}</span>`).join(""),
+          html: weaponStatLines(weapon).map((s) => {
+            // On the Damage line, fold the player's global damage buffs onto the
+            // weapon's base so the row reads e.g. "Damage: 12 → 17.4" (base →
+            // actual). Other stats are unaffected by these buffs.
+            if (s.label === "Damage") {
+              const actual = foldStat(s.num, damageBuff.flat, damageBuff.pct);
+              if (Math.abs(actual - s.num) > 0.05) {
+                return `<span>Damage: ${s.value} → ${fmt(actual)}</span>`;
+              }
+            }
+            return `<span>${s.label}: ${s.value}</span>`;
+          }).join(""),
         }),
       ]);
 
@@ -105,10 +120,20 @@ export class InventoryMenu {
 
     if (upgrades.length) {
       body.appendChild(el("h3", { className: "m-heading", text: "Upgrades" }));
+      // Collapse duplicate upgrades into one row with a count ("Keen Edge x3")
+      // rather than listing the same buff three times. Insertion order is kept by
+      // recording the first time each name is seen.
+      const grouped = new Map<string, { u: UpgradeSlotView; count: number }>();
       for (const u of upgrades) {
+        const existing = grouped.get(u.name);
+        if (existing) existing.count += 1;
+        else grouped.set(u.name, { u, count: 1 });
+      }
+      for (const { u, count } of grouped.values()) {
+        const name = count > 1 ? `${u.name} x${count}` : u.name;
         body.appendChild(el("div", { className: "m-row" }, [
           el("div", { className: "m-grow" }, [
-            el("div", { className: "m-row-name", text: u.name }),
+            el("div", { className: "m-row-name", text: name }),
             el("div", { className: "m-row-detail", text: u.description }),
           ]),
         ]));
@@ -129,4 +154,9 @@ export class InventoryMenu {
     this.menu?.destroy();
     this.menu = null;
   }
+}
+
+/** One-decimal, trailing-zero-trimmed — matches weaponStats' own rounding. */
+function fmt(n: number): string {
+  return Number.isInteger(n) ? `${n}` : n.toFixed(1);
 }
