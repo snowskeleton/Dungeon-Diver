@@ -1,10 +1,10 @@
-import { AiState, SERVER_TICK_MS, EnemyType, EnemyFacingMode, ENEMY_BODY_PROFILE, AIRBORNE_ENEMY_BODY_PROFILE, ENEMY_ATTACK_AFFECTS , ENEMY_HURT_BOUNDS, PLAYER_HURT_BOUNDS, HurtBounds, ENEMY_SPAWN_EMERGE_MS, TILE_SIZE, Elevation, ELEVATION_ALL } from "shared";
+import { AiState, SERVER_TICK_MS, EnemyType, EnemyFacingMode, ENEMY_BODY_PROFILE, AIRBORNE_ENEMY_BODY_PROFILE, ENEMY_ATTACK_AFFECTS , ENEMY_HURT_BOUNDS, PLAYER_HURT_BOUNDS, HurtBounds, ENEMY_SPAWN_EMERGE_MS, TILE_SIZE, Elevation, ELEVATION_ALL, Facing } from "shared";
 import { EnemyState } from "../schema/EnemyState";
 import { PlayerState } from "../schema/PlayerState";
 import { Entity } from "./Entity";
 import { HitSource } from "../combat/HitSource";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
-import type { AttackStats } from "../spells/Spell";
+import type { AttackStats, Caster } from "../spells/Spell";
 
 /** The interior box an enemy is confined to — see Enemy.confineTo. */
 export type RoomBounds = { xMin: number; xMax: number; yMin: number; yMax: number };
@@ -80,7 +80,7 @@ export type EnemyClass = { new (physics: PhysicsWorld, x: number, y: number): En
 // enemy is a working chaser out of the box, and tuning it — or giving it a
 // distinct stat — is a one-line getter override, all compiler-checked. Bosses
 // and specific enemies override what they need.
-export abstract class Enemy extends Entity {
+export abstract class Enemy extends Entity implements Caster {
   state: EnemyState;
   // Set true the first tick after isDying so GameRoom runs the room-clear check
   // once per death.
@@ -137,6 +137,18 @@ export abstract class Enemy extends Entity {
    *  hit sources; contactHitSource sets it directly. */
   get elevationReach(): number {
     return this.cruiseHeight > 0 ? ELEVATION_ALL : Elevation.GROUND;
+  }
+
+  // ── Caster interface ──────────────────────────────────────────────────────────
+  // x / y / emitHitSource / spawnProjectile / scaleAttack / buildAttack all come
+  // from Entity; an enemy only adds its team mask and facing so it can run a Spell
+  // (a boss moveset, or a rank-and-file enemy that wields a weapon). GameRoom drains
+  // the buffered hit sources and stamps owner/elevation (see GameRoom.tick step 3).
+  get attackAffects(): number {
+    return ENEMY_ATTACK_AFFECTS;
+  }
+  get facing(): Facing {
+    return this.state.facing;
   }
 
   /** This enemy's id, read from the concrete subclass's `static readonly type`. */
@@ -248,7 +260,7 @@ export abstract class Enemy extends Entity {
    *  extent is the interior box grown by one tile, so a knockback can still blast a
    *  creature into the wall ring / a doorway (the intended combat feel) — it just
    *  can't leave the room entirely. */
-  private containToHome(): void {
+  protected containToHome(): void {
     const b = this.homeBounds;
     if (!b) return;
     const m = TILE_SIZE;

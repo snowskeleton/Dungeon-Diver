@@ -1,4 +1,4 @@
-import { TILE_PROPS, TileId, Facing, ENTITY_RADIUS, SERVER_TICK_MS, ENEMY_ATTACK_AFFECTS } from "shared";
+import { TILE_PROPS, TileId, Facing, ENTITY_RADIUS, SERVER_TICK_MS } from "shared";
 import { Enemy, EnemyClass } from "./Enemy";
 import { PlayerState } from "../schema/PlayerState";
 import { Spell, SpellCaster, DashCaster, SummonCaster, AimPoint } from "../spells";
@@ -124,14 +124,9 @@ export abstract class Boss extends Enemy implements DashCaster, SummonCaster {
     return this.preferredRange;
   }
 
-  // ── Caster / DashCaster interface ────────────────────────────────────────────
-  // x / y come from Entity; emitHitSource / spawnProjectile come from Entity.
-  get attackAffects(): number {
-    return ENEMY_ATTACK_AFFECTS;
-  }
-  get facing(): Facing {
-    return this.state.facing;
-  }
+  // ── DashCaster interface ─────────────────────────────────────────────────────
+  // attackAffects / facing / x / y / emitHitSource / spawnProjectile all come from
+  // Enemy (which is a Caster); Boss only adds the dash + summon movement surface.
 
   /** One dash step: advance along (dirX, dirY), reflecting off any wall/arena edge
    *  hit this step. Collision + reflection are the mover's job here, so the dash
