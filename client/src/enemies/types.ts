@@ -54,4 +54,8 @@ export interface ClientEnemyDef {
    *  `channeling`. The held swing IS this enemy's telegraph, so it opts OUT of the
    *  generic red wind-up tint. Mirrors the server ArmedEnemy's weaponId. */
   heldWeapon?: { weaponId: WeaponId };
+  /** If set, this enemy emits a lingering damage CLOUD while channelling (the
+   *  smushroom). EnemyEntity draws a placeholder translucent circle of this radius,
+   *  fading full→0 over the cloud's life, keyed off the synced channeling flag. */
+  cloudAura?: { radius: number };
 }

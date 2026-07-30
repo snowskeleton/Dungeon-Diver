@@ -419,9 +419,21 @@ export abstract class Enemy extends Entity implements Caster {
       // Corpse must not block (or be shoved by) other entities while it
       // plays its 5s death animation; it still respects walls.
       this.physics.setEntityDead(this.body);
+      this.onDeath();
     }
     return dealt;
   }
+
+  /** Death-triggered hook, called once the tick this enemy's HP hits 0. Default
+   *  no-op; the smushroom overrides it to release its parting cloud. A death effect
+   *  that needs to keep running past this frame does so via {@link deathTick}. */
+  protected onDeath(): void {}
+
+  /** Called by GameRoom each tick an enemy is DYING (its normal AI tick() is
+   *  skipped). Default no-op; an enemy with a lingering death effect (the
+   *  smushroom's cloud) overrides it to keep that effect running while the corpse
+   *  lingers. */
+  deathTick(_dtMs: number): void {}
 
   // Standard enemy AI: patrol until a player is in aggro range, chase, and melee
   // in attack range. Bosses override this entirely. This drives only movement and

@@ -211,6 +211,41 @@ export function whirl(o: {
   });
 }
 
+// A lingering cloud: a stationary damaging AOE centred ON the caster that hangs for
+// `durationMs`, re-hitting anyone still inside every `hitCooldownMs` (the smushroom's
+// gas). Unlike novaBurst (a single pop) this ticks damage for its whole life. It is
+// deliberately caster-anchored, not a detached entity: the smushroom's body stays put
+// while it lingers (and, on death, the corpse stays too), then it fades. The 0–full /
+// fade-out timing is a client visual; the damaging radius holds constant here.
+export function lingeringCloud(o: {
+  id: string; radius: number; damage: number; durationMs: number;
+  hitCooldownMs: number; cooldownMs: number; windUpMs?: number;
+}): Spell {
+  const gate = new RehitGate(o.hitCooldownMs);
+  return new Spell({
+    id: o.id,
+    windUpMs: o.windUpMs ?? 0,
+    activeMs: o.durationMs,
+    recoverMs: 0,
+    cooldownMs: o.cooldownMs,
+    range: 0,
+    aimLockMs: 0,
+    knockbackImmuneWhileActive: true, // gas isn't shoved off; also keeps it uninterruptible
+    effect: {
+      onActivate: () => gate.reset(),
+      onActiveTick: (caster, dtMs) => {
+        gate.tick(dtMs);
+        caster.emitHitSource({
+          shape: { kind: "circle", cx: caster.x, cy: caster.y, r: o.radius },
+          affects: caster.attackAffects,
+          attack: { damage: o.damage, knockback: 0, sourceX: caster.x, sourceY: caster.y },
+          claim: (id) => gate.claim(id),
+        });
+      },
+    },
+  });
+}
+
 // A nova burst: the caster charges (the wind-up tell), then detonates a stationary
 // radial blast centred on itself — one hit per target over a short strike window,
 // with knockback (the Tengu's Storm Nova lightning explosion). Unlike whirl (a

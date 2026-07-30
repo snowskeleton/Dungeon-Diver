@@ -26,6 +26,10 @@ export class EnemyEntity extends Entity implements DebugDrawable {
   // machinery (see ClientEnemyDef.heldWeapon). Undefined for unarmed enemies.
   private heldWeapon?: WeaponVisual;
   private wasChanneling = false;
+  // Smushroom (cloudAura): a placeholder gas circle + how long it's been channelling
+  // (ms), so it can fade full→0 over the cloud's life.
+  private cloudGfx?: Phaser.GameObjects.Arc;
+  private cloudMs = 0;
   private readonly enemyType: string;
   private readonly aggroRadius: number;
   private readonly attackRadius: number;
@@ -178,6 +182,10 @@ export class EnemyEntity extends Entity implements DebugDrawable {
       this.updateShadow();
     }
 
+    // The gas cloud renders even while the smushroom is dying (its death cloud
+    // outlives the fading corpse), so it's driven outside the charSprite block.
+    this.updateCloud();
+
     if (!this.dying) {
       this.updateHpBar(this.currentHp);
       // Float the HP bar up with the lifted sprite so it stays readable overhead.
@@ -229,6 +237,29 @@ export class EnemyEntity extends Entity implements DebugDrawable {
     if (struck) this.heldWeapon.playAttack(x, y, this.facing);
     else if (this.telegraphing) this.heldWeapon.showWindup(x, y, this.facing);
     else this.heldWeapon.sync(x, y, this.facing);
+  }
+
+  // The smushroom's lingering gas — a PLACEHOLDER translucent circle while it
+  // channels, holding full for ~2s then fading out by ~6s (matching the server
+  // cloud's life). Anchored to the ground point, so a moving smushroom drags it.
+  private updateCloud() {
+    const aura = this.visual?.cloudAura;
+    if (!aura) return;
+    if (this.channeling) {
+      this.cloudMs += this.scene.game.loop.delta;
+      if (!this.cloudGfx) {
+        this.cloudGfx = this.scene.add.circle(this.sprite.x, this.sprite.y, aura.radius, 0x88cc44, 0.38);
+        this.cloudGfx.setDepth(1);
+      }
+      this.cloudGfx.setPosition(this.sprite.x, this.sprite.y);
+      const t = this.cloudMs;
+      const alpha = t < 2000 ? 0.38 : Math.max(0, 0.38 * (1 - (t - 2000) / 4000));
+      this.cloudGfx.setFillStyle(0x88cc44, alpha);
+      this.cloudGfx.setVisible(alpha > 0.01);
+    } else {
+      this.cloudMs = 0;
+      this.cloudGfx?.setVisible(false);
+    }
   }
 
   // A boss winding up an attack pulses bright red — the readable "tell" a player
@@ -300,6 +331,7 @@ export class EnemyEntity extends Entity implements DebugDrawable {
     this.scene.tweens.killTweensOf(this);
     this.shadow?.destroy();
     this.heldWeapon?.destroy();
+    this.cloudGfx?.destroy();
     super.destroy();
   }
 }

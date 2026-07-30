@@ -733,7 +733,9 @@ export class GameRoom extends Room<GameState> {
     // 2. Enemy AI — per-enemy visibility: a player is hidden only from enemies
     //    in rooms that don't touch the passageway the player is currently in.
     this.enemies.forEach((enemy, id) => {
-      if (enemy.isDying) return;
+      // A dying enemy skips its AI, but may still run a lingering death effect (the
+      // smushroom's parting cloud) while the corpse lingers.
+      if (enemy.isDying) { enemy.deathTick(dtMs); return; }
       if (!enemy.spawned) return;
       // Freshly revealed: hold still in the spawn puff for a beat before acting.
       if (enemy.emerging) { enemy.advanceEmerge(dtMs); return; }
