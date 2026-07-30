@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { Facing } from "shared";
+import { Facing, WeaponId } from "shared";
 
 /** Which clip to play right now, and whether to mirror it. */
 export interface EnemyClip {
@@ -48,4 +48,10 @@ export interface ClientEnemyDef {
    *  purely from isDying/facing; bosses read abilityId/telegraph/channeling to swap
    *  to a special clip, and flying bosses read airHeight for the dive frame. */
   resolve: (state: EnemyRenderState) => EnemyClip;
+  /** If set, this enemy WIELDS a weapon: EnemyEntity draws it held in hand (reusing
+   *  the player's weapon-visual machinery, keyed by this catalog weapon id) and
+   *  drives it off the synced cast phase — cocked back during `telegraph`, swung on
+   *  `channeling`. The held swing IS this enemy's telegraph, so it opts OUT of the
+   *  generic red wind-up tint. Mirrors the server ArmedEnemy's weaponId. */
+  heldWeapon?: { weaponId: WeaponId };
 }

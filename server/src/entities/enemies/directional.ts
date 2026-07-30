@@ -16,15 +16,15 @@ export class Fang extends DirectionalEnemy { static readonly type: EnemyType = "
 
 export class SwordBeast extends ArmedEnemy {
   static readonly type: EnemyType = "sword-beast";
-  protected get weaponId(): WeaponId { return "broadsword"; }
+  protected get weaponId(): WeaponId { return "beast-sword"; }
 }
 export class AxeBeast extends ArmedEnemy {
   static readonly type: EnemyType = "axe-beast";
-  protected get weaponId(): WeaponId { return "war-axe"; }
+  protected get weaponId(): WeaponId { return "beast-axe"; }
 }
 export class MaceBeast extends ArmedEnemy {
   static readonly type: EnemyType = "mace-beast";
-  protected get weaponId(): WeaponId { return "club"; }
+  protected get weaponId(): WeaponId { return "beast-mace"; }
 }
 export class ArmorLancer extends ArmedEnemy {
   static readonly type: EnemyType = "armor-lancer";

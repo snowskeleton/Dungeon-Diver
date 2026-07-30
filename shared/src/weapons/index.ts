@@ -19,6 +19,7 @@ import { CrystalBlade }   from "./swords/crystal-blade";
 import { InfernoBlade }   from "./swords/inferno-blade";
 import { ShadowBlade }    from "./swords/shadow-blade";
 import { LightningBlade } from "./swords/lightning-blade";
+import { BeastSword }     from "./swords/beast-sword";
 
 // ─── Axes ─────────────────────────────────────────────────────────────────────
 import { BattleAxe } from "./axes/battle-axe";
@@ -27,6 +28,7 @@ import { MoonAxe }   from "./axes/moon-axe";
 import { DoubleAxe } from "./axes/double-axe";
 import { WarAxe }    from "./axes/war-axe";
 import { DarkAxe }   from "./axes/dark-axe";
+import { BeastAxe }  from "./axes/beast-axe";
 
 // ─── Spears ───────────────────────────────────────────────────────────────────
 import { Javelin } from "./spears/javelin";
@@ -45,6 +47,7 @@ import { MorningStar } from "./maces/morning-star";
 import { Flail }       from "./maces/flail";
 import { Club }        from "./maces/club";
 import { OrbMace }     from "./maces/orb-mace";
+import { BeastMace }   from "./maces/beast-mace";
 
 // ─── Daggers ──────────────────────────────────────────────────────────────────
 import { Kris }         from "./daggers/kris";
@@ -84,10 +87,11 @@ export const WEAPONS: WeaponClass[] = [
   ShortSword, Broadsword, Flamberge, OrnateSword, CrimsonBlade, FrostBlade,
   GoldBlade, MysticBlade, WoodenSword, Sabre, GildedSword, Stiletto,
   SerpentBlade, TealBlade, CrystalBlade, InfernoBlade, ShadowBlade, LightningBlade,
-  BattleAxe, Hatchet, MoonAxe, DoubleAxe, WarAxe, DarkAxe,
+  BeastSword,
+  BattleAxe, Hatchet, MoonAxe, DoubleAxe, WarAxe, DarkAxe, BeastAxe,
   Javelin, Lance, Spear, Trident,
   BlueRapier, SilverRapier, TealRapier,
-  StarMace, MorningStar, Flail, Club, OrbMace,
+  StarMace, MorningStar, Flail, Club, OrbMace, BeastMace,
   Kris, CurvedDagger,
   WarHammer,
   Shortbow, Longbow,
@@ -99,11 +103,11 @@ export const WEAPONS: WeaponClass[] = [
 export const WEAPON_REGISTRY: Record<string, Weapon> =
   Object.fromEntries(WEAPONS.map((W) => { const w = new W(); return [w.id, w]; }));
 
-export type SwordId     = "short-sword" | "broadsword" | "flamberge" | "ornate-sword" | "crimson-blade" | "frost-blade" | "gold-blade" | "mystic-blade" | "wood-sword" | "sabre" | "gilded-sword" | "stiletto" | "serpent-blade" | "teal-blade" | "crystal-blade" | "inferno-blade" | "shadow-blade" | "lightning-blade";
-export type AxeId       = "battle-axe" | "hatchet" | "moon-axe" | "double-axe" | "war-axe" | "dark-axe";
+export type SwordId     = "short-sword" | "broadsword" | "flamberge" | "ornate-sword" | "crimson-blade" | "frost-blade" | "gold-blade" | "mystic-blade" | "wood-sword" | "sabre" | "gilded-sword" | "stiletto" | "serpent-blade" | "teal-blade" | "crystal-blade" | "inferno-blade" | "shadow-blade" | "lightning-blade" | "beast-sword";
+export type AxeId       = "battle-axe" | "hatchet" | "moon-axe" | "double-axe" | "war-axe" | "dark-axe" | "beast-axe";
 export type SpearId     = "javelin" | "lance" | "spear" | "trident";
 export type RapierId    = "blue-rapier" | "silver-rapier" | "teal-rapier";
-export type MaceId      = "star-mace" | "morning-star" | "flail" | "club" | "orb-mace";
+export type MaceId      = "star-mace" | "morning-star" | "flail" | "club" | "orb-mace" | "beast-mace";
 export type DaggerId    = "kris" | "curved-dagger";
 export type HammerId    = "war-hammer";
 export type BowId       = "shortbow" | "longbow";

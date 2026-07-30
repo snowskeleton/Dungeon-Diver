@@ -1,6 +1,7 @@
 import Phaser from "phaser";
-import { AiState, Facing, EnemyType, EnemyStateView, ENEMY_HURT_BOUNDS } from "shared";
+import { AiState, Facing, EnemyType, EnemyStateView, ENEMY_HURT_BOUNDS, WEAPON_REGISTRY } from "shared";
 import { Entity } from "./Entity";
+import { WeaponVisual, createWeaponVisual } from "./WeaponVisuals";
 import { CLIENT_ENEMY_REGISTRY, ClientEnemyDef } from "../enemies";
 import { DebugDrawable, DebugShape, DEBUG_COLORS, hurtBoxShape } from "../debug/DebugDraw";
 
@@ -21,6 +22,10 @@ export class EnemyEntity extends Entity implements DebugDrawable {
   private airHeight = 0;
   private shadow?: Phaser.GameObjects.Ellipse;
   private currentEnemyAnim?: string;
+  // An armed enemy's weapon, held in hand and swung — reuses the player's weapon
+  // machinery (see ClientEnemyDef.heldWeapon). Undefined for unarmed enemies.
+  private heldWeapon?: WeaponVisual;
+  private wasChanneling = false;
   private readonly enemyType: string;
   private readonly aggroRadius: number;
   private readonly attackRadius: number;
@@ -52,6 +57,14 @@ export class EnemyEntity extends Entity implements DebugDrawable {
     if (this.visual) {
       this.useRawSprite(this.visual.textureKey);
       this.charSprite!.setDisplaySize(this.visual.displayW, this.visual.displayH);
+    }
+    // An armed enemy holds its weapon from the moment it spawns, reusing the very
+    // factory the player uses (keyed by the catalog weapon id). fxType/rangedStyle
+    // come straight from the weapon template, so a beast swings the same way a
+    // player would with that weapon.
+    if (this.visual?.heldWeapon) {
+      const w = WEAPON_REGISTRY[this.visual.heldWeapon.weaponId];
+      this.heldWeapon = createWeaponVisual(scene, w.fxType, w.id, w.rangedStyle, x, y, this.facing);
     }
     this.sprite.setSize(20, 20);
   }
@@ -161,6 +174,7 @@ export class EnemyEntity extends Entity implements DebugDrawable {
       this.charSprite.y = this.sprite.y - this.airHeight - this.deathLift;
       this.playEnemyAnim();
       this.updateTelegraph();
+      this.updateHeldWeapon();
       this.updateShadow();
     }
 
@@ -198,10 +212,30 @@ export class EnemyEntity extends Entity implements DebugDrawable {
     this.shadow.setPosition(this.sprite.x, this.sprite.y + this.visual.displayH * 0.2);
   }
 
+  // Drive the held weapon (armed enemies only): rest it in hand, cock it back
+  // during the wind-up telegraph, and swing it the frame the strike fires
+  // (channeling rising edge). The swung blade is this enemy's OWN telegraph — which
+  // is why updateTelegraph skips the generic red tint when a weapon is held.
+  private updateHeldWeapon() {
+    if (!this.heldWeapon || !this.charSprite) return;
+    const x = this.charSprite.x;
+    const y = this.charSprite.y;
+    if (this.dying) {
+      this.heldWeapon.setVisible?.(false);
+      return;
+    }
+    const struck = this.channeling && !this.wasChanneling;
+    this.wasChanneling = this.channeling;
+    if (struck) this.heldWeapon.playAttack(x, y, this.facing);
+    else if (this.telegraphing) this.heldWeapon.showWindup(x, y, this.facing);
+    else this.heldWeapon.sync(x, y, this.facing);
+  }
+
   // A boss winding up an attack pulses bright red — the readable "tell" a player
-  // reacts to (docs/bosses.md). Cleared the moment the strike fires.
+  // reacts to (docs/bosses.md). An armed enemy tells with its cocked-back weapon
+  // instead (see updateHeldWeapon), so it opts out of the tint entirely.
   private updateTelegraph() {
-    if (!this.charSprite) return;
+    if (!this.charSprite || this.heldWeapon) return;
     if (this.telegraphing && !this.dying) {
       this.telegraphT += 0.2;
       const pulse = 0.5 + 0.5 * Math.sin(this.telegraphT * Math.PI); // 0→1→0
@@ -265,6 +299,7 @@ export class EnemyEntity extends Entity implements DebugDrawable {
     if (this.charSprite) this.scene.tweens.killTweensOf(this.charSprite);
     this.scene.tweens.killTweensOf(this);
     this.shadow?.destroy();
+    this.heldWeapon?.destroy();
     super.destroy();
   }
 }

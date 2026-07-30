@@ -47,6 +47,16 @@ describe("class weapon access", () => {
   it("treats an unknown weapon id as unusable, never a crash", () => {
     expect(canClassUseWeapon("knight", "not-a-weapon")).toBe(false);
   });
+
+  it("puts the beast weapons in the shared catalog, rollable by the party", () => {
+    // The beasts wield their own weapons, but those live in the main WEAPONS
+    // catalog (not an enemy-only pool), so anyone who can use the category may roll
+    // one. sword/axe/mace are shared melee categories every class can wield.
+    const beasts: WeaponId[] = ["beast-sword", "beast-axe", "beast-mace"];
+    for (const id of beasts) expect(WEAPON_REGISTRY[id], id).toBeDefined();
+    const rollable = partyRollableWeaponIds(CLASSES);
+    for (const id of beasts) expect(rollable, id).toContain(id);
+  });
 });
 
 describe("first-roll (unique) categories", () => {
