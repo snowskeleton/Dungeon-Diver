@@ -7,7 +7,7 @@ import {
   SERVER_TICK_MS,
   WEAPON_REGISTRY,
   getCharacter,
-  CHARACTER_TYPES,
+  PLAYER_SKINS,
   RoomMetadata,
   isRoomCode,
   MAX_ROOM_NAME_LEN,
@@ -167,7 +167,7 @@ describe("the lobby", () => {
   it("falls back to the default skin for an unknown characterType", async () => {
     const h = await createRoom();
     h.join("s0", { characterType: "not-a-skin" });
-    expect(CHARACTER_TYPES).toContain(h.state.players.get("s0")!.characterType);
+    expect(PLAYER_SKINS).toContain(h.state.players.get("s0")!.characterType);
     h.dispose();
   });
 
@@ -183,7 +183,7 @@ describe("the lobby", () => {
 
     const p = h.state.players.get("s0")!;
     expect(p.characterClass).toBe("knight");
-    expect(CHARACTER_TYPES).toContain(p.characterType);
+    expect(PLAYER_SKINS).toContain(p.characterType);
     h.dispose();
   });
 

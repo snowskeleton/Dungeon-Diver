@@ -1,5 +1,4 @@
-import { CHARACTER_CLASSES, getCharacter, CharacterClass, CharacterType, firstRollCategories } from "shared";
-import { CLIENT_CHARACTER_VISUAL_REGISTRY } from "../characters";
+import { CHARACTER_CLASSES, getCharacter, CharacterClass, CharacterType, PLAYER_SKINS, firstRollCategories } from "shared";
 import { addStyle, button, el, menuPanel, selectOne } from "./menuDom";
 
 export interface CharacterChoice {
@@ -30,11 +29,9 @@ const CSS = `
 `;
 
 const CLASS_IDS: CharacterClass[] = CHARACTER_CLASSES;
-// skeleton + skeleton-mage stay in the visual registry (their sheets are reused
-// for the enemy versions) but are not player-selectable.
-const NON_PLAYER_SKINS: ReadonlySet<CharacterType> = new Set(["skeleton", "skeleton-mage"]);
-const SKIN_IDS = (Object.keys(CLIENT_CHARACTER_VISUAL_REGISTRY) as CharacterType[])
-  .filter((id) => !NON_PLAYER_SKINS.has(id));
+// Every playable skin — the non-playable humanoid sheets (skeleton, skeleton-mage)
+// live in HUMANOID_SKINS as enemies, not here, so no filter is needed.
+const SKIN_IDS: CharacterType[] = [...PLAYER_SKINS];
 
 const skinLabel = (id: CharacterType) =>
   id.split("-").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");

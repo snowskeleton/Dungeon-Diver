@@ -2,25 +2,38 @@
 // no import cycle with the weapons package (which never imports characters).
 import type { WeaponCategory } from "../weapons/base";
 
-/** Every humanoid skin, as a VALUE — the union below is derived from it, so the
- *  two can never drift. A runtime list is needed because the skin id arrives from
- *  a client as an untrusted string and has to be validated, not cast (see
- *  resolveCharacterType). */
-// Playable humanoid skins. skeleton + skeleton-mage remain here because their
-// sheets are reused for the ENEMY versions of those creatures (the humanoid enemy
-// path shares this sprite infra); they're excluded from the player picker (see
-// CharacterPicker.PLAYER_SKINS). Guy Blue, Gal Green, The Fool, and the reptiles
-// were removed from the roster.
-export const CHARACTER_TYPES = [
+/** Every humanoid spritesheet, as a VALUE — the identity of a 15×4 humanoid sheet
+ *  (its texture key / PNG name), NOT "a playable character". Players AND the
+ *  humanoid enemies (skeleton, skeleton-mage) are drawn from these sheets, so the
+ *  sheet identity lives above the player concept: {@link PLAYER_SKINS} is the
+ *  playable SUBSET. The humanoid sprite infra (client `HumanoidSprites`) keys off
+ *  `HumanoidSkin`; only the player-facing paths narrow to `CharacterType`.
+ *
+ *  A runtime list is needed because a chosen skin arrives from a client as an
+ *  untrusted string and has to be validated, not cast (see resolveCharacterType). */
+export const HUMANOID_SKINS = [
   "guy",
   "gal",
-  "skeleton",
-  "skeleton-mage",
   "colt",
   "gigante",
+  "skeleton",
+  "skeleton-mage",
 ] as const;
 
-export type CharacterType = typeof CHARACTER_TYPES[number];
+export type HumanoidSkin = typeof HUMANOID_SKINS[number];
+
+/** The PLAYABLE humanoid skins — the subset of {@link HUMANOID_SKINS} a player may
+ *  pick. skeleton + skeleton-mage are deliberately absent: they're enemies (drawn
+ *  from the same sheets), not skins. Guy Blue, Gal Green, The Fool, and the
+ *  reptiles were removed from the roster earlier. */
+export const PLAYER_SKINS = [
+  "guy",
+  "gal",
+  "colt",
+  "gigante",
+] as const satisfies readonly HumanoidSkin[];
+
+export type CharacterType = typeof PLAYER_SKINS[number];
 export type CharacterClass = "knight" | "rogue" | "ranger" | "mage";
 
 /**

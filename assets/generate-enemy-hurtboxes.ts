@@ -19,7 +19,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { PNG } from "pngjs";
-import { EnemyType, CharacterType, CHARACTER_TYPES as SKIN_IDS } from "shared";
+import { EnemyType, CharacterType, PLAYER_SKINS as SKIN_IDS } from "shared";
 import { ENEMY_SPRITE_GEOMETRY, SpriteGeometry } from "../client/src/enemies/spriteGeometry";
 
 const ASSETS = __dirname;
@@ -57,9 +57,11 @@ function frameBounds(png: PNG, geo: SpriteGeometry, frame: number): Bounds | nul
 }
 
 // The humanoid skins all share the 15×4 @32 sheet layout (HumanoidSprites),
-// rendered at one tile. They're measured as a UNION across every skin: a player's
-// damageable region must not depend on which costume they picked. The skin list
-// comes straight from CHARACTER_TYPES so it can't drift from the playable roster.
+// rendered at one tile. They're measured as a UNION across every PLAYABLE skin: a
+// player's damageable region must not depend on which costume they picked. The list
+// comes straight from PLAYER_SKINS so it can't drift from the playable roster.
+// (Humanoid ENEMIES — skeleton, skeleton-mage — are measured via their own
+// ENEMY_SPRITE_GEOMETRY entries, not here.)
 const HUMANOID_CELL = 32;
 const HUMANOID_DISPLAY = 32;
 const CHARACTER_TYPES: CharacterType[] = [...SKIN_IDS];

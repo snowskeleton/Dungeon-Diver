@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { Facing, CharacterType } from "shared";
+import { Facing, HumanoidSkin } from "shared";
 import { CharacterAction, CharacterSpriteConfig } from "./Entity";
 import { defineClips } from "./SpriteClips";
 
@@ -16,18 +16,18 @@ const frameRange = (row: number, startCol: number, count: number): number[] =>
 
 const ROW: Record<Facing, number> = { up: 0, right: 1, down: 2, left: 3 };
 
-export function humanoidAnimKey(type: CharacterType, action: string, facing: Facing): string {
+export function humanoidAnimKey(type: HumanoidSkin, action: string, facing: Facing): string {
   return `${type}-${action}-${facing}`;
 }
 
-export function preloadHumanoid(scene: Phaser.Scene, type: CharacterType) {
+export function preloadHumanoid(scene: Phaser.Scene, type: HumanoidSkin) {
   scene.load.spritesheet(type, `/sprites/${type}.png`, {
     frameWidth: FRAME_SIZE,
     frameHeight: FRAME_SIZE,
   });
 }
 
-export function defineHumanoidAnimations(scene: Phaser.Scene, type: CharacterType) {
+export function defineHumanoidAnimations(scene: Phaser.Scene, type: HumanoidSkin) {
   const facings: Facing[] = ["up", "right", "down", "left"];
   for (const facing of facings) {
     const r = ROW[facing];
@@ -40,7 +40,7 @@ export function defineHumanoidAnimations(scene: Phaser.Scene, type: CharacterTyp
   }
 }
 
-export function makeHumanoidSpriteConfig(type: CharacterType): CharacterSpriteConfig {
+export function makeHumanoidSpriteConfig(type: HumanoidSkin): CharacterSpriteConfig {
   return {
     textureKey: type,
     usesFlipX: false,

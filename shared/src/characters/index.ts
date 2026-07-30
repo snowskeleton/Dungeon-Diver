@@ -1,4 +1,4 @@
-import { Character, CharacterClass, CharacterType, CHARACTER_TYPES } from "./base";
+import { Character, CharacterClass, CharacterType, PLAYER_SKINS } from "./base";
 import { Knight } from "./Knight";
 import { Rogue } from "./Rogue";
 import { Ranger } from "./Ranger";
@@ -49,7 +49,7 @@ export function resolveCharacterClass(id: string | undefined): CharacterClass {
  *  skin only means the client has no spritesheet to draw — but validated for the
  *  same reason: nothing a client sends should reach the game as-is. */
 export function resolveCharacterType(id: string | undefined): CharacterType {
-  return id !== undefined && (CHARACTER_TYPES as readonly string[]).includes(id)
+  return id !== undefined && (PLAYER_SKINS as readonly string[]).includes(id)
     ? (id as CharacterType)
     : "guy";
 }

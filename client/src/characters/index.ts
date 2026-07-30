@@ -19,11 +19,11 @@ const humanoid = (type: CharacterType): ClientCharacterVisualDef => ({
   spriteConfig: makeHumanoidSpriteConfig(type),
 });
 
+// The PLAYER skins only. skeleton + skeleton-mage are humanoid ENEMIES now (drawn
+// from the same sheets via HumanoidSprites, wired through CLIENT_ENEMY_REGISTRY).
 export const CLIENT_CHARACTER_VISUAL_REGISTRY: Record<CharacterType, ClientCharacterVisualDef> = {
   guy: humanoid("guy"),
   gal: humanoid("gal"),
-  skeleton: humanoid("skeleton"),
-  "skeleton-mage": humanoid("skeleton-mage"),
   colt: humanoid("colt"),
   gigante: humanoid("gigante"),
 };
