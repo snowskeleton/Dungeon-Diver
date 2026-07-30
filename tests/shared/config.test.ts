@@ -189,7 +189,7 @@ describe("debug config", () => {
   });
 
   it("survives a JSON round trip, which is how it reaches the client", () => {
-    const original = cfg({ enabled: true, roomType: "shrine", enemyTypes: ["bat"], startingUpgrades: ["iron-skin"] });
+    const original = cfg({ enabled: true, roomType: "shrine", enemyTypes: ["eye-bat"], startingUpgrades: ["iron-skin"] });
     expect(JSON.parse(JSON.stringify(original))).toEqual(original);
   });
 });

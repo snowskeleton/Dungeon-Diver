@@ -104,10 +104,10 @@ export const DEBUG_PRESETS: Preset<DebugConfig>[] = [
     values: { ...DEFAULT_DEBUG_CONFIG, enabled: true, gridCols: 1, gridRows: 1, roomType: "combat" },
   },
   {
-    label: "Bat arena",
+    label: "Eye-bat arena",
     values: {
       ...DEFAULT_DEBUG_CONFIG, enabled: true, gridCols: 1, gridRows: 1,
-      roomType: "combat", enemyTypes: ["bat"], enemiesPerRoom: 8,
+      roomType: "combat", enemyTypes: ["eye-bat"], enemiesPerRoom: 8,
     },
   },
   {

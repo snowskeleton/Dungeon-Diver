@@ -1,15 +1,12 @@
 import { EnemyType } from "shared";
 import { ClientEnemyDef } from "./types";
 import { gooGreen, gooBlue, gooGold } from "./goos";
-import { bat, brownBat, eyeBat, goldEye } from "./bats";
-import { floatEye, smushroom, floatSkullDef, floatSkullTeal, floatSkullPink } from "./floaters";
+import { eyeBat } from "./bats";
+import { smushroom } from "./floaters";
+import { spider, frogFlower } from "./critters";
 import {
-  rat, spider, frogFlower, frogFlowerBlack,
-  swarm1, swarm2, swarm3,
-} from "./critters";
-import {
-  bones, bonesBlader, kultist, armorLancer,
-  beast, axeBeast, maceBeast, swordBeast, fang, hoodFang,
+  bones, armorLancer,
+  axeBeast, maceBeast, swordBeast, fang,
 } from "./directional";
 import { turtleDragon } from "./bosses/TurtleDragon";
 import { wyvern, wyvernGreen, wyvernGrey } from "./bosses/Wyvern";
@@ -29,40 +26,21 @@ export const CLIENT_ENEMY_REGISTRY: Record<EnemyType, ClientEnemyDef> = {
   "goo-blue": gooBlue,
   "goo-gold": gooGold,
 
-  "bat": bat,
-  "brown-bat": brownBat,
   "eye-bat": eyeBat,
-  "gold-eye": goldEye,
 
   "smushroom": smushroom,
-  "float-eye": floatEye,
-
-  "swarm-1": swarm1,
-  "swarm-2": swarm2,
-  "swarm-3": swarm3,
-
-  "rat": rat,
 
   // ── Horizontal, multi-row sheets ─────────────────────────────────────────
   "spider": spider,
   "frog-flower": frogFlower,
-  "frog-flower-black": frogFlowerBlack,
-
-  "float-skull": floatSkullDef,
-  "float-skull-teal": floatSkullTeal,
-  "float-skull-pink": floatSkullPink,
 
   // ── Directional ──────────────────────────────────────────────────────────
   "bones": bones,
-  "bones-blader": bonesBlader,
-  "kultist": kultist,
   "armor-lancer": armorLancer,
-  "beast": beast,
   "axe-beast": axeBeast,
   "mace-beast": maceBeast,
   "sword-beast": swordBeast,
   "fang": fang,
-  "hood-fang": hoodFang,
 
   // ── Bosses ───────────────────────────────────────────────────────────────
   "turtle-dragon": turtleDragon,

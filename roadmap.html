@@ -959,12 +959,25 @@
             <li><span class="tm">—</span> Enemy pool shifts by floor range within the dungeon theme</li>
             <li><span class="tm">—</span> <strong>Weapon scarcity pass</strong> (27 July playtest) — target ~1&ndash;2 weapon-swap options per floor (maybe per party), an inventory cap (1 or 2), and higher-floor weapons rolling stronger. Shop-rarity + no-weapons-from-room-clears already landed (<code>65e40c6</code>); this is the rest</li>
             <li><span class="tm">—</span> <strong>Armor / trinket slots</strong> (Armor / Helmet / Necklace / Ring) — stat-only, no art; gives gold a sink and dilutes weapon-heavy loot. Effect list being drafted</li>
-            <li><span class="tm">—</span> <strong>Status effects as weapon buffs</strong> — poison, slow, confusion, frozen, petrified, with interactions (frozen ↔ fire/blunt; petrified = long + tanky)</li>
+            <li><span class="tm">—</span> <strong>Status effects as weapon buffs</strong> — poison, slow, confusion, frozen, petrified, with interactions (frozen ↔ fire/blunt; petrified = long + tanky). <em>The humanoid sheets already ship unused <strong>Burned</strong> (col 13), <strong>Bleeding</strong> (col 14) and a full <strong>Stunned</strong> (col 12) pose for every skin — wiring these is most of the status-effect visuals; see <code>docs/enemy-overhaul-plan.md</code> §4.</em></li>
             <li><span class="tm">—</span> <strong>New weapons:</strong> blowgun (mid-range ranged, poison carrier), glaive (arc-swing melee). Both from the 27 July session</li>
             <li><span class="tm">—</span> <strong>Companion / charm</strong> (parked) — a throwable one-use trinket that charms an enemy to follow and fight for you; aggro is already built, the player-vs-pet priority is the unsolved part. Floated as a possible Druid (Mage branch) — but no class branches yet</li>
           </ul>
+
+          <div class="phase-milestone"><strong>Enemy overhaul</strong> &mdash; fewer, less samey, attacks that read. Full plan in <code>docs/enemy-overhaul-plan.md</code>. Half the rabble pool is cut (swarms, rat, kultist, float-skulls/eye, plain bats, plain beast, gold eyebat, bones-blader, hood-fang, black frog-flower); the survivors get real telegraphed attacks via the <code>Spell</code> system instead of passive contact-touch.</div>
+          <ul class="task-list">
+            <li><span class="tm">&mdash;</span> <strong>Roster cut</strong> &mdash; 30 ids down to ~15; compiler-guided deletion across the <code>EnemyType</code> union, <code>REGULAR_ENEMIES</code>, and the client visual registry</li>
+            <li><span class="tm">&mdash;</span> <strong>Smushroom</strong> &mdash; AOE cloud it walks you into and also releases on death; <em>cloud is its only damage</em> (no touch). Cloud lingers ~2s then fades out by 6s, ticking damage every 0.5s to anyone still inside</li>
+            <li><span class="tm">&mdash;</span> <strong>Frog-flower (green only)</strong> &mdash; hops to move; crouch-telegraph then leaps onto the player; damage only on the slam. Reuses existing art</li>
+            <li><span class="tm">&mdash;</span> <strong>Eye-bat (dark only)</strong> &mdash; spiraling movement + a dive attack (<code>swoop</code> builder); damage only on the dive</li>
+            <li><span class="tm">&mdash;</span> <strong>Weapon beasts (sword/axe/mace)</strong> &mdash; real wind-up swing using the Simple Slash FX strip, not passive contact</li>
+            <li><span class="tm">&mdash;</span> <strong>Armor-lancer</strong> &mdash; wields the <code>spears/lance</code> weapon with a thrust wind-up</li>
+            <li><span class="tm">&mdash;</span> <strong>Skeleton + Skeleton-mage repurposed from player skins into enemies</strong> &mdash; skeleton swings a broadsword, mage shoots a staff bolt. First humanoid-sheet enemies</li>
+            <li><span class="tm">&mdash;</span> <strong>Remove player skins</strong> Guy Blue, Gal Green, The Fool, and all reptiles (reptile, kobold, scaleless) from <code>CHARACTER_TYPES</code></li>
+          </ul>
+
           <div class="phase-art-note">
-            <strong>Mostly landed early:</strong> the enemy roster and multiple bosses came in with the SOA2 pack. Remaining work here is the last room variants, floor-scaled enemy pools, and deeper upgrades — not art.
+            <strong>Mostly landed early:</strong> the enemy roster and multiple bosses came in with the SOA2 pack. Remaining work here is the last room variants, floor-scaled enemy pools, and deeper upgrades. <strong>New art needed (enemy overhaul):</strong> the <strong>snake (fang)</strong> lashing out with its fangs (the only enemy needing all-new art); and the <strong>smushroom</strong> &mdash; the AOE cloud itself plus a matching creature animation for releasing it.
           </div>
         </div>
       </details>

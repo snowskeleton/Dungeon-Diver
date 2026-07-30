@@ -1,11 +1,11 @@
 import { EnemyClass } from "../Enemy";
 import { GooGreen, GooBlue, GooGold } from "./goos";
-import { Bat, BrownBat, EyeBat, GoldEye } from "./bats";
-import { FloatEye, FloatSkull, FloatSkullTeal, FloatSkullPink, Smushroom } from "./floaters";
-import { Rat, Spider, FrogFlower, FrogFlowerBlack, Swarm1, Swarm2, Swarm3 } from "./critters";
+import { EyeBat } from "./bats";
+import { Smushroom } from "./floaters";
+import { Spider, FrogFlower } from "./critters";
 import {
-  Bones, BonesBlader, Kultist, ArmorLancer,
-  Beast, AxeBeast, MaceBeast, SwordBeast, Fang, HoodFang,
+  Bones, ArmorLancer,
+  AxeBeast, MaceBeast, SwordBeast, Fang,
 } from "./directional";
 
 // The rank-and-file enemies that populate combat rooms. Bosses are deliberately
@@ -15,9 +15,8 @@ import {
 // sync, and the EnemyClass[] type makes the compiler check each entry.
 export const REGULAR_ENEMIES: EnemyClass[] = [
   GooGreen, GooBlue, GooGold,
-  Bat, BrownBat, EyeBat, GoldEye,
-  FloatEye, FloatSkull, FloatSkullTeal, FloatSkullPink, Smushroom,
-  Rat, Spider, FrogFlower, FrogFlowerBlack, Swarm1, Swarm2, Swarm3,
-  Bones, BonesBlader, Kultist, ArmorLancer,
-  Beast, AxeBeast, MaceBeast, SwordBeast, Fang, HoodFang,
+  EyeBat, Smushroom,
+  Spider, FrogFlower,
+  Bones, ArmorLancer,
+  AxeBeast, MaceBeast, SwordBeast, Fang,
 ];

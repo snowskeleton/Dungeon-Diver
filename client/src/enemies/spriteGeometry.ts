@@ -95,19 +95,9 @@ export const ENEMY_SPRITE_GEOMETRY: Record<EnemyType, SpriteGeometry> = {
   "goo-blue": { textureKey: "goo-blue", ...strip(6, 32) },
   "goo-gold": { textureKey: "goo-gold", ...strip(6, 32) },
 
-  "bat": { textureKey: "bat", ...strip(6, 16) },
-  "brown-bat": { textureKey: "brown-bat", ...strip(6, 16) },
   "eye-bat": { textureKey: "eye-bat", ...strip(6, 16) },
-  "gold-eye": { textureKey: "gold-eye", ...strip(6, 16) },
 
   "smushroom": { textureKey: "smushroom", ...strip(6, 16) },
-  "float-eye": { textureKey: "float-eye", ...strip(4, 16) },
-
-  "swarm-1": { textureKey: "swarm-1", ...strip(4, 16) },
-  "swarm-2": { textureKey: "swarm-2", ...strip(4, 16) },
-  "swarm-3": { textureKey: "swarm-3", ...strip(4, 16) },
-
-  "rat": { textureKey: "rat", ...strip(8, 20) },
 
   // ── Horizontal, multi-row sheets ───────────────────────────────────────────
   // spider.png is 6×3 of 32×16 cells: row 0 idle, row 1 walk (4), row 2 jump.
@@ -121,13 +111,6 @@ export const ENEMY_SPRITE_GEOMETRY: Record<EnemyType, SpriteGeometry> = {
   },
   // frog-flower.png is 4×3 @32: row 0 idle (4), row 1 jump, row 2 fall.
   "frog-flower": { textureKey: "frog-flower", ...strip(4, 32, { frames: frameRow(4, 0, 0, 4) }) },
-  "frog-flower-black": { textureKey: "frog-flower-black", ...strip(4, 32, { frames: frameRow(4, 0, 0, 4) }) },
-
-  // float-skull.png is 3 cols × 3 rows @16 — ONE ROW PER COLOUR. Cols 0-1 are the
-  // aura pulse (the locomotion clip), col 2 the white flash reused for death.
-  "float-skull": { textureKey: "float-skull", ...strip(3, 16, { frames: frameRow(3, 0, 0, 2) }) },
-  "float-skull-teal": { textureKey: "float-skull", ...strip(3, 16, { frames: frameRow(3, 1, 0, 2) }) },
-  "float-skull-pink": { textureKey: "float-skull", ...strip(3, 16, { frames: frameRow(3, 2, 0, 2) }) },
 
   // The Tengu's Mirror Split copy: the boss's own sheet, idle row, at enemy size.
   "tengu-shade": {
@@ -137,15 +120,11 @@ export const ENEMY_SPRITE_GEOMETRY: Record<EnemyType, SpriteGeometry> = {
 
   // ── Directional (up/right/down/left rows) ──────────────────────────────────
   "bones": { textureKey: "bones", ...directional(4, 16) },
-  "bones-blader": { textureKey: "bones-blader", ...directional(4, 16) },
-  "kultist": { textureKey: "kultist", ...directional(4, 16) },
   "armor-lancer": { textureKey: "armor-lancer", ...directional(4, 16) },
-  "beast": { textureKey: "beast", ...directional(4, 16) },
   "axe-beast": { textureKey: "axe-beast", ...directional(4, 16) },
   "mace-beast": { textureKey: "mace-beast", ...directional(4, 16) },
   "sword-beast": { textureKey: "sword-beast", ...directional(4, 16) },
   "fang": { textureKey: "fang", ...directional(4, 16) },
-  "hood-fang": { textureKey: "hood-fang", ...directional(4, 16) },
 
   // ── Bosses ────────────────────────────────────────────────────────────────
   // 16×1 @32: cols 0-3 idle, 4-9 walk, 10-13 spin, 14-15 damage.

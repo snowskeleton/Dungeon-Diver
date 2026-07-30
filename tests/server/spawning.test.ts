@@ -253,8 +253,8 @@ describe("the enemy pool", () => {
   });
 
   it("is exactly the debug selection, in the order listed", () => {
-    const pool = floor({ debug: { enemyTypes: ["bat", "goo-blue"] } }).spawner.enemyPool();
-    expect(pool.map(C => C.type)).toEqual(["bat", "goo-blue"]);
+    const pool = floor({ debug: { enemyTypes: ["eye-bat", "goo-blue"] } }).spawner.enemyPool();
+    expect(pool.map(C => C.type)).toEqual(["eye-bat", "goo-blue"]);
   });
 
   it("resolves a selected BOSS to its real Boss subclass", () => {
@@ -268,12 +268,12 @@ describe("the enemy pool", () => {
   });
 
   it("fills round-robin from a named list, so the menu selection is honoured evenly", () => {
-    const f = floor({ debug: { enemyTypes: ["bat", "goo-blue"], enemiesPerRoom: 4 } });
+    const f = floor({ debug: { enemyTypes: ["eye-bat", "goo-blue"], enemiesPerRoom: 4 } });
     f.spawner.spawnFloorEnemies();
     const types = [...f.enemies.values()]
       .map(e => e.state.enemyType)
-      .filter(t => t === "bat" || t === "goo-blue");
-    const bats = types.filter(t => t === "bat").length;
+      .filter(t => t === "eye-bat" || t === "goo-blue");
+    const bats = types.filter(t => t === "eye-bat").length;
     const goos = types.filter(t => t === "goo-blue").length;
     expect(Math.abs(bats - goos)).toBeLessThanOrEqual(1);
   });

@@ -6,7 +6,7 @@ import {
 } from "shared";
 import { Player } from "../../server/src/entities/Player";
 import { GooGreen } from "../../server/src/entities/enemies/goos";
-import { Bat } from "../../server/src/entities/enemies/bats";
+import { EyeBat } from "../../server/src/entities/enemies/bats";
 import { CombatSystem } from "../../server/src/combat/CombatSystem";
 import { flatWorld, worldWithTile, arena, physicsTick, COLS, ROWS } from "../helpers/world";
 import { PhysicsWorld } from "../../server/src/physics/PhysicsWorld";
@@ -34,7 +34,7 @@ describe("elevation: which band an attack reaches", () => {
   it("a grounded enemy's contact reaches GROUND only; a flyer's reaches both bands", () => {
     const w = flatWorld();
     const goo = new GooGreen(w, 300, 300);
-    const bat = new Bat(w, 300, 300);
+    const bat = new EyeBat(w, 300, 300);
     expect(goo.elevationReach).toBe(Elevation.GROUND);
     expect(goo.contactHitSource("g")!.reaches).toBe(Elevation.GROUND);
     expect(bat.elevationReach).toBe(ELEVATION_ALL);
@@ -51,7 +51,7 @@ describe("elevation: which band an attack reaches", () => {
     // Fresh enemies per resolve — a landed contact consumes the enemy's attack
     // cooldown, so reusing one would return no source the second time.
     const grounded = () => new GooGreen(w, 300, 300).contactHitSource("g")!;
-    const flyer = () => new Bat(w, 300, 300).contactHitSource("b")!;
+    const flyer = () => new EyeBat(w, 300, 300).contactHitSource("b")!;
 
     // Grounded player: the ground attack lands.
     player.state.airHeight = 0;
@@ -258,7 +258,7 @@ describe("Vault (Ranger): an arced leap", () => {
       a.stepWithInput("v", 0, 0, false, false);
       if (p.state.airHeight <= AIRBORNE_HEIGHT_THRESHOLD) continue;
       const hpA = p.state.health;
-      combat.resolve([new Bat(a.physics, p.state.x, p.state.y).contactHitSource("bx")!], groups);
+      combat.resolve([new EyeBat(a.physics, p.state.x, p.state.y).contactHitSource("bx")!], groups);
       expect(p.state.health).toBeLessThan(hpA); // flyer connects mid-leap
       const hpB = p.state.health;
       combat.resolve([new GooGreen(a.physics, p.state.x, p.state.y).contactHitSource("gx")!], groups);

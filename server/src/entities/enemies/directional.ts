@@ -9,12 +9,8 @@ abstract class DirectionalEnemy extends Enemy {
 }
 
 export class Bones extends DirectionalEnemy { static readonly type: EnemyType = "bones"; }
-export class BonesBlader extends DirectionalEnemy { static readonly type: EnemyType = "bones-blader"; }
-export class Kultist extends DirectionalEnemy { static readonly type: EnemyType = "kultist"; }
 export class ArmorLancer extends DirectionalEnemy { static readonly type: EnemyType = "armor-lancer"; }
-export class Beast extends DirectionalEnemy { static readonly type: EnemyType = "beast"; }
 export class AxeBeast extends DirectionalEnemy { static readonly type: EnemyType = "axe-beast"; }
 export class MaceBeast extends DirectionalEnemy { static readonly type: EnemyType = "mace-beast"; }
 export class SwordBeast extends DirectionalEnemy { static readonly type: EnemyType = "sword-beast"; }
 export class Fang extends DirectionalEnemy { static readonly type: EnemyType = "fang"; }
-export class HoodFang extends DirectionalEnemy { static readonly type: EnemyType = "hood-fang"; }

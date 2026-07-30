@@ -12,7 +12,7 @@ import {
 import { PhysicsWorld } from "../../server/src/physics/PhysicsWorld";
 import { PlayerState } from "../../server/src/schema/PlayerState";
 import { GooGreen } from "../../server/src/entities/enemies/goos";
-import { Bat } from "../../server/src/entities/enemies/bats";
+import { EyeBat } from "../../server/src/entities/enemies/bats";
 import { FlowFieldSystem } from "../../server/src/pathfinding/FlowFieldSystem";
 import { physicsTick } from "../helpers/world";
 
@@ -98,7 +98,7 @@ describe("Flyer collision — flies over interior cover", () => {
   // Drive an enemy straight east into the middle of a 3-tall cover wall at col 10.
   // A tall flat face (not a lone tile) so the walker can't just slide off a
   // chamfered corner — this isolates "flies over" from "rounds the corner".
-  function pushThrough(makeEnemy: (p: PhysicsWorld) => GooGreen | Bat): number {
+  function pushThrough(makeEnemy: (p: PhysicsWorld) => GooGreen | EyeBat): number {
     const map = mapFloor([[10, 7], [10, 8], [10, 9]]);
     const physics = new PhysicsWorld(map, ROOM_W, ROOM_H);
     const enemy = makeEnemy(physics);
@@ -113,7 +113,7 @@ describe("Flyer collision — flies over interior cover", () => {
     const coverLeftEdge = 10 * TILE_SIZE; // x = 320
     const coverRightEdge = 11 * TILE_SIZE; // x = 352
 
-    const batX = pushThrough((p) => new Bat(p, center(7), center(8)));
+    const batX = pushThrough((p) => new EyeBat(p, center(7), center(8)));
     const gooX = pushThrough((p) => new GooGreen(p, center(7), center(8)));
 
     expect(batX).toBeGreaterThan(coverRightEdge); // flew over cover
