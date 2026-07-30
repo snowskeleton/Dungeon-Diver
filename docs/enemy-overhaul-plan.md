@@ -205,34 +205,36 @@ pose (differentiated by the projectile/staff FX, not the body).
     enemy sprite (import the Simple Slash FX strip) — right now the read is the
     telegraph tint, which ships but isn't the swung-blade FX the plan described.
 
-### Remaining — each needs new infra + live-feel verification (do with the user)
+### Remaining — DONE (2026-07-30 pass)
 
-- [ ] **4. Eye-bat dive + spiral movement.** The `swoop` builder needs a
-  `FlightCaster` (`dashStep`), which only bosses implement — a plain flyer can't use
-  it as-is. Options: give `Enemy` a minimal `dashStep`, or write an enemy-scale
-  `divebomb` builder that drives height + `move()` toward a locked aim. Spiral
-  movement is a `pathToward`/`chase` override (add a tangential component). **Do the
-  dive and the contact-damage removal together** — spiraling alone, or dropping
-  contact damage before the dive exists, leaves it harmless/contradictory.
-- [ ] **5. Frog-flower leap + hop.** New `leap`/`pounce` spell builder (crouch
-  wind-up → arc onto locked aim → damage only on landing) + discrete-hop movement.
-  Reuses existing art. Same coupling caveat: leap + contact-removal together.
-- [ ] **6. Smushroom cloud.** Needs (a) an `Enemy.onDeath()` hook, and (b) a
-  **stationary lingering hazard** that outlives/detaches from the caster — so it
-  wants a hazard entity/projectile, not a caster-anchored spell hitbox (the cloud
-  must stay where released while the smushroom moves or dies). 2s full → clear by
-  6s, 0.5s re-hit interval (`RehitGate`). Needs placeholder cloud art.
-- [ ] **7. Skeleton + skeleton-mage enemies.** Biggest: first enemy rendered from
-  the humanoid 15×4 sheet (needs the `HumanoidSprites`/`WeaponVisuals` player path
-  wired into the enemy render path, or a new humanoid-enemy visual def). Skeleton
-  reuses the `ArmedEnemy` swing (broadsword); mage is the first ranged rabble (staff
-  bolt via `weaponSpell`). The two skins are already held out of the picker and kept
-  in `CHARACTER_TYPES` for exactly this.
+Resolved differently from the guesses above, per the user's steer (abstract/share, don't
+copy-paste; keep the cloud attached):
 
-Why stopped here in the unattended run: 1–3 are server-authoritative and fully
-verifiable headless. 4–7 each add a new spell builder or the humanoid-enemy
-rendering path, and their *feel* (dive arc, hop cadence, cloud timing) and visuals
-want a live browser to judge — better done with the user present.
+- [x] **4. Eye-bat dive + spiral movement.** Lifted the shared wall-reflection out of
+  `Boss.dashStep` into `entities/dashMovement.reflectHeading`; `Enemy.dashStep` now
+  drives its DYNAMIC body via `driveAlong`, so a rank-and-file `Enemy` is a
+  FlightCaster and reuses `swoop`. Spiral = tangential + inward approach. Contact off.
+- [x] **5. Frog-flower leap + hop.** New `leap` builder (crouch → arc via
+  `setAirHeight`+`dashStep` → slam-only damage). Discrete-hop locomotion. Contact off.
+  Client frog def marked `airborne` so airHeight renders the arc.
+- [x] **6. Smushroom cloud.** Kept ATTACHED (user steer): a caster-anchored
+  `lingeringCloud` spell (6s, 0.5s re-hit) it drags onto you and re-fires on death via
+  a new `Enemy.onDeath()` hook + `Enemy.deathTick()` (GameRoom runs death effects while
+  the corpse lingers — enemies never despawn until floor advance anyway). Contact off.
+  Placeholder client circle fading 2→6s. **Real gas art still needed.**
+- [x] **7. Skeleton + skeleton-mage enemies.** First humanoid-sheet enemies. Backed by
+  the `HUMANOID_SKINS` (sheet identity) vs `PLAYER_SKINS` (playable subset) split that
+  retired the `CHARACTER_TYPES`/`NON_PLAYER_SKINS` kludge. Both hold a real catalog
+  weapon via the client `heldWeapon` path (broadsword / oak-staff); mage is the first
+  ranged rabble. `makeHumanoidEnemyDef` builds clips from `HumanoidSprites`.
+- [x] **(new) 8. Fang lunge.** Coils then LUNGES via `dashAttack` (contact off).
+  Placeholder — reuses the move frames; **dedicated fang-lash art still needed.**
+
+Cross-cutting from this pass: a shared `CastingEnemy` base (SpellCaster + syncCastState
++ interrupt-on-stun-OR-knockback) that every behaviour enemy subclasses; armed enemies
++ skeletons hold & swing their weapon client-side (the swing is the telegraph, so rabble
+dropped the generic red tint — it's now only a fallback for creatures without their own
+tell). Roadmap item added: derive every content-id union from its class array.
 
 ## 7. New architectural seams this introduces
 

@@ -66,10 +66,11 @@ describe("ArmedEnemy — wields a weapon, swings with a wind-up", () => {
     expect(dealt).toBeGreaterThan(0);
   });
 
-  it("Fang (unarmed) still deals passive contact damage", () => {
+  it("Fang lunges instead of dealing passive contact damage", () => {
     const physics = flatWorld();
     const fang = new Fang(physics, 300, 300);
-    expect(fang.contactHitSource("e")).not.toBeNull();
+    // No passive touch — its damage is the lunge dash (see directional.ts).
+    expect(fang.contactHitSource()).toBeNull();
   });
 
   it("a shove mid-wind-up interrupts the swing (telegraph clears)", () => {
