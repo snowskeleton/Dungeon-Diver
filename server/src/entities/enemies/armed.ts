@@ -1,8 +1,8 @@
 import { EnemyFacingMode, WeaponId, WEAPON_REGISTRY, WeaponInstance } from "shared";
 import { PlayerState } from "../../schema/PlayerState";
-import { Enemy } from "../Enemy";
 import { HitSource } from "../../combat/HitSource";
-import { Spell, SpellCaster, weaponSpell, AimPoint } from "../../spells";
+import { Spell, weaponSpell, AimPoint } from "../../spells";
+import { CastingEnemy } from "./casting";
 
 // A rank-and-file enemy that WIELDS A REAL WEAPON and swings it with a wind-up,
 // instead of dealing passive touch damage. The swing IS the attack: it runs the
@@ -14,11 +14,10 @@ import { Spell, SpellCaster, weaponSpell, AimPoint } from "../../spells";
 // This is the first non-boss enemy to carry a SpellCaster. It reuses the boss's
 // telegraph/channeling schema fields (they live on EnemyState) so the client's
 // existing wind-up tint reads the swing with no new client code.
-export abstract class ArmedEnemy extends Enemy {
+export abstract class ArmedEnemy extends CastingEnemy {
   /** The wire weapon id this enemy swings (a key of WEAPON_REGISTRY). */
   protected abstract get weaponId(): WeaponId;
 
-  private readonly caster = new SpellCaster();
   private _weapon?: WeaponInstance;
   private _spell?: Spell;
   // Rest between swings so it doesn't chain arcs with no gap (the melee weaponSpell
@@ -53,14 +52,6 @@ export abstract class ArmedEnemy extends Enemy {
     return null;
   }
 
-  // Mirror the cast lifecycle onto the schema the same way Boss does, so the
-  // client's telegraph tint (wind-up) and channel state (mid-swing) light up.
-  private syncCastState(): void {
-    this.state.telegraph = this.caster.windingUp;
-    this.state.channeling = this.caster.phase === "active";
-    this.state.abilityId = this.caster.activeSpellId;
-  }
-
   override tick(players: Map<string, PlayerState>, dtMs: number): void {
     this.applyFlightBaseline();
     this.containToHome();
@@ -72,9 +63,9 @@ export abstract class ArmedEnemy extends Enemy {
     this.caster.tickClock(dtMs);
     if (this.restMs > 0) this.restMs -= dtMs;
 
-    // A stun mid-swing staggers it: interrupt the cast and skip the AI this tick.
-    if (this.updateStun(dtMs)) {
-      this.caster.interrupt();
+    // A stun OR any shove mid-swing cancels it (see CastingEnemy.interruptOnHit);
+    // when stunned, skip the AI this tick so the knockback impulse rides out.
+    if (this.interruptOnHit(dtMs)) {
       this.syncCastState();
       return;
     }

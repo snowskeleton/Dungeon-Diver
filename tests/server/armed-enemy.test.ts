@@ -71,4 +71,24 @@ describe("ArmedEnemy — wields a weapon, swings with a wind-up", () => {
     const fang = new Fang(physics, 300, 300);
     expect(fang.contactHitSource("e")).not.toBeNull();
   });
+
+  it("a shove mid-wind-up interrupts the swing (telegraph clears)", () => {
+    const physics = flatWorld();
+    const beast = new SwordBeast(physics, 300, 300);
+    const player = playerAt(physics, 324, 300);
+    const ps = new Map<string, PlayerState>([["p", player.state]]);
+
+    // Tick until the beast is mid-wind-up (telegraph up, blow not yet struck).
+    let woundUp = false;
+    for (let t = 0; t < 40 && !woundUp; t++) {
+      beast.tick(ps, SERVER_TICK_MS);
+      woundUp = beast.state.telegraph;
+    }
+    expect(woundUp).toBe(true);
+
+    // A hard shove from the left staggers it; the next AI tick must cancel the cast.
+    beast.applyKnockback(beast.state.x - 40, beast.state.y, 999);
+    beast.tick(ps, SERVER_TICK_MS);
+    expect(beast.state.telegraph).toBe(false);
+  });
 });

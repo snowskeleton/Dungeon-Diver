@@ -39,6 +39,12 @@ export abstract class Entity {
   // Remaining hitstun (ms). While > 0 the entity suspends its own control
   // (enemy AI / player input) so the knockback push isn't immediately walked off.
   protected stunMs = 0;
+  // One-shot: set the tick a knockback push lands (staggering OR a sub-threshold
+  // nudge), cleared by consumeKnockback(). A casting enemy reads it to cancel a
+  // wind-up on ANY shove — a stagger already interrupts via stun, but a light hit
+  // that only nudges should still break the swing. Independent of stun so it fires
+  // even under the stun-immunity window.
+  private knockedBack = false;
   // Damage effects queued this tick (swing/channel hitboxes, projectile spawns),
   // drained by GameRoom. This is the `emitHitSource`/`spawnProjectile` half of the
   // spell Caster interface — shared so players and enemies emit effects the same way.
@@ -346,6 +352,7 @@ export abstract class Entity {
     // Geometric series: total displacement = v0*dt / (1 − decay) = push.
     const v0 = (push * (1 - KNOCKBACK_DECAY)) / (SERVER_TICK_MS / 1000);
     this.addKnockback(ux * v0, uy * v0);
+    this.knockedBack = true;
 
     // Stun resilience (playtest B7). While the immunity window is open the body
     // still gets shoved — knockback feel is preserved — but its control tick is
@@ -357,6 +364,15 @@ export abstract class Entity {
 
     this.stunMs = Math.min(KNOCKBACK_STUN_MAX_MS, overage * KNOCKBACK_STUN_MS_PER_UNIT);
     this.state.stunned = true;
+  }
+
+  /** Returns whether a knockback push landed since the last call, and clears the
+   *  flag. A casting enemy uses it to interrupt a wind-up on any shove (see
+   *  CastingEnemy.interruptOnHit). Consumed once per tick by whoever cares. */
+  consumeKnockback(): boolean {
+    const v = this.knockedBack;
+    this.knockedBack = false;
+    return v;
   }
 
   /** How long after a hitstun ends this body cannot be stunned again. 0 (the
