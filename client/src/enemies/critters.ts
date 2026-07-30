@@ -8,4 +8,6 @@ import { makeSheetEnemyDef } from "./sheetEnemy";
 
 export const spider = makeSheetEnemyDef("spider", { name: "Spider", frameRate: 10 });
 
-export const frogFlower = makeSheetEnemyDef("frog-flower", { name: "Frog Flower", frameRate: 6 });
+// airborne: the frog's leap arc is driven by its synced airHeight (0 at rest, so no
+// lift/shadow while grounded; it rises and slams during a leap).
+export const frogFlower = makeSheetEnemyDef("frog-flower", { name: "Frog Flower", frameRate: 6, airborne: true });

@@ -161,6 +161,36 @@ export function swoop(o: {
   });
 }
 
+// A leap (pounce): a GROUNDED caster crouches (the wind-up tell), then arcs up and
+// slams down onto the locked aim point — the inverse of swoop (which starts high).
+// Its body only hurts on the way DOWN near the ground (the slam), so it's harmless
+// in the air and dodged by not being where it lands. Needs a FlightCaster (drives
+// its own height + horizontal travel). The frog-flower's attack.
+export function leap(o: {
+  id: string; windUpMs: number; recoverMs: number; cooldownMs: number; range: number;
+  aimLockMs?: number;
+  /** Height (px) of the hop's apex. */
+  peakHeight: number;
+  /** Time rising to the apex, and time falling back down. */
+  riseMs: number; fallMs: number;
+  hitRadius: number; damage: number; knockback?: number; hitCooldownMs: number;
+  /** Hurt only once the fall drops below this fraction of the apex (default 0.4 —
+   *  the slam). */
+  slamBelowFrac?: number;
+}): Spell {
+  return new Spell({
+    id: o.id,
+    windUpMs: o.windUpMs,
+    activeMs: o.riseMs + o.fallMs,
+    recoverMs: o.recoverMs,
+    cooldownMs: o.cooldownMs,
+    range: o.range,
+    aimLockMs: o.aimLockMs ?? 0,
+    knockbackImmuneWhileActive: true,
+    effect: leapEffect(o),
+  });
+}
+
 // A whirl: a stationary spin-in-place melee that batters anything within `reach`
 // (the anti-hug answer). `range` is the reach so it only triggers up close; each
 // target is hit once for the whole spin.
@@ -406,6 +436,58 @@ function swoopEffect(o: {
       return elapsed >= o.diveMs + o.riseMs;
     },
     onDeactivate: (caster) => (caster as FlightCaster).setAirHeight(o.cruiseHeight),
+  };
+}
+
+function leapEffect(o: {
+  peakHeight: number; riseMs: number; fallMs: number;
+  hitRadius: number; damage: number; knockback?: number; hitCooldownMs: number;
+  slamBelowFrac?: number;
+}): SpellEffect {
+  let dirX = 0;
+  let dirY = 0;
+  let speed = 0;
+  let elapsed = 0;
+  const total = o.riseMs + o.fallMs;
+  const slamBelow = o.slamBelowFrac ?? 0.4;
+  const gate = new RehitGate(o.hitCooldownMs);
+  return {
+    onActivate: (caster, aim) => {
+      const dx = aim.x - caster.x, dy = aim.y - caster.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      dirX = dx / dist; dirY = dy / dist;
+      // Cover the horizontal gap over the whole hop, so it lands ON the aim point.
+      speed = dist / (total / 1000);
+      elapsed = 0;
+      gate.reset();
+    },
+    onActiveTick: (caster, dtMs) => {
+      const fc = caster as FlightCaster;
+      elapsed += dtMs;
+      // Height: 0 → peak over the rise, peak → 0 over the fall (the arc).
+      const frac = elapsed < o.riseMs
+        ? elapsed / o.riseMs
+        : Math.max(0, 1 - (elapsed - o.riseMs) / o.fallMs);
+      fc.setAirHeight(o.peakHeight * frac);
+
+      // Travel toward the landing spot the whole hop (wall-reflected).
+      const step = fc.dashStep(dirX, dirY, speed);
+      dirX = step.dirX; dirY = step.dirY;
+
+      // The slam: hurt only on the way down near the ground, so the leap is safe to
+      // stand under until it lands.
+      gate.tick(dtMs);
+      if (elapsed >= o.riseMs && frac <= slamBelow) {
+        caster.emitHitSource({
+          shape: { kind: "circle", cx: caster.x, cy: caster.y, r: o.hitRadius },
+          affects: caster.attackAffects,
+          attack: { damage: o.damage, knockback: o.knockback ?? 0, sourceX: caster.x, sourceY: caster.y },
+          claim: (id) => gate.claim(id),
+        });
+      }
+      return elapsed >= total;
+    },
+    onDeactivate: (caster) => (caster as FlightCaster).setAirHeight(0),
   };
 }
 
