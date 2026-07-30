@@ -7,6 +7,7 @@ import {
   Bones, ArmorLancer,
   AxeBeast, MaceBeast, SwordBeast, Fang,
 } from "./directional";
+import { Skeleton, SkeletonMage } from "./skeletons";
 
 // The rank-and-file enemies that populate combat rooms. Bosses are deliberately
 // NOT here — they only ever spawn in the boss room (see bosses/index.ts), so a
@@ -19,4 +20,5 @@ export const REGULAR_ENEMIES: EnemyClass[] = [
   Spider, FrogFlower,
   Bones, ArmorLancer,
   AxeBeast, MaceBeast, SwordBeast, Fang,
+  Skeleton, SkeletonMage,
 ];

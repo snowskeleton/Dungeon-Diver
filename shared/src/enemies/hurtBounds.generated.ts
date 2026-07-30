@@ -31,6 +31,8 @@ export const ENEMY_HURT_BOUNDS: Record<EnemyType, HurtBounds> = {
   "mace-beast": { halfW: 16, halfH: 16, offsetX: 0, offsetY: 0 },
   "sword-beast": { halfW: 16, halfH: 16, offsetX: 0, offsetY: 0 },
   "fang": { halfW: 16, halfH: 16, offsetX: 0, offsetY: 0 },
+  "skeleton": { halfW: 8, halfH: 8.5, offsetX: 0, offsetY: -0.5 },
+  "skeleton-mage": { halfW: 10, halfH: 8.5, offsetX: 0, offsetY: -0.5 },
   "turtle-dragon": { halfW: 32, halfH: 30, offsetX: 0, offsetY: 2 },
   "wyvern": { halfW: 32, halfH: 32, offsetX: 0, offsetY: 0 },
   "wyvern-green": { halfW: 32, halfH: 32, offsetX: 0, offsetY: 0 },

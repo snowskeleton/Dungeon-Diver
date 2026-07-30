@@ -8,6 +8,7 @@ import {
   bones, armorLancer,
   axeBeast, maceBeast, swordBeast, fang,
 } from "./directional";
+import { skeleton, skeletonMage } from "./skeletons";
 import { turtleDragon } from "./bosses/TurtleDragon";
 import { wyvern, wyvernGreen, wyvernGrey } from "./bosses/Wyvern";
 import { tenguMask, tenguShade } from "./bosses/TenguMask";
@@ -41,6 +42,10 @@ export const CLIENT_ENEMY_REGISTRY: Record<EnemyType, ClientEnemyDef> = {
   "mace-beast": maceBeast,
   "sword-beast": swordBeast,
   "fang": fang,
+
+  // ── Humanoid (15×4 player sheets) ──────────────────────────────────────────
+  "skeleton": skeleton,
+  "skeleton-mage": skeletonMage,
 
   // ── Bosses ───────────────────────────────────────────────────────────────
   "turtle-dragon": turtleDragon,

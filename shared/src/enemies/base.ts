@@ -24,6 +24,10 @@ export type EnemyType =
   | "mace-beast"
   | "sword-beast"
   | "fang"
+  // Humanoid enemies — drawn from the 15×4 player sheets (HUMANOID_SKINS), not the
+  // simple enemy factories. skeleton swings a broadsword; skeleton-mage casts bolts.
+  | "skeleton"
+  | "skeleton-mage"
   // Bosses — placed only in the boss room, never in the normal spawn pool
   | "turtle-dragon"
   | "wyvern"

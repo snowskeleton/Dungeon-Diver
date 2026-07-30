@@ -67,6 +67,21 @@ function directional(cols: number, frameSize: number, displaySize = TILE_SIZE): 
   };
 }
 
+/** A humanoid enemy sheet: 15 cols × 4 rows @32, one tile on screen. Measured over
+ *  the rendered clips only — idle/walk/attack (cols 0–11) across every facing row. */
+function humanoid(): Omit<SpriteGeometry, "textureKey"> {
+  const cols = 15;
+  const frames = [0, 1, 2, 3].flatMap((row) => frameRow(cols, row, 0, 12));
+  return {
+    frameWidth: 32,
+    frameHeight: 32,
+    cols,
+    frames,
+    displayW: TILE_SIZE,
+    displayH: TILE_SIZE,
+  };
+}
+
 /** Bosses render at double a normal enemy so they read as a threat. */
 export const BOSS_SIZE = TILE_SIZE * 2;
 
@@ -125,6 +140,13 @@ export const ENEMY_SPRITE_GEOMETRY: Record<EnemyType, SpriteGeometry> = {
   "mace-beast": { textureKey: "mace-beast", ...directional(4, 16) },
   "sword-beast": { textureKey: "sword-beast", ...directional(4, 16) },
   "fang": { textureKey: "fang", ...directional(4, 16) },
+
+  // ── Humanoid enemies (the 15×4 @32 player sheets) ───────────────────────────
+  // Measured over the frames they actually render — idle/walk/attack (cols 0–11)
+  // across all four facing rows — so the status-pose columns (12–14) can't inflate
+  // the hurt box. Same sheet layout as the players (HumanoidSprites).
+  "skeleton": { textureKey: "skeleton", ...humanoid() },
+  "skeleton-mage": { textureKey: "skeleton-mage", ...humanoid() },
 
   // ── Bosses ────────────────────────────────────────────────────────────────
   // 16×1 @32: cols 0-3 idle, 4-9 walk, 10-13 spin, 14-15 damage.
