@@ -44,6 +44,7 @@ export const CHANGELOG: ChangelogVersion[] = [
     version: "Unreleased",
     released: false,
     changes: [
+      { kind: "balance", text: "Your starting weapon can now be any weapon your class can wield, not just the type unique to your class" },
       { kind: "feature", text: "Each class now has a movement ability on its own cooldown (default Shift): the Knight Charges — a rushing slam that damages and knocks back anything in its path, kicking up a trail of dust; the Mage Blinks — vanishing in a puff and reappearing a short hop away, through bars and over gaps; the Rogue Dashes — a brief invulnerable dodge that slips through enemies; the Ranger Vaults — an arcing leap that sails over ground attacks and fire (but flying enemies can still catch you mid-air) and lands in a puff of dust" },
       { kind: "ui", text: "A small cooldown bar fills beneath you while a movement ability recharges and vanishes once it's ready" },
       { kind: "ui", text: "New Options toggle: a performance meter in the bottom-right corner showing live FPS and network latency" },

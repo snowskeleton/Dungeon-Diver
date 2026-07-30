@@ -4,7 +4,7 @@ import {
   WEAPON_REGISTRY, WeaponId, WeaponInstance, WeaponMod, Weapon,
   AMMO_REGISTRY,
   SHOP_TIERS,
-  CharacterClass, partyRollableWeaponIds, firstRollWeaponIds,
+  CharacterClass, partyRollableWeaponIds,
   DebugConfig,
 } from "shared";
 import { GameState } from "../schema/GameState";
@@ -241,13 +241,14 @@ export class LootDirector {
 
   /** Which weapon drops at a player's supply pedestal. The debug menu's first-weapon
    *  picker forces it when set AND the player's class can equip it; otherwise (and in
-   *  the real game) it rolls from the class's unique first-weapon pool. */
+   *  the real game) it rolls from every weapon the class can wield — not just the
+   *  class's unique first-weapon categories. */
   private firstSupplyWeaponFor(player: Player): WeaponId | undefined {
     const forced = this.debug?.firstWeaponId;
     if (forced && forced in WEAPON_REGISTRY && player.canEquip(forced)) {
       return forced as WeaponId;
     }
-    return pickDistinct(firstRollWeaponIds(player.character.id), 1)[0];
+    return pickDistinct(partyRollableWeaponIds([player.character.id]), 1)[0];
   }
 
   /** Drop a single-reward pedestal where a room's last enemy fell. Called once, on
