@@ -966,14 +966,14 @@
 
           <div class="phase-milestone"><strong>Enemy overhaul</strong> &mdash; fewer, less samey, attacks that read. Full plan in <code>docs/enemy-overhaul-plan.md</code>. Half the rabble pool is cut (swarms, rat, kultist, float-skulls/eye, plain bats, plain beast, gold eyebat, bones-blader, hood-fang, black frog-flower); the survivors get real telegraphed attacks via the <code>Spell</code> system instead of passive contact-touch.</div>
           <ul class="task-list">
-            <li><span class="tm">&mdash;</span> <strong>Roster cut</strong> &mdash; 30 ids down to ~15; compiler-guided deletion across the <code>EnemyType</code> union, <code>REGULAR_ENEMIES</code>, and the client visual registry</li>
+            <li><span class="tm done">&#10003;</span> <strong>Roster cut</strong> &mdash; 30 ids down to ~15; compiler-guided deletion across the <code>EnemyType</code> union, <code>REGULAR_ENEMIES</code>, and the client visual registry</li>
             <li><span class="tm">&mdash;</span> <strong>Smushroom</strong> &mdash; AOE cloud it walks you into and also releases on death; <em>cloud is its only damage</em> (no touch). Cloud lingers ~2s then fades out by 6s, ticking damage every 0.5s to anyone still inside</li>
             <li><span class="tm">&mdash;</span> <strong>Frog-flower (green only)</strong> &mdash; hops to move; crouch-telegraph then leaps onto the player; damage only on the slam. Reuses existing art</li>
             <li><span class="tm">&mdash;</span> <strong>Eye-bat (dark only)</strong> &mdash; spiraling movement + a dive attack (<code>swoop</code> builder); damage only on the dive</li>
-            <li><span class="tm">&mdash;</span> <strong>Weapon beasts (sword/axe/mace)</strong> &mdash; real wind-up swing using the Simple Slash FX strip, not passive contact</li>
-            <li><span class="tm">&mdash;</span> <strong>Armor-lancer</strong> &mdash; wields the <code>spears/lance</code> weapon with a thrust wind-up</li>
+            <li><span class="tm done">&#10003;</span> <strong>Weapon beasts (sword/axe/mace)</strong> &mdash; wind-up swing via the shared <code>ArmedEnemy</code> base (real weaponSpell hurtbox, no passive contact). Swung-blade slash-FX overlay is the one bit of polish left; the wind-up currently reads as the telegraph tint</li>
+            <li><span class="tm done">&#10003;</span> <strong>Armor-lancer</strong> &mdash; wields the <code>spears/lance</code> weapon with a thrust wind-up (longer commit range)</li>
             <li><span class="tm">&mdash;</span> <strong>Skeleton + Skeleton-mage repurposed from player skins into enemies</strong> &mdash; skeleton swings a broadsword, mage shoots a staff bolt. First humanoid-sheet enemies</li>
-            <li><span class="tm">&mdash;</span> <strong>Remove player skins</strong> Guy Blue, Gal Green, The Fool, and all reptiles (reptile, kobold, scaleless) from <code>CHARACTER_TYPES</code></li>
+            <li><span class="tm done">&#10003;</span> <strong>Remove player skins</strong> Guy Blue, Gal Green, The Fool, and all reptiles (reptile, kobold, scaleless) from <code>CHARACTER_TYPES</code></li>
           </ul>
 
           <div class="phase-art-note">

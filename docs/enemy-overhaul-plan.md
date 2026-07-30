@@ -189,21 +189,50 @@ pose (differentiated by the projectile/staff FX, not the body).
 - Frog-flower, eye-bat dive, and the beast/lancer swings reuse existing frames
   (+ the imported Simple Slash FX strip) — no new art.
 
-## 6. Suggested sequencing
+## 6. Sequencing / status
 
-1. **Roster cut first** (pure deletion, compiler-guided, zero behaviour risk).
-   Land it, run tests, confirm spawn pool still rolls.
-2. **Skin removal** — drop the 6 skins from `CHARACTER_TYPES` (also pure deletion).
-3. **Armor-lancer lance** — smallest behaviour change, reuses existing weapon.
-4. **Beast weapon swings** — import slash FX, build the melee wind-up `Spell`,
-   apply to sword/axe/mace beasts.
-5. **Eye-bat dive + spiral** — `swoop` exists; mostly movement + wiring.
-6. **Frog-flower leap** — new `leap` builder + hop movement.
-7. **Skeleton + skeleton-mage enemies** — biggest new pattern (humanoid-sheet
-   enemy + held weapon); reuses the beast swing (skeleton) and staff shot (mage).
-8. **Smushroom cloud** — needs the `onDeath()` seam + the lingering hazard; do last.
+- [x] **1. Roster cut** — DONE (commit: cut half the rabble roster). Compiler-guided
+  deletion; hurt bounds regenerated; flyer tests moved Bat→EyeBat.
+- [x] **2. Skin removal** — DONE. 6 skins dropped from `CHARACTER_TYPES`;
+  skeleton/skeleton-mage kept (excluded from the picker) for the enemy path; the
+  hurtbox generator now sources its skin list from `CHARACTER_TYPES`.
+- [x] **3. Armored/weapon enemies (lancer + beasts)** — DONE. New `ArmedEnemy`
+  base (`server/src/entities/enemies/armed.ts`): wields a real `WeaponInstance`,
+  swings it via `weaponSpell` with a wind-up, no passive contact damage. Reuses the
+  boss telegraph/channeling schema fields so the client's wind-up tint reads it with
+  no new client code. Tests in `tests/server/armed-enemy.test.ts`.
+  - Follow-up polish (not blocking): a proper swing **slash-FX overlay** on the
+    enemy sprite (import the Simple Slash FX strip) — right now the read is the
+    telegraph tint, which ships but isn't the swung-blade FX the plan described.
 
-Each step is independently testable and shippable.
+### Remaining — each needs new infra + live-feel verification (do with the user)
+
+- [ ] **4. Eye-bat dive + spiral movement.** The `swoop` builder needs a
+  `FlightCaster` (`dashStep`), which only bosses implement — a plain flyer can't use
+  it as-is. Options: give `Enemy` a minimal `dashStep`, or write an enemy-scale
+  `divebomb` builder that drives height + `move()` toward a locked aim. Spiral
+  movement is a `pathToward`/`chase` override (add a tangential component). **Do the
+  dive and the contact-damage removal together** — spiraling alone, or dropping
+  contact damage before the dive exists, leaves it harmless/contradictory.
+- [ ] **5. Frog-flower leap + hop.** New `leap`/`pounce` spell builder (crouch
+  wind-up → arc onto locked aim → damage only on landing) + discrete-hop movement.
+  Reuses existing art. Same coupling caveat: leap + contact-removal together.
+- [ ] **6. Smushroom cloud.** Needs (a) an `Enemy.onDeath()` hook, and (b) a
+  **stationary lingering hazard** that outlives/detaches from the caster — so it
+  wants a hazard entity/projectile, not a caster-anchored spell hitbox (the cloud
+  must stay where released while the smushroom moves or dies). 2s full → clear by
+  6s, 0.5s re-hit interval (`RehitGate`). Needs placeholder cloud art.
+- [ ] **7. Skeleton + skeleton-mage enemies.** Biggest: first enemy rendered from
+  the humanoid 15×4 sheet (needs the `HumanoidSprites`/`WeaponVisuals` player path
+  wired into the enemy render path, or a new humanoid-enemy visual def). Skeleton
+  reuses the `ArmedEnemy` swing (broadsword); mage is the first ranged rabble (staff
+  bolt via `weaponSpell`). The two skins are already held out of the picker and kept
+  in `CHARACTER_TYPES` for exactly this.
+
+Why stopped here in the unattended run: 1–3 are server-authoritative and fully
+verifiable headless. 4–7 each add a new spell builder or the humanoid-enemy
+rendering path, and their *feel* (dive arc, hop cadence, cloud timing) and visuals
+want a live browser to judge — better done with the user present.
 
 ## 7. New architectural seams this introduces
 
