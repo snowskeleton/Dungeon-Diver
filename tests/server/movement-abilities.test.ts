@@ -6,10 +6,18 @@ import {
 } from "shared";
 import { Player } from "../../server/src/entities/Player";
 import { GooGreen } from "../../server/src/entities/enemies/goos";
-import { EyeBat } from "../../server/src/entities/enemies/bats";
+import { Enemy } from "../../server/src/entities/Enemy";
 import { CombatSystem } from "../../server/src/combat/CombatSystem";
 import { flatWorld, worldWithTile, arena, physicsTick, COLS, ROWS } from "../helpers/world";
 import { PhysicsWorld } from "../../server/src/physics/PhysicsWorld";
+
+// A flyer WITH passive contact damage — the elevation-band mechanic under test.
+// The shipping eye-bat now deals dive-only damage (no contact), so these tests use
+// this minimal fixture instead: any grounded enemy sheet, lifted to a cruise height.
+class ContactFlyer extends Enemy {
+  static readonly type = "eye-bat" as const; // a real EnemyType (for hurt bounds)
+  protected get cruiseHeight() { return 16; }
+}
 
 // Movement abilities are class Spells run through the Player's second SpellCaster.
 // These assert the BEHAVIOUR (i-frames, elevation dodge, teleport clamp, cooldown
@@ -34,7 +42,7 @@ describe("elevation: which band an attack reaches", () => {
   it("a grounded enemy's contact reaches GROUND only; a flyer's reaches both bands", () => {
     const w = flatWorld();
     const goo = new GooGreen(w, 300, 300);
-    const bat = new EyeBat(w, 300, 300);
+    const bat = new ContactFlyer(w, 300, 300);
     expect(goo.elevationReach).toBe(Elevation.GROUND);
     expect(goo.contactHitSource("g")!.reaches).toBe(Elevation.GROUND);
     expect(bat.elevationReach).toBe(ELEVATION_ALL);
@@ -51,7 +59,7 @@ describe("elevation: which band an attack reaches", () => {
     // Fresh enemies per resolve — a landed contact consumes the enemy's attack
     // cooldown, so reusing one would return no source the second time.
     const grounded = () => new GooGreen(w, 300, 300).contactHitSource("g")!;
-    const flyer = () => new EyeBat(w, 300, 300).contactHitSource("b")!;
+    const flyer = () => new ContactFlyer(w, 300, 300).contactHitSource("b")!;
 
     // Grounded player: the ground attack lands.
     player.state.airHeight = 0;
@@ -93,7 +101,7 @@ describe("elevation: which band an attack reaches", () => {
 describe("Blink (Mage): delayed clamped teleport", () => {
   it("relocates roughly the blink distance along the heading", () => {
     const a = arena();
-    const p = new Player(a.physics, 300, 300, "mage", "skeleton-mage");
+    const p = new Player(a.physics, 300, 300, "mage", "guy");
     a.addPlayer("m", p);
     castBlink(a, "m", 1, 0);
     expect(p.state.x).toBeGreaterThan(300 + BLINK_DISTANCE * 0.8);
@@ -102,7 +110,7 @@ describe("Blink (Mage): delayed clamped teleport", () => {
 
   it("is gone (hidden + frozen at the origin) during the gap, then jumps", () => {
     const a = arena();
-    const p = new Player(a.physics, 300, 300, "mage", "skeleton-mage");
+    const p = new Player(a.physics, 300, 300, "mage", "guy");
     a.addPlayer("m", p);
     // The press starts the gap: hidden, still at the origin (no teleport yet).
     pressAbility(a, "m", 1, 0);
@@ -126,7 +134,7 @@ describe("Blink (Mage): delayed clamped teleport", () => {
     const physics = new PhysicsWorld(map, COLS, ROWS);
     const a = arena(physics);
     const startX = startCol * TILE_SIZE + 16;
-    const p = new Player(physics, startX, 300, "mage", "skeleton-mage");
+    const p = new Player(physics, startX, 300, "mage", "guy");
     a.addPlayer("m", p);
     castBlink(a, "m", 1, 0);
     // Landed short of the wall, and on a walkable tile.
@@ -136,7 +144,7 @@ describe("Blink (Mage): delayed clamped teleport", () => {
 
   it("respects its cooldown — a second immediate press does nothing", () => {
     const a = arena();
-    const p = new Player(a.physics, 300, 300, "mage", "skeleton-mage");
+    const p = new Player(a.physics, 300, 300, "mage", "guy");
     a.addPlayer("m", p);
     castBlink(a, "m", 1, 0);
     const afterFirst = p.state.x;
@@ -148,7 +156,7 @@ describe("Blink (Mage): delayed clamped teleport", () => {
 
   it("cannot be cast while downed", () => {
     const a = arena();
-    const p = new Player(a.physics, 300, 300, "mage", "skeleton-mage");
+    const p = new Player(a.physics, 300, 300, "mage", "guy");
     a.addPlayer("m", p);
     p.setDowned(true);
     pressAbility(a, "m", 1, 0);
@@ -258,7 +266,7 @@ describe("Vault (Ranger): an arced leap", () => {
       a.stepWithInput("v", 0, 0, false, false);
       if (p.state.airHeight <= AIRBORNE_HEIGHT_THRESHOLD) continue;
       const hpA = p.state.health;
-      combat.resolve([new EyeBat(a.physics, p.state.x, p.state.y).contactHitSource("bx")!], groups);
+      combat.resolve([new ContactFlyer(a.physics, p.state.x, p.state.y).contactHitSource("bx")!], groups);
       expect(p.state.health).toBeLessThan(hpA); // flyer connects mid-leap
       const hpB = p.state.health;
       combat.resolve([new GooGreen(a.physics, p.state.x, p.state.y).contactHitSource("gx")!], groups);

@@ -17,7 +17,7 @@ describe("humanoid enemies", () => {
   it("the skeleton swings its broadsword (no passive contact) and hits an adjacent player", () => {
     const physics = flatWorld();
     const skeleton = new Skeleton(physics, 300, 300);
-    expect(skeleton.contactHitSource("e")).toBeNull(); // armed → the swing is the only hazard
+    expect(skeleton.contactHitSource()).toBeNull(); // armed → the swing is the only hazard
     const player = playerAt(physics, 322, 300);
     const a = arena(physics);
     a.addPlayer("p", player);

@@ -5,6 +5,7 @@ import { Entity } from "./Entity";
 import { HitSource } from "../combat/HitSource";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
 import type { AttackStats, Caster } from "../spells/Spell";
+import { reflectHeading } from "./dashMovement";
 
 /** The interior box an enemy is confined to — see Enemy.confineTo. */
 export type RoomBounds = { xMin: number; xMax: number; yMin: number; yMax: number };
@@ -334,6 +335,27 @@ export abstract class Enemy extends Entity implements Caster {
    *  runs, so a dive spell's active phase can override it for the same tick. */
   protected applyFlightBaseline(): void {
     this.setAirHeight(this.state.isDying ? 0 : this.cruiseHeight);
+  }
+
+  // ── DashCaster / FlightCaster (dive + charge spells) ─────────────────────────
+  // An Enemy already has setAirHeight (Entity); adding dashStep lets a rank-and-file
+  // enemy reuse the swoop/leap/dash builders bosses use. Unlike a boss (static body,
+  // setPosition), an enemy drives its DYNAMIC matter body via driveAlong, so physics
+  // still resolves the move against walls. The wall/room REFLECTION is the shared
+  // part (see dashMovement.reflectHeading) — a boss and an enemy differ only in how
+  // they then apply the returned heading.
+  dashStep(dirX: number, dirY: number, pxPerSec: number): { dirX: number; dirY: number; bounces: number } {
+    const r = reflectHeading(this.state.x, this.state.y, dirX, dirY, (x, y) => this.leavesHome(x, y));
+    this.driveAlong(r.dirX, r.dirY, pxPerSec);
+    return r;
+  }
+
+  /** True if (cx, cy) is outside this enemy's home room — the boundary a dive
+   *  reflects off so it can't dive out through a doorway. No home (a test-built or
+   *  free enemy) = no boundary, so it dives freely. */
+  private leavesHome(cx: number, cy: number): boolean {
+    const b = this.homeBounds;
+    return !!b && (cx < b.xMin || cx > b.xMax || cy < b.yMin || cy > b.yMax);
   }
 
   /** Measured from this enemy's own spritesheet — see the generator. No enemy

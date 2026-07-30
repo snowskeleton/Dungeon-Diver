@@ -4,6 +4,7 @@ import { PlayerState } from "../schema/PlayerState";
 import { Spell, SpellCaster, DashCaster, SummonCaster, AimPoint } from "../spells";
 import { PhysicsWorld, spriteToBody } from "../physics/PhysicsWorld";
 import { MovementBehavior, approachAbility } from "./bosses/movement";
+import { reflectHeading } from "./dashMovement";
 
 // Base class for the 8 bosses. Bosses deal no passive contact damage — every hit
 // comes from a telegraphed Spell, so a perfect player can dodge everything
@@ -132,13 +133,10 @@ export abstract class Boss extends Enemy implements DashCaster, SummonCaster {
    *  hit this step. Collision + reflection are the mover's job here, so the dash
    *  spell never queries walls — it just carries the heading we hand back. */
   dashStep(dirX: number, dirY: number, pxPerSec: number): { dirX: number; dirY: number; bounces: number } {
-    // Look a little ahead so we turn before the (static-body) mover clamps us.
-    const look = ENTITY_RADIUS + 8;
-    let bounces = 0;
-    if (dirX !== 0 && this.isBoundaryAt(this.state.x + dirX * look, this.state.y)) { dirX = -dirX; bounces++; }
-    if (dirY !== 0 && this.isBoundaryAt(this.state.x, this.state.y + dirY * look)) { dirY = -dirY; bounces++; }
-    this.moveAtSpeed(dirX, dirY, pxPerSec);
-    return { dirX, dirY, bounces };
+    // Reflect off walls/arena (shared), then apply via the boss's static-body move.
+    const r = reflectHeading(this.state.x, this.state.y, dirX, dirY, (x, y) => this.isBoundaryAt(x, y));
+    this.moveAtSpeed(r.dirX, r.dirY, pxPerSec);
+    return r;
   }
 
   // ── Self-movement (static body) ──────────────────────────────────────────────
