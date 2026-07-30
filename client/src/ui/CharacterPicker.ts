@@ -30,7 +30,11 @@ const CSS = `
 `;
 
 const CLASS_IDS: CharacterClass[] = CHARACTER_CLASSES;
-const SKIN_IDS = Object.keys(CLIENT_CHARACTER_VISUAL_REGISTRY) as CharacterType[];
+// skeleton + skeleton-mage stay in the visual registry (their sheets are reused
+// for the enemy versions) but are not player-selectable.
+const NON_PLAYER_SKINS: ReadonlySet<CharacterType> = new Set(["skeleton", "skeleton-mage"]);
+const SKIN_IDS = (Object.keys(CLIENT_CHARACTER_VISUAL_REGISTRY) as CharacterType[])
+  .filter((id) => !NON_PLAYER_SKINS.has(id));
 
 const skinLabel = (id: CharacterType) =>
   id.split("-").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");

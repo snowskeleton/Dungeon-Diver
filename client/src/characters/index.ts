@@ -21,15 +21,9 @@ const humanoid = (type: CharacterType): ClientCharacterVisualDef => ({
 
 export const CLIENT_CHARACTER_VISUAL_REGISTRY: Record<CharacterType, ClientCharacterVisualDef> = {
   guy: humanoid("guy"),
-  "guy-blue": humanoid("guy-blue"),
   gal: humanoid("gal"),
-  "gal-green": humanoid("gal-green"),
   skeleton: humanoid("skeleton"),
   "skeleton-mage": humanoid("skeleton-mage"),
   colt: humanoid("colt"),
-  "the-fool": humanoid("the-fool"),
   gigante: humanoid("gigante"),
-  reptile: humanoid("reptile"),
-  kobold: humanoid("kobold"),
-  scaleless: humanoid("scaleless"),
 };

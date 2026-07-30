@@ -41,6 +41,6 @@ export const ENEMY_HURT_BOUNDS: Record<EnemyType, HurtBounds> = {
   "batwing-buttstomper": { halfW: 40, halfH: 32, offsetX: 0, offsetY: 0 },
 };
 
-/** The player's damageable region: the union across all 12 humanoid skins, so a
+/** The player's damageable region: the union across all humanoid skins, so a
  *  costume choice can never change how easy someone is to hit. */
-export const PLAYER_HURT_BOUNDS: HurtBounds = { halfW: 11, halfH: 11, offsetX: 0, offsetY: 0 };
+export const PLAYER_HURT_BOUNDS: HurtBounds = { halfW: 11, halfH: 10, offsetX: 0, offsetY: 0 };

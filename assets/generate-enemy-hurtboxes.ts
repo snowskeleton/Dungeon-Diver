@@ -19,7 +19,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { PNG } from "pngjs";
-import { EnemyType, CharacterType } from "shared";
+import { EnemyType, CharacterType, CHARACTER_TYPES as SKIN_IDS } from "shared";
 import { ENEMY_SPRITE_GEOMETRY, SpriteGeometry } from "../client/src/enemies/spriteGeometry";
 
 const ASSETS = __dirname;
@@ -56,16 +56,13 @@ function frameBounds(png: PNG, geo: SpriteGeometry, frame: number): Bounds | nul
   return x1 < 0 ? null : { x0, y0, x1, y1 };
 }
 
-// The 12 humanoid skins all share the 15×4 @32 sheet layout (HumanoidSprites),
+// The humanoid skins all share the 15×4 @32 sheet layout (HumanoidSprites),
 // rendered at one tile. They're measured as a UNION across every skin: a player's
-// damageable region must not depend on which costume they picked.
+// damageable region must not depend on which costume they picked. The skin list
+// comes straight from CHARACTER_TYPES so it can't drift from the playable roster.
 const HUMANOID_CELL = 32;
 const HUMANOID_DISPLAY = 32;
-const CHARACTER_TYPES: CharacterType[] = [
-  "guy", "guy-blue", "gal", "gal-green",
-  "skeleton", "skeleton-mage", "colt", "the-fool",
-  "gigante", "reptile", "kobold", "scaleless",
-];
+const CHARACTER_TYPES: CharacterType[] = [...SKIN_IDS];
 
 const rows: string[] = [];
 const report: string[] = [];
@@ -168,7 +165,7 @@ export const ENEMY_HURT_BOUNDS: Record<EnemyType, HurtBounds> = {
 ${rows.join("\n")}
 };
 
-/** The player's damageable region: the union across all 12 humanoid skins, so a
+/** The player's damageable region: the union across all humanoid skins, so a
  *  costume choice can never change how easy someone is to hit. */
 export const PLAYER_HURT_BOUNDS: HurtBounds = { halfW: ${playerBounds.halfW}, halfH: ${playerBounds.halfH}, offsetX: ${playerBounds.offsetX}, offsetY: ${playerBounds.offsetY} };
 `;
