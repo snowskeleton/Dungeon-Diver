@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { Attack, UpgradeId } from "shared";
 import { Upgrade } from "../../server/src/upgrades";
 import { Player } from "../../server/src/entities/Player";
-import { GooGreen } from "../../server/src/entities/enemies/goos";
+import { GooGreen } from "../../server/src/entities/enemies";
 import { flatWorld } from "../helpers/world";
 
 // The arithmetic of taking a hit, asserted as arithmetic. These tests are written

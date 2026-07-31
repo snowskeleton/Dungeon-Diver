@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { Facing, EnemyType } from "shared";
+import { Facing, EnemyType, WeaponId } from "shared";
 import { defineClips } from "../entities/SpriteClips";
 import { ClientEnemyDef } from "./types";
 import { ENEMY_SPRITE_GEOMETRY, frameRow } from "./spriteGeometry";
@@ -59,3 +59,13 @@ export function makeDirectionalEnemyDef(id: EnemyType, spec: DirectionalSpec): C
     }),
   };
 }
+
+// Shared shorthands for the small 4×4 @16 directional defs, so each per-enemy file
+// declares only its id/name (and, for an armed one, the weapon it holds in hand).
+// The weaponId mirrors the server ArmedEnemy's weaponId for that creature; the
+// held-weapon wind-up is its telegraph.
+export const smallDirectionalDef = (id: EnemyType, name: string): ClientEnemyDef =>
+  makeDirectionalEnemyDef(id, { name, frameRate: 8 });
+
+export const armedDirectionalDef = (id: EnemyType, name: string, weaponId: WeaponId): ClientEnemyDef =>
+  ({ ...smallDirectionalDef(id, name), heldWeapon: { weaponId } });

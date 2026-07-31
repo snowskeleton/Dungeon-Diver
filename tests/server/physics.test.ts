@@ -20,7 +20,7 @@ import {
   syncStateFromBody,
 } from "../../server/src/physics/PhysicsWorld";
 import { Player } from "../../server/src/entities/Player";
-import { GooGreen } from "../../server/src/entities/enemies/goos";
+import { GooGreen } from "../../server/src/entities/enemies";
 import { flatWorld, flatMap, physicsTick, COLS, ROWS } from "../helpers/world";
 
 // PhysicsWorld is the only file that touches matter-js, so the coordinate

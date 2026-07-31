@@ -3,7 +3,7 @@ import { SERVER_TICK_MS } from "shared";
 import { PlayerState } from "../../server/src/schema/PlayerState";
 import { Player } from "../../server/src/entities/Player";
 import { flatWorld, arena, physicsTick } from "../helpers/world";
-import { FrogFlower } from "../../server/src/entities/enemies/critters";
+import { FrogFlower } from "../../server/src/entities/enemies";
 
 // The frog-flower hops in and LEAPS, dealing damage only on the slam — no passive
 // contact. Behaviour only.

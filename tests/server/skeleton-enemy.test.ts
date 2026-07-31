@@ -3,7 +3,7 @@ import { SERVER_TICK_MS } from "shared";
 import { PlayerState } from "../../server/src/schema/PlayerState";
 import { Player } from "../../server/src/entities/Player";
 import { flatWorld, arena } from "../helpers/world";
-import { Skeleton, SkeletonMage } from "../../server/src/entities/enemies/skeletons";
+import { Skeleton, SkeletonMage } from "../../server/src/entities/enemies";
 
 // The humanoid enemies: skeleton swings a broadsword (an ArmedEnemy like the
 // beasts), skeleton-mage is the first RANGED rabble — it fires bolts from afar.

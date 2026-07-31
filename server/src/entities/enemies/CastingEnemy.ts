@@ -1,5 +1,6 @@
 import { Enemy } from "../Enemy";
-import { SpellCaster } from "../../spells";
+import { HitSource } from "../../combat/HitSource";
+import { SpellCaster, AimPoint } from "../../spells";
 
 // The shared base for every rank-and-file enemy that carries a SpellCaster and
 // drives a telegraphed ability (armed swings, the skeleton-mage's staff bolt, the
@@ -9,10 +10,18 @@ import { SpellCaster } from "../../spells";
 // (Boss); this is the rabble counterpart.
 //
 // It deliberately does NOT own tick(): casting enemies differ wildly in HOW they
-// approach (melee range, hop, spiral, cloud), so each writes its own AI and calls
-// these helpers. What they share is the cast lifecycle, not the movement.
+// approach (melee range, hop, spiral, cloud). The common close-in-then-commit shape
+// is factored into ApproachCastEnemy; the genuinely bespoke ones (the smushroom)
+// extend this directly and write their own AI, calling these helpers.
 export abstract class CastingEnemy extends Enemy {
   protected readonly caster = new SpellCaster();
+
+  // Every casting enemy's damage lives in its spell, never in passive touch — so
+  // null is the right default here, and no subclass repeats the override. (A casting
+  // enemy that ALSO wanted a contact hazard would override this back; none do.)
+  override contactHitSource(): HitSource | null {
+    return null;
+  }
 
   // Mirror the cast phase onto the schema the same way Boss does, so the client's
   // telegraph (wind-up) and channel (mid-strike) reads light up for free — the
@@ -21,6 +30,20 @@ export abstract class CastingEnemy extends Enemy {
     this.state.telegraph = this.caster.windingUp;
     this.state.channeling = this.caster.phase === "active";
     this.state.abilityId = this.caster.activeSpellId;
+  }
+
+  // The point a spell aims at: the target's current position (own centre + the
+  // target delta), or the enemy's own position when there's no target. Shared here
+  // because every casting enemy computes it the same way; a self-anchored ability
+  // (the smushroom's cloud) uses selfAim instead.
+  protected aimAt(target: { dx: number; dy: number } | null): AimPoint {
+    if (!target) return this.selfAim;
+    return { x: this.state.x + target.dx, y: this.state.y + target.dy };
+  }
+
+  /** Aim centred on the enemy itself — for a self-anchored ability (a cloud). */
+  protected get selfAim(): AimPoint {
+    return { x: this.state.x, y: this.state.y };
   }
 
   // Interrupt an in-flight cast when the enemy is staggered OR merely shoved this

@@ -3,7 +3,7 @@ import { SERVER_TICK_MS } from "shared";
 import { PlayerState } from "../../server/src/schema/PlayerState";
 import { Player } from "../../server/src/entities/Player";
 import { flatWorld, arena } from "../helpers/world";
-import { Smushroom } from "../../server/src/entities/enemies/floaters";
+import { Smushroom } from "../../server/src/entities/enemies";
 
 // The smushroom's only damage is a lingering cloud, released on walk-up AND on death
 // (a parting gift), caster-anchored so the body stays put while it gasses. Mirror

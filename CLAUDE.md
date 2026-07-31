@@ -102,7 +102,7 @@ server/src/
   entities/Entity.ts        ← base: move()/knockback/hitstun, takeHit(Attack), applyTileEffects(), teleport(), the emitHitSource/spawnProjectile effect buffer GameRoom drains
   entities/Player.ts        ← extends Entity, is a Caster; holds its Character; applyInput() runs the active weapon's Spell. Owns weapons[] + upgrades[], folds them into its stats, and is the ONLY scaleAttack override
   entities/Enemy.ts         ← abstract base; default tick() = patrol/chase AI + contactHitSource() (touch damage as a hitbox); death. Stats are per-class getters. Flying is the cruiseHeight getter (0 = grounded); collision stays at the ground point, height is visual
-  entities/enemies/         ← the OO enemy classes; REGULAR_ENEMIES = the spawn-pool array
+  entities/enemies/         ← one file per enemy (PascalCase, like bosses/); REGULAR_ENEMIES + barrel in index.ts. Shared behaviour in its own files: CastingEnemy (caster lifecycle + no-contact default + aimAt), ApproachCastEnemy (close-in-then-commit tick), ArmedEnemy (weapon swing), DirectionalEnemy (row-per-facing), movement.ts (spiral/hop approaches)
   upgrades/                 ← Upgrade base (zero-returning stat getters + deferred spell() hook) + one class per upgrade in stats.ts + UPGRADES; weaponMods.ts = concrete WeaponMods a pedestal rolls
   entities/Boss.ts          ← abstract Boss (extends Enemy, is a DashCaster); picks the next Spell, delegates to a SpellCaster; no passive contact damage. entities/bosses/ = one class each + movement.ts + BOSSES
   entities/Projectile.ts    ← kinematic arrow/thrown weapon (no matter-js body); swept-ellipse hitSource(), pierce, boomerang return, despawn. Pulls AmmoConfig from AMMO_REGISTRY
@@ -120,7 +120,7 @@ client/src/
   scenes/GameScene.ts       ← main scene; init resets per-run state, create() builds party views + state sync + floor/barrier messages, room-locked camera. Owns inventory HUD, PAUSED overlay, P1 store card, pause menu
   characters/index.ts       ← CLIENT_CHARACTER_VISUAL_REGISTRY (CharacterType → preload/defineAnimations/spriteConfig)
   enemies/index.ts          ← CLIENT_ENEMY_REGISTRY: thin Record<EnemyType, ClientEnemyDef> wiring table (compiler flags a missing def)
-  enemies/{goos,bats,floaters,critters,directional}.ts ← per-group visual defs, mirroring the server grouping
+  enemies/<Name>.ts         ← one visual-def file per enemy, mirroring the per-enemy server files; shared directional shorthands (smallDirectionalDef/armedDirectionalDef) live in directionalEnemy.ts
   enemies/bosses/           ← one visual-def module per boss + factory.ts (boss() 2×-size helper)
   enemies/sheetEnemy.ts / directionalEnemy.ts ← the two def factories (horizontal-flip side view; 4-row per-facing sheet)
   enemies/spriteGeometry.ts ← Phaser-FREE table of cell size / frames / display size per EnemyType (the hurtbox generator imports it, so render + hit-test can't diverge)
@@ -237,7 +237,7 @@ state.things.onRemove((_, id) => {
 | Staff feel | staff `ammoId` + `attackCooldownMs`; bolt damage/speed/pierce in `shared/src/ammo/bolts/<id>/index.ts` |
 | Ammo/projectile | `shared/src/ammo/<id>/index.ts` (ranged weapon `damage` is a flat bonus on top of ammo base; speed/pierce live on ammo) |
 | Enemy hurt size | **the sprite art** — replace the PNG, `npm run assets:hurtboxes` |
-| Enemy (hp, speed, aggro, attack, kb resist, flying height) | getters on the `Enemy` subclass — `server/src/entities/enemies/<group>.ts` |
+| Enemy (hp, speed, aggro, attack, kb resist, flying height) | getters on the `Enemy` subclass — `server/src/entities/enemies/<Name>.ts` |
 | Boss (moveset, movement, phases, stats) | the `Boss` subclass — `server/src/entities/bosses/<Name>.ts` |
 | Upgrade effects | the `Upgrade` subclass — `server/src/upgrades/stats.ts` |
 | Weapon-modifier rolls | `rollWeaponMod` in `server/src/upgrades/weaponMods.ts` |

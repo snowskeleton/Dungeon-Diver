@@ -5,7 +5,7 @@ import {
   SERVER_TICK_MS, TILE_SIZE, TileId,
 } from "shared";
 import { Player } from "../../server/src/entities/Player";
-import { GooGreen } from "../../server/src/entities/enemies/goos";
+import { GooGreen } from "../../server/src/entities/enemies";
 import { Enemy } from "../../server/src/entities/Enemy";
 import { CombatSystem } from "../../server/src/combat/CombatSystem";
 import { flatWorld, worldWithTile, arena, physicsTick, COLS, ROWS } from "../helpers/world";

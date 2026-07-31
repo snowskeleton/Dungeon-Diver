@@ -10,7 +10,7 @@ import {
   PLAYER_HURT_BOUNDS,
 } from "shared";
 import { Player } from "../../server/src/entities/Player";
-import { GooGreen } from "../../server/src/entities/enemies/goos";
+import { GooGreen } from "../../server/src/entities/enemies";
 import { flatWorld, worldWithTile, physicsTick } from "../helpers/world";
 
 // Entity is the shared substrate: movement intent, knockback, hitstun, tile

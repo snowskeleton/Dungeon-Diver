@@ -3,7 +3,7 @@ import { SERVER_TICK_MS } from "shared";
 import { PlayerState } from "../../server/src/schema/PlayerState";
 import { Player } from "../../server/src/entities/Player";
 import { flatWorld, arena } from "../helpers/world";
-import { SwordBeast, ArmorLancer, Fang } from "../../server/src/entities/enemies/directional";
+import { SwordBeast, ArmorLancer, Fang } from "../../server/src/entities/enemies";
 
 // An ArmedEnemy swings a real weapon with a wind-up telegraph instead of dealing
 // passive touch damage. These pin the behaviour, not any balance number.

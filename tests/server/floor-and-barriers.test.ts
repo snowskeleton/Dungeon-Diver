@@ -11,7 +11,7 @@ import {
 import type Matter from "matter-js";
 import { PhysicsWorld } from "../../server/src/physics/PhysicsWorld";
 import { FloorManager } from "../../server/src/floor/FloorManager";
-import { GooBlue } from "../../server/src/entities/enemies/goos";
+import { GooBlue } from "../../server/src/entities/enemies";
 import { physicsTick } from "../helpers/world";
 
 // The lock/unlock rules that decide whether a party can move through the floor.

@@ -44,7 +44,9 @@ go()
 
 Enemies are **object-oriented**: behaviour and stats live *on the class*, compiler-checked. There is **no** `EnemyConfig`, **no** `ENEMY_REGISTRY`, and **no** generic `Goo` class — that data-driven design was abandoned (see CLAUDE.md's engineering note).
 
-**`server/src/entities/enemies/<group>.ts`** — an `Enemy` subclass. `GooGreen` is the baseline (exactly the `Enemy` defaults, overriding nothing); tune by overriding stat getters:
+**`server/src/entities/enemies/<Name>.ts`** — one file per enemy (PascalCase, matching the
+class and mirroring `entities/bosses/<Name>.ts`), holding an `Enemy` subclass. `GooGreen` is the
+baseline (exactly the `Enemy` defaults, overriding nothing); tune by overriding stat getters:
 
 ```ts
 export class GooGold extends Enemy {
@@ -57,15 +59,22 @@ export class GooGold extends Enemy {
 }
 ```
 
-Related enemies share a file — `goos.ts`, `bats.ts`, `floaters.ts`, `critters.ts`, `directional.ts` — grouped by art/behaviour, not one file each. The default `tick()` (patrol → chase → contact-melee) covers the rank-and-file; contact damage is emitted by `Enemy.contactHitSource()` (a hitbox the combat resolver applies), not dealt inline. Only override `tick()` for genuinely custom AI, or give the enemy a Spell (below).
+One file per enemy; **shared behaviour lives in its own files**, not copy-pasted between them:
+`CastingEnemy.ts` (the SpellCaster lifecycle + `contactHitSource → null` default + `aimAt`),
+`ApproachCastEnemy.ts` (the close-in-then-commit tick shared by the eye-bat/frog/fang — a subclass
+supplies `commitRange`, `spell`, `restMs`, and an `approach()`), `ArmedEnemy.ts` (weapon-swing AI),
+`DirectionalEnemy.ts` (row-per-facing), and `movement.ts` (reusable approach movements — `spiralApproach`,
+`hopApproach`). The default `tick()` (patrol → chase → contact-melee) covers the rank-and-file; contact
+damage is emitted by `Enemy.contactHitSource()` (a hitbox the combat resolver applies), not dealt inline.
+Only override `tick()` (or extend `ApproachCastEnemy`) for custom AI, or give the enemy a Spell (below).
 
-**No client sprite module.** An enemy is one `makeSheetEnemyDef(...)` / `makeDirectionalEnemyDef(...)` def in its group module under `client/src/enemies/` (`goos.ts`, `bats.ts`, `floaters.ts`, `critters.ts`, `directional.ts`, or `bosses/<Name>.ts`) — the same grouping as the server classes; the factory builds the preload/clip/resolve bundle from the sheet's cell size and column count. The death clip defaults to the move frames reversed; pass `death` to override (bats collapse on `[5,4,3]`).
+**No client sprite module.** An enemy is one `makeSheetEnemyDef(...)` / `makeDirectionalEnemyDef(...)` def in its own file under `client/src/enemies/` (`<Name>.ts`, or `bosses/<Name>.ts`) — mirroring the per-enemy server files; the factory builds the preload/clip/resolve bundle from the sheet's cell size and column count. The shared directional shorthands `smallDirectionalDef`/`armedDirectionalDef` live in `directionalEnemy.ts`. The death clip defaults to the move frames reversed; pass `death` to override (bats collapse on `[5,4,3]`).
 
 ## Files to touch (three edits per enemy type)
 
 1. `shared/src/enemies/base.ts` — add the new id to the `EnemyType` union.
 2. `server/src/entities/enemies/index.ts` — add the class to the `REGULAR_ENEMIES: EnemyClass[]` array (import it). `EnemyClass` requires a `static readonly type`, so a missing or mistyped id is a compile error — no id→class map to keep in sync.
-3. `client/src/enemies/` — export a `makeSheetEnemyDef(...)` or `makeDirectionalEnemyDef(...)` def from the matching group module (`bats.ts`, `directional.ts`, `bosses/<Name>.ts`, …), then wire its id to that named export in the `CLIENT_ENEMY_REGISTRY` table in `index.ts` (pure wiring — no definitions live there).
+3. `client/src/enemies/` — export a `makeSheetEnemyDef(...)` or `makeDirectionalEnemyDef(...)` def from the enemy's own file (`<Name>.ts`, or `bosses/<Name>.ts`), then wire its id to that named export in the `CLIENT_ENEMY_REGISTRY` table in `index.ts` (pure wiring — no definitions live there).
 
 Everything else is derived. `GameRoom` rolls its spawn pool from `REGULAR_ENEMIES`; `GameScene` iterates `CLIENT_ENEMY_REGISTRY` to preload sheets (deduped by `textureKey`) and define clips; `EnemyEntity` looks the enemy up by type. The class's `facingMode` getter must match the client def (horizontal vs directional). The `Record<EnemyType, ClientEnemyDef>` on the registry makes the compiler flag any id that's missing a def.
 
@@ -136,7 +145,7 @@ Handled in the `Entity` / `Enemy` base classes — no per-type work needed. Knoc
 
 ## Balance
 
-- **Per enemy** → the stat getters on its `Enemy` subclass (`goos.ts`, `bats.ts`, …): `maxHp`, `speed`, `aggroRadius`, `attackRadius`, `attackDamage`, `attackCooldownMs`, `knockbackResistance`, `facingMode`, `cruiseHeight` (flyers). Override only what differs from the `Enemy` defaults.
+- **Per enemy** → the stat getters on its `Enemy` subclass (`server/src/entities/enemies/<Name>.ts`): `maxHp`, `speed`, `aggroRadius`, `attackRadius`, `attackDamage`, `attackCooldownMs`, `knockbackResistance`, `facingMode`, `cruiseHeight` (flyers). Override only what differs from the `Enemy` defaults.
 - **Knockback / hitstun feel** → `shared/src/types.ts`: `KNOCKBACK_SCALE` (px pushed per unit of overage), `KNOCKBACK_STUN_MS_PER_UNIT` + `KNOCKBACK_STUN_MAX_MS` (hitstun length per overage, capped). The per-class `knockbackResistance` is the threshold a hit's `force` must clear; per-weapon `attackForce` / per-ammo `knockback` is that force. Players default to resistance 0.
 - **Enemy count** → `GameRoom.enemiesPerRoom()` = `ceil((ENEMY_BASE_COUNT + floor(floorNum / ENEMY_FLOOR_BONUS_INTERVAL)) × (1 + ENEMY_PLAYER_SCALE × (playerCount − 1)))`. **Every combat and maze room** gets that many, **except the start room, which is always left clear** (players spawn there). Boss/shop/shrine get none. The one exception to the clear-start rule is a single-room debug floor (start === exit). Constants in `shared/src/types.ts`. Floor 1 solo = 3 per room; floor 10 four-player = 14 per room. Types are rolled uniformly from `REGULAR_ENEMIES` in `GameRoom.ts`.
 

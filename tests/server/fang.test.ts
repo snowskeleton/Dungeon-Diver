@@ -3,7 +3,7 @@ import { SERVER_TICK_MS } from "shared";
 import { PlayerState } from "../../server/src/schema/PlayerState";
 import { Player } from "../../server/src/entities/Player";
 import { flatWorld, arena, physicsTick } from "../helpers/world";
-import { Fang } from "../../server/src/entities/enemies/directional";
+import { Fang } from "../../server/src/entities/enemies";
 
 // Fang coils then LUNGES (a fast contact dash) — its only damage. Placeholder art.
 describe("Fang — lunge, no passive contact", () => {

@@ -15,7 +15,7 @@ import { Spell, AttackStats, FlightCaster } from "../../server/src/spells/Spell"
 import { SpellCaster } from "../../server/src/spells/SpellCaster";
 import { HitSource } from "../../server/src/combat/HitSource";
 import { EnemyClass, SpawnOpts } from "../../server/src/entities/Enemy";
-import { GooGreen } from "../../server/src/entities/enemies/goos";
+import { GooGreen } from "../../server/src/entities/enemies";
 
 // The reusable ability shapes every boss is assembled from. Each is driven
 // through a real SpellCaster and asserted on the SHAPE of what it produces —

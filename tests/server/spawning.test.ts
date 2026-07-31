@@ -24,7 +24,7 @@ import { Enemy } from "../../server/src/entities/Enemy";
 import { Player } from "../../server/src/entities/Player";
 import { REGULAR_ENEMIES } from "../../server/src/entities/enemies";
 import { BOSSES } from "../../server/src/entities/bosses";
-import { GooGreen } from "../../server/src/entities/enemies/goos";
+import { GooGreen } from "../../server/src/entities/enemies";
 
 // SpawnDirector is the ONE place an enemy comes into existence, so the rules it
 // enforces there — never in the start room, never in a reward room, always

@@ -7,7 +7,7 @@ import {
   SERVER_TICK_MS,
 } from "shared";
 import { Player } from "../../server/src/entities/Player";
-import { GooGreen } from "../../server/src/entities/enemies/goos";
+import { GooGreen } from "../../server/src/entities/enemies";
 import { arena, armedPlayer } from "../helpers/world";
 
 // The melee combo: consecutive swings step through first → reverse → finisher and

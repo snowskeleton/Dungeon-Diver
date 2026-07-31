@@ -3,7 +3,7 @@ import { SERVER_TICK_MS } from "shared";
 import { PlayerState } from "../../server/src/schema/PlayerState";
 import { Player } from "../../server/src/entities/Player";
 import { flatWorld, arena, physicsTick } from "../helpers/world";
-import { EyeBat } from "../../server/src/entities/enemies/bats";
+import { EyeBat } from "../../server/src/entities/enemies";
 
 // The eye-bat spirals in and DIVES; all its damage is the dive (swoop), none from
 // passive contact. Behaviour only.

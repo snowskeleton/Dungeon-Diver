@@ -11,7 +11,7 @@ import {
   shapeHitsBox,
 } from "shared";
 import { REGULAR_ENEMIES } from "../../server/src/entities/enemies";
-import { GooGreen, GooBlue, GooGold } from "../../server/src/entities/enemies/goos";
+import { GooGreen, GooBlue, GooGold } from "../../server/src/entities/enemies";
 import { PlayerState } from "../../server/src/schema/PlayerState";
 import { flatWorld, physicsTick } from "../helpers/world";
 

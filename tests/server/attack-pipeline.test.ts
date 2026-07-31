@@ -8,7 +8,7 @@ import {
   ENEMY_PROJECTILE_AFFECTS,
 } from "shared";
 import { Player } from "../../server/src/entities/Player";
-import { GooGreen } from "../../server/src/entities/enemies/goos";
+import { GooGreen } from "../../server/src/entities/enemies";
 import { Projectile } from "../../server/src/entities/Projectile";
 import { Upgrade } from "../../server/src/upgrades";
 import { arena, flatWorld, swingUntilHit, tapSwing, armedPlayer } from "../helpers/world";

@@ -13,7 +13,7 @@ import {
 } from "shared";
 import { BOSSES, BossClass } from "../../server/src/entities/bosses";
 import { Boss } from "../../server/src/entities/Boss";
-import { GooGreen } from "../../server/src/entities/enemies/goos";
+import { GooGreen } from "../../server/src/entities/enemies";
 import { Projectile } from "../../server/src/entities/Projectile";
 import { PlayerState } from "../../server/src/schema/PlayerState";
 import { PhysicsWorld } from "../../server/src/physics/PhysicsWorld";

@@ -1,8 +1,7 @@
 import { EnemyFacingMode, WeaponId, WEAPON_REGISTRY, WeaponInstance } from "shared";
 import { PlayerState } from "../../schema/PlayerState";
-import { HitSource } from "../../combat/HitSource";
-import { Spell, weaponSpell, AimPoint } from "../../spells";
-import { CastingEnemy } from "./casting";
+import { Spell, weaponSpell } from "../../spells";
+import { CastingEnemy } from "./CastingEnemy";
 
 // A rank-and-file enemy that WIELDS A REAL WEAPON and swings it with a wind-up,
 // instead of dealing passive touch damage. The swing IS the attack: it runs the
@@ -11,9 +10,9 @@ import { CastingEnemy } from "./casting";
 // attackCooldownMs — nothing here is a hand-tuned reach number. The sword/axe/mace
 // beasts and the armor-lancer are ArmedEnemies.
 //
-// This is the first non-boss enemy to carry a SpellCaster. It reuses the boss's
-// telegraph/channeling schema fields (they live on EnemyState) so the client's
-// existing wind-up tint reads the swing with no new client code.
+// It keeps its own tick (rather than ApproachCastEnemy's) because its in-range-but-
+// resting branch HOLDS AND FACES rather than continuing to approach — a swinger
+// planted at sword's length, not a diver circling for another pass.
 export abstract class ArmedEnemy extends CastingEnemy {
   /** The wire weapon id this enemy swings (a key of WEAPON_REGISTRY). */
   protected abstract get weaponId(): WeaponId;
@@ -45,11 +44,6 @@ export abstract class ArmedEnemy extends CastingEnemy {
   private get spell(): Spell {
     if (!this._spell) this._spell = weaponSpell(this.weapon);
     return this._spell;
-  }
-
-  // The swing carries all the damage — no passive contact hazard.
-  override contactHitSource(): HitSource | null {
-    return null;
   }
 
   override tick(players: Map<string, PlayerState>, dtMs: number): void {
@@ -106,10 +100,5 @@ export abstract class ArmedEnemy extends CastingEnemy {
       else this.updateFacing(target.dx, target.dy);
     }
     this.syncCastState();
-  }
-
-  private aimAt(target: { dx: number; dy: number } | null): AimPoint {
-    if (!target) return { x: this.state.x, y: this.state.y };
-    return { x: this.state.x + target.dx, y: this.state.y + target.dy };
   }
 }

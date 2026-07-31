@@ -11,8 +11,8 @@ import {
 } from "shared";
 import { PhysicsWorld } from "../../server/src/physics/PhysicsWorld";
 import { PlayerState } from "../../server/src/schema/PlayerState";
-import { GooGreen } from "../../server/src/entities/enemies/goos";
-import { EyeBat } from "../../server/src/entities/enemies/bats";
+import { GooGreen } from "../../server/src/entities/enemies";
+import { EyeBat } from "../../server/src/entities/enemies";
 import { FlowFieldSystem } from "../../server/src/pathfinding/FlowFieldSystem";
 import { physicsTick } from "../helpers/world";
 

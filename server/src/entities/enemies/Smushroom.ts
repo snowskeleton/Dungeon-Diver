@@ -1,8 +1,7 @@
 import { EnemyType } from "shared";
 import { PlayerState } from "../../schema/PlayerState";
-import { HitSource } from "../../combat/HitSource";
-import { Spell, lingeringCloud, AimPoint } from "../../spells";
-import { CastingEnemy } from "./casting";
+import { Spell, lingeringCloud } from "../../spells";
+import { CastingEnemy } from "./CastingEnemy";
 
 // Cloud tuning — shared shape for both the walk-up cloud and the death cloud.
 const CLOUD_RADIUS = 60;
@@ -14,6 +13,11 @@ const CLOUD_REHIT_MS = 500; // ticks damage every 0.5s to anyone still inside
 // cloud is its ONLY damage — no passive contact. It's caster-anchored (centred on
 // the smushroom), so the body stays put while it lingers and, on death, the corpse
 // lingers too before fading — no detached hazard entity.
+//
+// It extends CastingEnemy directly (not ApproachCastEnemy): it drags the cloud while
+// casting, gates on cloud.isReady rather than a rest timer, and runs a death cloud —
+// genuinely its own AI, so forcing it into the approach-cast driver would be a dead
+// abstraction. What it DOES share: the caster, selfAim, and the no-contact default.
 export class Smushroom extends CastingEnemy {
   static readonly type: EnemyType = "smushroom";
   protected get maxHp() { return 50; }
@@ -37,15 +41,6 @@ export class Smushroom extends CastingEnemy {
       });
     }
     return this._cloud;
-  }
-
-  private get selfAim(): AimPoint {
-    return { x: this.state.x, y: this.state.y };
-  }
-
-  // Cloud-only — no passive touch hazard.
-  override contactHitSource(): HitSource | null {
-    return null;
   }
 
   override tick(players: Map<string, PlayerState>, dtMs: number): void {

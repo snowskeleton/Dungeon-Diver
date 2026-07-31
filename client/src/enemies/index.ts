@@ -1,14 +1,20 @@
 import { EnemyType } from "shared";
 import { ClientEnemyDef } from "./types";
-import { gooGreen, gooBlue, gooGold } from "./goos";
-import { eyeBat } from "./bats";
-import { smushroom } from "./floaters";
-import { spider, frogFlower } from "./critters";
-import {
-  bones, armorLancer,
-  axeBeast, maceBeast, swordBeast, fang,
-} from "./directional";
-import { skeleton, skeletonMage } from "./skeletons";
+import { gooGreen } from "./GooGreen";
+import { gooBlue } from "./GooBlue";
+import { gooGold } from "./GooGold";
+import { eyeBat } from "./EyeBat";
+import { smushroom } from "./Smushroom";
+import { spider } from "./Spider";
+import { frogFlower } from "./FrogFlower";
+import { bones } from "./Bones";
+import { fang } from "./Fang";
+import { armorLancer } from "./ArmorLancer";
+import { axeBeast } from "./AxeBeast";
+import { maceBeast } from "./MaceBeast";
+import { swordBeast } from "./SwordBeast";
+import { skeleton } from "./Skeleton";
+import { skeletonMage } from "./SkeletonMage";
 import { turtleDragon } from "./bosses/TurtleDragon";
 import { wyvern, wyvernGreen, wyvernGrey } from "./bosses/Wyvern";
 import { tenguMask, tenguShade } from "./bosses/TenguMask";
