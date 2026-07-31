@@ -15,35 +15,44 @@ const BAT_HOVER = 16;
 export class EyeBat extends CastingEnemy {
   static readonly type: EnemyType = "eye-bat";
   protected get maxHp() { return 30; }
-  protected get speed() { return 110; }
+  protected get speed() { return 70; }
   protected get aggroRadius() { return 240; }
   protected get knockbackResistance() { return 0; }
   protected get cruiseHeight() { return BAT_HOVER; }
 
   /** Center-to-center distance at which it commits to a dive. */
-  private get diveRange(): number { return 170; }
+  private get diveRange(): number { return 75; }
   /** Pause after a dive before it may spiral in for another. */
-  private get restMs(): number { return 700; }
+  private get restMs(): number { return 2000; }
   private restRemaining = 0;
   // Which way it orbits while closing (flips per dive so it doesn't circle forever).
   private spinDir: 1 | -1 = 1;
+  // Accumulates while orbiting; drives the side-to-side weave of the spiral.
+  private orbitClock = 0;
+
+  /** Distance it tries to hold while orbiting. Wide while resting after a dive, so
+   *  it peels OUT and regroups instead of spinning around your head; tight while
+   *  hunting, so it presses into dive range. */
+  private standoffRadius(): number {
+    return this.restRemaining > 0 ? 150 : 55;
+  }
 
   private _dive?: Spell;
   private get dive(): Spell {
     if (!this._dive) {
       this._dive = swoop({
         id: "eye-bat-dive",
-        windUpMs: 340, // the coil-up tell
-        recoverMs: 220,
+        windUpMs: 400, // the coil-up tell
+        recoverMs: 50,
         cooldownMs: 0, // the AI's restMs paces re-dives
         range: this.diveRange,
-        aimLockMs: 120,
+        aimLockMs: 240,
         cruiseHeight: BAT_HOVER,
         diveMs: 260,
-        riseMs: 300,
-        hitRadius: 18,
-        damage: 8,
-        knockback: 4,
+        riseMs: 10,
+        hitRadius: 12,
+        damage: 2,
+        knockback: 1,
         hitCooldownMs: 500,
       });
     }
@@ -104,19 +113,34 @@ export class EyeBat extends CastingEnemy {
       this.caster.update(this, dtMs, aim);
     } else {
       this.transition("chase");
-      this.spiralToward(target);
+      this.spiralToward(target, dtMs);
     }
     this.syncCastState();
   }
 
-  // Orbit-and-approach: a tangential component (perpendicular to the bat→player
-  // line) plus a gentle inward pull, so it spirals in rather than beelining.
-  private spiralToward(target: { dx: number; dy: number }): void {
-    const tx = -target.dy * this.spinDir;
-    const ty = target.dx * this.spinDir;
-    // Blend: mostly tangent, a bit inward. Not normalized — move() handles that.
-    const dx = tx + target.dx * 0.6;
-    const dy = ty + target.dy * 0.6;
+  // Orbit around a standoff ring: a tangential component (perpendicular to the
+  // bat→player line) that WEAVES side to side, plus a radial pull toward the
+  // standoff distance (inward when too far, outward when too close). So far away
+  // it swings back and forth as it closes, and after a dive it peels out and
+  // circles at range instead of crowding — rather than gluing itself to one orbit.
+  private spiralToward(target: { dx: number; dy: number }, dtMs: number): void {
+    this.orbitClock += dtMs;
+    const dist = Math.hypot(target.dx, target.dy) || 1;
+    const ux = target.dx / dist;
+    const uy = target.dy / dist;
+
+    // Radial: +1 = inward, -1 = outward. Steer toward the standoff ring, easing
+    // off as it nears so it settles onto the ring instead of oscillating hard.
+    const radial = Math.max(-1, Math.min(1, (dist - this.standoffRadius()) / 60));
+
+    // Tangential weave: sin sweeps the orbit direction through zero and back, so
+    // the bat visibly sways left-right rather than tracing a clean circle.
+    const weave = Math.sin(this.orbitClock / 300) * this.spinDir;
+    const tx = -uy * weave;
+    const ty = ux * weave;
+
+    const dx = tx + ux * radial;
+    const dy = ty + uy * radial;
     this.move(dx, dy, this.speed);
     this.updateFacing(target.dx, target.dy);
   }

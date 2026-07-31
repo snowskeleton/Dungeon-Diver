@@ -21,7 +21,7 @@ export class FrogFlower extends CastingEnemy {
   protected get knockbackResistance() { return 1; }
 
   /** Center-to-center distance at which it commits to a leap. */
-  private get leapRange(): number { return 150; }
+  private get leapRange(): number { return 90; }
   private get restMs(): number { return 500; }
   private restRemaining = 0;
 
@@ -29,6 +29,7 @@ export class FrogFlower extends CastingEnemy {
   // bounds toward the player instead of gliding.
   private static readonly HOP_MS = 220;
   private static readonly HOP_PAUSE_MS = 260;
+  private static readonly HOP_HEIGHT = 14; // visual arc peak (px) of each locomotion hop
   private hopClock = 0;
 
   private _leap?: Spell;
@@ -117,6 +118,11 @@ export class FrogFlower extends CastingEnemy {
     if (this.hopClock < FrogFlower.HOP_MS) {
       // A hop covers ground faster than a glide would — brief and bounding.
       this.move(target.dx, target.dy, this.speed * 1.6);
+      // Drive a visible jump arc: rise and fall over the hop window (0 at the
+      // ends, peak at mid-hop) so the client lifts the sprite + casts a shadow
+      // instead of just bobbing. applyFlightBaseline reset it to 0 this tick.
+      const t = this.hopClock / FrogFlower.HOP_MS;
+      this.setAirHeight(Math.sin(Math.PI * t) * FrogFlower.HOP_HEIGHT);
     }
   }
 
