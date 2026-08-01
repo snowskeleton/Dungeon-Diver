@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { WEAPON_REGISTRY, WeaponId, WeaponSlotView } from "shared";
+import { resolveWeapon, WeaponSlotView } from "shared";
 import type { UiLayer } from "./UiLayer";
 
 // A fixed HUD row of the local player's owned weapons, with the active slot
@@ -49,7 +49,7 @@ export class InventoryHud {
       );
       this.objects.push(frame);
 
-      const held = WEAPON_REGISTRY[id as WeaponId]?.rangedStyle === "held";
+      const held = resolveWeapon(id)?.rangedStyle === "held";
       // Held ranged icons are spritesheets — show frame 0 (relaxed bow).
       const icon = held
         ? this.scene.add.sprite(cx, cy, id, 0)

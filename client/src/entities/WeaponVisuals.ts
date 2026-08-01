@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { Facing, RangedStyle, WEAPON_REGISTRY, ComboSwing } from "shared";
+import { Facing, RangedStyle, resolveWeapon, ComboSwing } from "shared";
 import {
   AttackFXType,
   StripFXType,
@@ -40,6 +40,11 @@ export interface WeaponVisual {
   /** Show/hide every piece of this visual — used to make a Blinking player vanish
    *  during the teleport gap. No-op for visuals with nothing held (thrown / nova). */
   setVisible?(visible: boolean): void;
+  /** Recolour the held art to a weapon-instance tint (a rolled modifier's colour —
+   *  a Frost mod tints the blade cyan). `null` clears any tint. No-op for visuals
+   *  with nothing held. The tint rides on the WeaponInstance, so it survives a swap:
+   *  Entity re-applies it whenever it (re)builds this visual. */
+  setTint?(tint: number | null): void;
   destroy(): void;
 }
 
@@ -72,11 +77,11 @@ class HeldWeaponVisual implements WeaponVisual {
     // the first swing of any variant doesn't stutter building its sprite.
     if (fxType) {
       this.spriteFor(fxType);
-      for (const s of WEAPON_REGISTRY[weaponIconTextureKey ?? ""]?.comboSwings ?? []) {
+      for (const s of resolveWeapon(weaponIconTextureKey ?? "")?.comboSwings ?? []) {
         this.spriteFor(s.fxType);
       }
     }
-    this.iconAngle = WEAPON_REGISTRY[weaponIconTextureKey ?? ""]?.iconAngle ?? 0;
+    this.iconAngle = resolveWeapon(weaponIconTextureKey ?? "")?.iconAngle ?? 0;
     if (weaponIconTextureKey) {
       this.icon = scene.add.image(0, 0, weaponIconTextureKey);
       this.icon.setOrigin(0.5, 0.5);
@@ -128,6 +133,18 @@ class HeldWeaponVisual implements WeaponVisual {
     if (!visible) this.activeSprite?.setVisible(false);
   }
 
+  setTint(tint: number | null): void {
+    // Tint the resting icon AND every swing strip so the blade reads the same
+    // colour cocked back or mid-arc.
+    if (tint === null) {
+      this.icon?.clearTint();
+      for (const s of this.fxSprites.values()) s.clearTint();
+    } else {
+      this.icon?.setTint(tint);
+      for (const s of this.fxSprites.values()) s.setTint(tint);
+    }
+  }
+
   destroy(): void {
     for (const s of this.fxSprites.values()) s.destroy();
     this.icon?.destroy();
@@ -147,7 +164,7 @@ class HeldBowVisual implements WeaponVisual {
   ) {
     // The crossbow is one-handed: hold it in the right hand, not centred like a
     // two-handed bow draw.
-    const handHeld = WEAPON_REGISTRY[weaponId]?.category === "crossbow";
+    const handHeld = resolveWeapon(weaponId)?.category === "crossbow";
     this.bowSprite = createBowSprite(scene, weaponId, handHeld);
     // Held in hand from the moment it's equipped (like the staff), so it doesn't
     // blink out between shots on the slower bows.
@@ -166,6 +183,11 @@ class HeldBowVisual implements WeaponVisual {
 
   setVisible(visible: boolean): void {
     this.bowSprite.setVisible(visible);
+  }
+
+  setTint(tint: number | null): void {
+    if (tint === null) this.bowSprite.clearTint();
+    else this.bowSprite.setTint(tint);
   }
 
   destroy(): void {
@@ -194,6 +216,11 @@ class HeldStaffVisual implements WeaponVisual {
 
   setVisible(visible: boolean): void {
     this.castSprite.setVisible(visible);
+  }
+
+  setTint(tint: number | null): void {
+    if (tint === null) this.castSprite.clearTint();
+    else this.castSprite.setTint(tint);
   }
 
   destroy(): void {
@@ -267,7 +294,7 @@ export function createWeaponVisual(
   }
   if (fxType === "nova") {
     // weaponIconTextureKey is the weapon id here; size the blast to its AoeSpec.
-    const radius = WEAPON_REGISTRY[weaponIconTextureKey ?? ""]?.aoe?.radius ?? 76;
+    const radius = resolveWeapon(weaponIconTextureKey ?? "")?.aoe?.radius ?? 76;
     return new NovaVisual(scene, radius);
   }
   return new HeldWeaponVisual(scene, fxType, weaponIconTextureKey, x, y, facing);

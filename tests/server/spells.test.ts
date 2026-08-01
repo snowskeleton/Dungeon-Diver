@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { Facing, Attack, PLAYER_ATTACK_AFFECTS, WEAPON_REGISTRY, WeaponInstance, WeaponMod, WeaponId, Weapon, WeaponCategory, AMMO_REGISTRY, swingDurationMs } from "shared";
+import { Facing, Attack, PLAYER_ATTACK_AFFECTS, WEAPON_REGISTRY, WeaponInstance, WeaponMod, WeaponId, Weapon, WeaponCategory, resolveAmmo, swingDurationMs } from "shared";
 import { Spell, SpellOpts, Caster, AttackStats } from "../../server/src/spells/Spell";
 import { SpellCaster } from "../../server/src/spells/SpellCaster";
 import { weaponSpell } from "../../server/src/spells/weaponSpell";
@@ -399,7 +399,7 @@ describe("weaponSpell", () => {
     const caster = new RecordingCaster();
     caster.scale = 2;
     const inst = new WeaponInstance(bow, "a");
-    const ammo = AMMO_REGISTRY[inst.ammoId!];
+    const ammo = resolveAmmo(inst.ammoId!)!;
     const sc = new SpellCaster();
     sc.begin(weaponSpell(inst), AIM);
     sc.update(caster, 10, AIM);

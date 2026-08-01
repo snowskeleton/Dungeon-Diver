@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { TILE_SIZE, Facing, RangedStyle, FOOT_OFFSET, ENTITY_RADIUS, WEAPON_REGISTRY, ComboSwing } from "shared";
+import { TILE_SIZE, Facing, RangedStyle, FOOT_OFFSET, ENTITY_RADIUS, resolveWeapon, ComboSwing } from "shared";
 import { DEBUG_COLORS, type DebugShape } from "../debug/DebugDraw";
 import { AttackFXType } from "./AttackFXSprites";
 import { WeaponVisual, createWeaponVisual, createNoWeaponVisual } from "./WeaponVisuals";
@@ -95,6 +95,7 @@ export abstract class Entity {
     fxType: AttackFXType | null = null,
     weaponIconTextureKey?: string,
     rangedStyle?: RangedStyle,
+    tint: number | null = null,
   ) {
     this.spriteConfig = spriteCfg;
     this.sprite.setVisible(false);
@@ -102,8 +103,14 @@ export abstract class Entity {
     this.charSprite.setDepth(2);
     this.charSprite.setDisplaySize(TILE_SIZE, TILE_SIZE);
 
+    this.weaponTint = tint;
     this.weaponVisual = this.buildWeaponVisual(fxType, weaponIconTextureKey, rangedStyle);
+    this.weaponVisual.setTint?.(this.weaponTint);
   }
+
+  /** The active weapon-instance tint (a rolled modifier's colour), re-applied every
+   *  time the weapon visual is (re)built so a swap never loses it. null = no tint. */
+  protected weaponTint: number | null = null;
 
   private buildWeaponVisual(
     fxType: AttackFXType | null,
@@ -127,9 +134,20 @@ export abstract class Entity {
     fxType: AttackFXType | null,
     weaponIconTextureKey?: string,
     rangedStyle?: RangedStyle,
+    tint: number | null = null,
   ) {
     this.weaponVisual.destroy();
+    this.weaponTint = tint;
     this.weaponVisual = this.buildWeaponVisual(fxType, weaponIconTextureKey, rangedStyle);
+    this.weaponVisual.setTint?.(this.weaponTint);
+  }
+
+  /** Recolour the held weapon in place (a rolled tint on the weapon already in hand),
+   *  remembering it so a later rebuild keeps it. Cheaper than a full swap. */
+  protected setWeaponTint(tint: number | null): void {
+    if (tint === this.weaponTint) return;
+    this.weaponTint = tint;
+    this.weaponVisual.setTint?.(tint);
   }
 
   // Clears the attack edge-detect state so the next "attack" action restarts the
@@ -142,7 +160,7 @@ export abstract class Entity {
   /** Resolve the swing for a synced (weaponId, comboStep, hard) into pendingComboSwing,
    *  so the next attack FX draws the matching strip + mirror. Call before retrigger. */
   protected setPendingComboSwing(weaponId: string, comboStep: number, hard: boolean) {
-    const w = WEAPON_REGISTRY[weaponId];
+    const w = resolveWeapon(weaponId);
     if (hard) {
       this.pendingComboSwing = w?.hardSwing ?? null;
       return;

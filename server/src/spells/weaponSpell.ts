@@ -1,4 +1,4 @@
-import { WeaponInstance, HitShape, AMMO_REGISTRY, ComboSwing, swingDurationMs } from "shared";
+import { WeaponInstance, HitShape, resolveAmmo, ComboSwing, swingDurationMs } from "shared";
 import { RehitGate } from "../combat/RehitGate";
 import { Spell, SpellOpts, SpellEffect, Caster, AttackStats } from "./Spell";
 
@@ -91,6 +91,54 @@ class AoeWeaponSpell extends WeaponSpell {
 export function weaponSpell(inst: WeaponInstance): Spell {
   if (inst.isAoe) return aoeWeaponSpell(inst);
   return inst.isRanged ? rangedWeaponSpell(inst) : meleeWeaponSpell(inst);
+}
+
+/**
+ * Wrap a spell so its TIMING is the caster's, not the weapon's. A weapon's own
+ * wind-up/cooldown are tuned for how a PLAYER wants the swing to feel (a near-
+ * instant 120ms telegraph, an auto-firing staff); an enemy that picks the weapon
+ * up wants a readable rear-back and a paced cadence instead. This keeps the inner
+ * spell's effect and active length (the swing arc / cast follow-through carry the
+ * real hurtbox and projectile) but replaces the wind-up telegraph and recast
+ * cooldown with the enemy's own dials. The cooldown lives on the returned spell
+ * (isReady/markCast), so the caller gates the next attack on `spell.isReady`.
+ */
+export function retimedSpell(
+  inner: Spell,
+  timing: { windUpMs: number; cooldownMs: number; recoverMs: number },
+): Spell {
+  return new RetimedSpell(inner, timing);
+}
+
+class RetimedSpell extends Spell {
+  constructor(
+    private readonly inner: Spell,
+    timing: { windUpMs: number; cooldownMs: number; recoverMs: number },
+  ) {
+    super({
+      id: inner.id,
+      windUpMs: timing.windUpMs,
+      activeMs: 0, // overridden by the getter — the swing arc keeps its own length
+      recoverMs: timing.recoverMs,
+      cooldownMs: timing.cooldownMs,
+      range: inner.range,
+      aimLockMs: inner.aimLockMs,
+      knockbackImmuneWhileActive: inner.knockbackImmuneWhileActive,
+      invulnerableWhileActive: inner.invulnerableWhileActive,
+      fireMode: inner.fireMode,
+      effect: {
+        onActivate: (caster, aim) => inner.activate(caster, aim),
+        onActiveTick: (caster, dtMs, aim) => inner.activeTick(caster, dtMs, aim),
+        onDeactivate: (caster) => inner.deactivate(caster),
+      },
+    });
+  }
+
+  /** The active phase stays the weapon's own (the melee swing's FX length, or the
+   *  ranged spell's follow-through) so the hurtbox timing is unchanged. */
+  override get activeMs(): number {
+    return this.inner.activeMs;
+  }
 }
 
 // The Mage's staff: a brief wind-up telegraph, then a damaging nova around the
@@ -244,7 +292,7 @@ function casterAttack(caster: Caster, inst: WeaponInstance, swing: ComboSwing) {
  *  Only the STATS are resolved here — the blow's origin is wherever the projectile
  *  happens to be when it connects, which only the projectile knows. */
 function rangedAttack(caster: Caster, inst: WeaponInstance): AttackStats {
-  const ammo = AMMO_REGISTRY[inst.ammoId!];
+  const ammo = resolveAmmo(inst.ammoId!);
   return caster.scaleAttack({
     damage: (ammo?.damage ?? 0) + inst.damage,
     knockback: ammo?.knockback ?? 0,

@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { AMMO_REGISTRY, AmmoConfig, ProjectileStateView } from "shared";
+import { resolveAmmo, AmmoConfig, ProjectileStateView } from "shared";
 import { DebugDrawable, DebugShape, DEBUG_COLORS } from "../debug/DebugDraw";
 
 // Renders a server-authoritative projectile (arrow). Lightweight — no HP bar,
@@ -23,7 +23,7 @@ export class ProjectileEntity implements DebugDrawable {
     angleRad: number,
     ammoId: string,
   ) {
-    const ammo = AMMO_REGISTRY[ammoId];
+    const ammo = resolveAmmo(ammoId);
     const textureKey = ammo ? ammoId : "arrow";
     this.ammo = ammo;
     this.spriteAngle = ammo?.spriteAngle ?? -90;

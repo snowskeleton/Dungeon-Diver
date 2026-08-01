@@ -3,7 +3,7 @@ import { Knight } from "./Knight";
 import { Rogue } from "./Rogue";
 import { Ranger } from "./Ranger";
 import { Mage } from "./Mage";
-import { WEAPON_REGISTRY, WeaponId } from "../weapons";
+import { WEAPON_REGISTRY, resolveWeapon, WeaponId } from "../weapons";
 import type { WeaponCategory } from "../weapons/base";
 
 /** The playable roster, as a plain array of `Character` instances — mirrors
@@ -62,7 +62,7 @@ export function canClassUseCategory(cls: CharacterClass, category: WeaponCategor
 /** True when `cls` may equip the weapon with this id. Reads only the weapon's
  *  category from the registry; the permission itself lives on the class. */
 export function canClassUseWeapon(cls: CharacterClass, weaponId: string): boolean {
-  const weapon = WEAPON_REGISTRY[weaponId];
+  const weapon = resolveWeapon(weaponId);
   return weapon !== undefined && canClassUseCategory(cls, weapon.category);
 }
 

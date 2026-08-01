@@ -2,7 +2,7 @@ import Phaser from "phaser";
 import { Room } from "colyseus.js";
 import {
   InputMessage, CharacterClass, CharacterType, Character, getCharacter,
-  WeaponId, Weapon, WeaponView, WeaponSlotView, UpgradeSlotView, WEAPON_REGISTRY, Facing,
+  Weapon, WeaponView, WeaponSlotView, UpgradeSlotView, resolveWeapon, Facing,
   GameStateView, PlayerStateView, ShopStateView, ShopItemStateView, OfferStateView, RewardStateView, ChestStateView, DroppedWeaponStateView,
   PLAYER_HURT_BOUNDS,
 } from "shared";
@@ -445,15 +445,21 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     const wasWindingUp = this.windingUp;
     this.windingUp = state.windingUp;
     if (wasWindingUp && !this.windingUp) this.swingStartedAt = performance.now();
+    // The active weapon's tint rides on its slot (a rolled modifier's colour), read
+    // from the active slot so the held icon matches the composed weapon.
+    const activeSlot = state.weapons.at(state.activeWeaponIndex);
+    const tint = activeSlot && activeSlot.tint >= 0 ? activeSlot.tint : null;
     // Active weapon changed (switch or acquire) — hot-swap the visuals + local
     // weapon so attack FX / facing-lock follow the new weapon.
     if (weaponId !== this.activeWeaponId) {
-      const w = WEAPON_REGISTRY[weaponId as WeaponId];
+      const w = resolveWeapon(weaponId);
       if (w) {
         this.activeWeaponId = weaponId;
         this.weapon = w;
-        this.swapWeapon(w.fxType, w.id, w.rangedStyle);
+        this.swapWeapon(w.fxType, w.id, w.rangedStyle, tint);
       }
+    } else {
+      this.setWeaponTint(tint);
     }
     this.setPosition(state.x, state.y);
     // Track the SYNCED max HP so +max-HP upgrades move the bar's full mark — the

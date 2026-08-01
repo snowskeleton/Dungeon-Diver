@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { WEAPON_REGISTRY, WeaponId } from "shared";
+import { resolveWeapon } from "shared";
 import { UiLayer } from "./UiLayer";
 import { LocalPlayer } from "../entities/LocalPlayer";
 import { comparedStatLines, statLineText, viewFromTemplate } from "./weaponStats";
@@ -268,7 +268,7 @@ export class GameHud {
     const near = first?.nearbyShopItem;
     // A shop pedestal holds an unmodified template, so its card reads from the
     // template. When pedestals start rolling modifiers this becomes a slot view.
-    const template = near ? WEAPON_REGISTRY[near.weaponId as WeaponId] : undefined;
+    const template = near ? resolveWeapon(near.weaponId) : undefined;
     if (!near || !template) {
       this.storeCard.setVisible(false);
       return;

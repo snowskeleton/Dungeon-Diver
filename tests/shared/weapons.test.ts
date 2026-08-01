@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   WEAPONS,
+  ENEMY_WEAPONS,
   WEAPON_REGISTRY,
   AMMO_REGISTRY,
   Weapon,
@@ -17,7 +18,11 @@ import {
   isStripFx,
 } from "shared";
 
+// Player-catalog templates only. The registry is a SUPERSET — it also folds in the
+// enemy armaments (ENEMY_WEAPONS) so a wielded enemy weapon resolves by id like any
+// player one — but only these are loot-rollable.
 const templates = WEAPONS.map(W => new W());
+const registryTemplates = [...WEAPONS, ...ENEMY_WEAPONS].map(W => new W());
 
 // ── Registry integrity ───────────────────────────────────────────────────────
 // These are the invariants that keep the roster from rotting: a weapon whose id
@@ -31,9 +36,22 @@ describe("weapon registry", () => {
   });
 
   it("derives one registry entry per class, with no id collisions", () => {
-    const ids = templates.map(w => w.id);
+    // The invariant spans BOTH lists: an enemy armament whose id collides with a
+    // player weapon would silently replace it in the derived registry.
+    const ids = registryTemplates.map(w => w.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(Object.keys(WEAPON_REGISTRY)).toHaveLength(templates.length);
+    expect(Object.keys(WEAPON_REGISTRY)).toHaveLength(registryTemplates.length);
+  });
+
+  it("keeps enemy armaments OUT of the rollable player catalog", () => {
+    // The whole point of ENEMY_WEAPONS: they resolve in the registry (for the swing
+    // + held-weapon visual) but can never appear as loot, which rolls from WEAPONS.
+    const rollableIds = new Set(templates.map(w => w.id));
+    for (const W of ENEMY_WEAPONS) {
+      const w = new W();
+      expect(rollableIds.has(w.id), `${w.id} leaked into the loot pool`).toBe(false);
+      expect(WEAPON_REGISTRY[w.id]?.id, `${w.id} not resolvable in registry`).toBe(w.id);
+    }
   });
 
   it("maps every id back to the weapon that declared it", () => {
@@ -324,5 +342,53 @@ describe("AOE weapons", () => {
     expect(nova.isAoe).toBe(true);
     expect(nova.isRanged).toBe(false);
     expect(nova.getHurtbox(0, 0, "right", 100)).toBeNull();
+  });
+});
+
+// ─── Composed weapons (runtime base + modifiers → wire descriptor) ────────────
+// A weapon is composed at runtime from a base template plus an unbounded mix of
+// modifiers. The instance derives the presentation the client renders (name, tint)
+// so the wire never needs a catalog id for every combination — see WeaponInstance.
+describe("composed weapon presentation", () => {
+  class FrostMod extends WeaponMod {
+    readonly label = "chills on hit";
+    override get namePrefix() { return "Cold"; }
+    override get tint() { return 0x88ccff; }
+  }
+  class VampMod extends WeaponMod {
+    readonly label = "lifesteal";
+    override get nameSuffix() { return "of Vampirism"; }
+    override get tint() { return 0x8b0000; }
+    override get lifestealPct() { return 0.1; }
+  }
+  const template = WEAPON_REGISTRY["broadsword"];
+
+  it("wraps the base name with mod prefixes and suffixes, in order", () => {
+    const inst = new WeaponInstance(template, "u", [new FrostMod(), new VampMod()]);
+    expect(inst.displayName).toBe(`Cold ${template.name} of Vampirism`);
+  });
+
+  it("an unmodified weapon shows its plain template name and no tint", () => {
+    const inst = new WeaponInstance(template, "u");
+    expect(inst.displayName).toBe(template.name);
+    expect(inst.tint).toBeNull();
+  });
+
+  it("takes the LAST tinting mod's colour when several tint", () => {
+    expect(new WeaponInstance(template, "u", [new FrostMod(), new VampMod()]).tint).toBe(0x8b0000);
+    expect(new WeaponInstance(template, "u", [new VampMod(), new FrostMod()]).tint).toBe(0x88ccff);
+  });
+
+  it("sums a real effect (lifesteal) across its mods", () => {
+    const inst = new WeaponInstance(template, "u", [new VampMod(), new VampMod()]);
+    expect(inst.lifestealPct).toBeCloseTo(0.2, 9);
+  });
+
+  it("has a deterministic signature — same base + mods, same string", () => {
+    const a = new WeaponInstance(template, "u1", [new FrostMod()]);
+    const b = new WeaponInstance(template, "u2", [new FrostMod()]);
+    expect(a.signature).toBe(b.signature);
+    expect(a.signature).toContain(template.id);
+    expect(new WeaponInstance(template, "u3").signature).toBe(template.id);
   });
 });

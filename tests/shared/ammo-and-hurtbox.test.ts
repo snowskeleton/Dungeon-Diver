@@ -33,12 +33,17 @@ describe("ammo registry", () => {
     }
   });
 
-  it("nests categorised ammo under its folder and keeps one-offs flat", () => {
+  it("points every ammo at a sprite: its own default path, or a deliberate reuse of another's", () => {
+    // The default derivation nests categorised ammo under its folder and keeps
+    // one-offs flat. An enemy projectile may REUSE an existing sprite (hex-bolt
+    // borrows magic-bolt's orb rather than shipping a duplicate PNG) by overriding
+    // spritePath — so a path is valid if it's this ammo's own default OR any other
+    // ammo's default. That still catches a typo'd path pointing at nothing.
+    const defaultPath = (a: (typeof ammo)[number]) =>
+      a.category ? `/sprites/ammo/${a.category}/${a.id}/${a.id}.png` : `/sprites/ammo/${a.id}/${a.id}.png`;
+    const validPaths = new Set(ammo.map(defaultPath));
     for (const a of ammo) {
-      const expected = a.category
-        ? `/sprites/ammo/${a.category}/${a.id}/${a.id}.png`
-        : `/sprites/ammo/${a.id}/${a.id}.png`;
-      expect(a.spritePath).toBe(expected);
+      expect(validPaths.has(a.spritePath), `${a.id} → sprite path ${a.spritePath} matches no ammo`).toBe(true);
     }
   });
 

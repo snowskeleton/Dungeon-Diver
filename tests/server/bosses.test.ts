@@ -5,7 +5,7 @@ import {
   canAffect,
   ENEMY_PROJECTILE_AFFECTS,
   ENEMY_ATTACK_AFFECTS,
-  AMMO_REGISTRY,
+  resolveAmmo,
   ENEMY_HURT_BOUNDS,
   EnemyType,
   shapeHitsBox,
@@ -89,7 +89,7 @@ function fight(BossClass: BossClass, ticks = 200): Outcome {
           out.shots++;
           projectiles.push(new Projectile(
             physics,
-            AMMO_REGISTRY[e.ammoId],
+            resolveAmmo(e.ammoId)!,
             e.x, e.y, e.angle,
             "boss",
             e.opts?.inert ? 0 : ENEMY_PROJECTILE_AFFECTS,

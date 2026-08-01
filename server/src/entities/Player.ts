@@ -1,6 +1,6 @@
 import {
   InputMessage, CharacterClass, CharacterType, Character, getCharacter,
-  Weapon, WeaponInstance, WeaponMod, WEAPON_REGISTRY, AMMO_REGISTRY, MAX_WEAPONS,
+  Weapon, WeaponInstance, WeaponMod, weaponSignature, resolveWeapon, resolveAmmo, MAX_WEAPONS,
   PLAYER_BODY_PROFILE, PLAYER_ATTACK_AFFECTS, Facing, Attack, foldStat,
   ComboSwing, DEFAULT_COMBO_WINDOW_MS, DEFAULT_CHARGE_HOLD_MS, DEFAULT_ATTACK_BUFFER_MS,
   canClassUseWeapon,
@@ -332,8 +332,13 @@ export class Player extends Entity implements Caster, MovementCaster {
   /** Lifesteal. Called with the damage actually dealt, so it can't be gamed by
    *  overkill or by hitting something that mitigated most of the blow. */
   onDamageDealt(damage: number): void {
-    if (this.stats.lifestealPct <= 0 || damage <= 0) return;
-    this.heal(damage * this.stats.lifestealPct);
+    // Lifesteal comes from two places that stack: the player's upgrades (a global
+    // stat) and the weapon that dealt THIS blow (a Vampiric mod on that instance).
+    // Adding the active weapon's fraction is what makes a rolled "of Vampirism"
+    // weapon actually heal — the mod's declared effect, applied here.
+    const pct = this.stats.lifestealPct + (this.weapon?.lifestealPct ?? 0);
+    if (pct <= 0 || damage <= 0) return;
+    this.heal(damage * pct);
   }
 
   heal(amount: number): void {
@@ -429,7 +434,14 @@ export class Player extends Entity implements Caster, MovementCaster {
    *  caller can set it down on the floor; the new weapon takes the freed slot and
    *  becomes active. `displaced` is null when there was a free slot. */
   addWeapon(template: Weapon, mods: WeaponMod[] = []): { added: WeaponInstance; displaced: WeaponInstance | null } {
-    const added = new WeaponInstance(template, `w${this.uidCounter++}`, mods);
+    // uid = the composed signature + a per-player uniquifier, so two identical rolls
+    // stay distinct while the id itself reads as what the weapon IS ("broadsword+2damage-3")
+    // — useful in logs/replay, and still the stable per-instance key the acquire diff needs.
+    const added = new WeaponInstance(
+      template,
+      `${weaponSignature(template.id, mods)}-${this.uidCounter++}`,
+      mods,
+    );
     const displaced = this.weapons.length >= MAX_WEAPONS ? this.removeActiveForSwap() : null;
     this.weapons.push(added);
     this.state.weapons.push(slotStateFor(added));
@@ -645,7 +657,7 @@ export class Player extends Entity implements Caster, MovementCaster {
  *  The join-time weapon id arrives from the client, so it is untrusted input. */
 export function resolveTemplate(id: string | undefined): Weapon | undefined {
   if (!id) return undefined;
-  return WEAPON_REGISTRY[id];
+  return resolveWeapon(id);
 }
 
 /** Project a weapon instance onto the wire: resolved stats, plus the mod labels
@@ -654,10 +666,12 @@ export function slotStateFor(inst: WeaponInstance): WeaponSlotState {
   const slot = new WeaponSlotState();
   slot.uid = inst.uid;
   slot.weaponId = inst.id;
+  slot.displayName = inst.displayName;
+  slot.tint = inst.tint ?? -1;
   slot.damage = inst.damage;
   slot.attackCooldownMs = Math.round(inst.attackCooldownMs);
   slot.attackForce = inst.attackForce;
-  const ammo = inst.ammoId ? AMMO_REGISTRY[inst.ammoId] : undefined;
+  const ammo = inst.ammoId ? resolveAmmo(inst.ammoId) : undefined;
   if (ammo) {
     // The shot's damage is the ammo's plus the weapon's, matching what the ranged
     // spell actually fires — so the panel and the projectile can't disagree.

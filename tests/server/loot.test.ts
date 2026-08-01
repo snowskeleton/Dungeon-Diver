@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   generateDungeon,
   WEAPON_REGISTRY,
+  resolveWeapon,
   WeaponId,
   RoomType,
   DungeonResult,
@@ -62,7 +63,7 @@ describe("shops", () => {
     const { shop } = shopFloor();
     expect(shop.items.length).toBeGreaterThan(0);
     for (const item of shop.items) {
-      expect(WEAPON_REGISTRY[item.weaponId], item.weaponId).toBeDefined();
+      expect(resolveWeapon(item.weaponId), item.weaponId).toBeDefined();
       expect(item.cost).toBeGreaterThan(0);
       expect(item.purchased).toBe(false);
     }
@@ -147,7 +148,7 @@ describe("shops", () => {
     const { shop, loot, physics, room } = shopFloor();
     const item = shop.items[0];
     const p = playerAt(physics, item!.x, item!.y);
-    p.addWeapon(WEAPON_REGISTRY[item!.weaponId]);
+    p.addWeapon(resolveWeapon(item!.weaponId)!);
     const hp0 = p.state.health;
 
     loot.buy(p, { roomId: room.id, itemIndex: 0 });
@@ -540,7 +541,7 @@ describe("supply pedestals (floor-1 first weapon)", () => {
   it("lays one weapon pedestal per player, from that class's unique categories", () => {
     const { supplies } = supplyFloor(["knight", "mage"]);
     expect(supplies.size).toBe(2);
-    const cats = [...supplies.values()].map(s => WEAPON_REGISTRY[s.weapon.weaponId].category);
+    const cats = [...supplies.values()].map(s => resolveWeapon(s.weapon.weaponId)!.category);
     // Knight → hammer/mace, Mage → staff; every pedestal is one of the party's uniques.
     for (const cat of cats) expect(["hammer", "mace", "staff"]).toContain(cat);
     expect(cats).toContain("staff"); // the mage's pedestal
@@ -608,7 +609,7 @@ describe("supply pedestals (floor-1 first weapon)", () => {
     const rolled = [...supplies.values()][0].weapon.weaponId;
     expect(rolled).not.toBe(staff);
     // Fell back to the knight's unique first-weapon pool (hammer/mace).
-    expect(["hammer", "mace"]).toContain(WEAPON_REGISTRY[rolled].category);
+    expect(["hammer", "mace"]).toContain(resolveWeapon(rolled)!.category);
   });
 });
 

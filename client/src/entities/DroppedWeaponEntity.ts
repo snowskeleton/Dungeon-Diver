@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { WEAPON_REGISTRY, WeaponId } from "shared";
+import { resolveWeapon } from "shared";
 import { InteractPrompt } from "./InteractPrompt";
 
 // In-world view of a weapon lying on the floor — dropped when a player at the
@@ -24,7 +24,7 @@ export class DroppedWeaponEntity {
     const shadow = scene.add.ellipse(x, y + 8, 20, 8, 0x000000, 0.35).setDepth(1.4);
     this.objects.push(shadow);
 
-    const held = WEAPON_REGISTRY[weaponId as WeaponId]?.rangedStyle === "held";
+    const held = resolveWeapon(weaponId)?.rangedStyle === "held";
     const icon = held ? scene.add.sprite(x, y, weaponId, 0) : scene.add.image(x, y, weaponId);
     icon.setDisplaySize(ICON, ICON).setDepth(2.5);
     this.objects.push(icon);

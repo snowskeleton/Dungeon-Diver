@@ -195,9 +195,10 @@ describe("rolling a weapon modifier", () => {
     for (let i = 0; i < 200; i++) {
       const m = rollWeaponMod(1 + (i % 8));
       expect(m.label.length).toBeGreaterThan(0);
+      // A mod must change SOMETHING — a stat, or a real effect like lifesteal.
       const total = Math.abs(m.damageFlat) + Math.abs(m.damagePct)
         + Math.abs(m.attackForceFlat) + Math.abs(m.attackForcePct)
-        + Math.abs(m.attackSpeedPct);
+        + Math.abs(m.attackSpeedPct) + Math.abs(m.lifestealPct);
       expect(total).toBeGreaterThan(0);
     }
   });

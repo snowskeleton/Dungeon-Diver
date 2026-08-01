@@ -28,6 +28,7 @@ import { Fireball }       from "./fireball";
 import { MagicOrb }       from "./magic-orb";
 import { RockShard }      from "./rock-shard";
 import { Boulder }        from "./boulder";
+import { HexBolt }        from "./hex-bolt";
 
 // ─── Registry ─────────────────────────────────────────────────────────────────
 
@@ -39,18 +40,28 @@ export const AMMO_CLASSES: AmmoClass[] = [
   Arrow, SteelArrow, PiercingArrow, PrismaticArrow, WoodenArrow, FireArrow,
   MagicBolt, ArcaneBolt, FlameBolt, VerdantBolt, FrostBolt,
   ThrowingKnife, ThrowingStar, Boomerang, SteelBoomerang,
-  Fireball, MagicOrb, RockShard, Boulder,
+  Fireball, MagicOrb, RockShard, Boulder, HexBolt,
 ];
 
-export const AMMO_REGISTRY: Record<string, Ammo> = Object.fromEntries(
+// The id→instance lookup. Like WEAPON_REGISTRY, it is the network-boundary
+// resolver for the one place an ammo id crosses the wire (ProjectileState.ammoId):
+// the string must become an Ammo object on the client. Built FROM the class array
+// (every key is a class's `id: AmmoId`), so look ammo up ONLY through `resolveAmmo`.
+export const AMMO_REGISTRY: Record<AmmoId, Ammo> = Object.fromEntries(
   AMMO_CLASSES.map((A) => { const a = new A(); return [a.id, a]; }),
-);
+) as Record<AmmoId, Ammo>;
+
+/** Resolve an ammo instance from a wire (or otherwise untrusted) id string. The one
+ *  seam where a `string` becomes an `Ammo`; undefined for an unknown id. */
+export function resolveAmmo(id: string): Ammo | undefined {
+  return (AMMO_REGISTRY as Record<string, Ammo | undefined>)[id];
+}
 
 export type ArrowId      = "arrow" | "steel-arrow" | "piercing-arrow" | "prismatic-arrow" | "wooden-arrow" | "fire-arrow";
 export type BoltId       = "magic-bolt" | "arcane-bolt" | "flame-bolt" | "verdant-bolt" | "frost-bolt";
 export type BoomerangId  = "boomerang" | "steel-boomerang";
 export type ThrownAmmoId = "throwing-knife" | "throwing-star";
-export type EnemyAmmoId  = "fireball" | "magic-orb" | "rock-shard" | "boulder";
+export type EnemyAmmoId  = "fireball" | "magic-orb" | "rock-shard" | "boulder" | "hex-bolt";
 
 export type AmmoId = ArrowId | BoltId | BoomerangId | ThrownAmmoId | EnemyAmmoId;
 

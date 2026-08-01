@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { AiState, Facing, EnemyType, EnemyStateView, ENEMY_HURT_BOUNDS, WEAPON_REGISTRY } from "shared";
+import { AiState, Facing, EnemyType, EnemyStateView, ENEMY_HURT_BOUNDS, resolveWeapon } from "shared";
 import { Entity } from "./Entity";
 import { WeaponVisual, createWeaponVisual } from "./WeaponVisuals";
 import { CLIENT_ENEMY_REGISTRY, ClientEnemyDef } from "../enemies";
@@ -67,8 +67,10 @@ export class EnemyEntity extends Entity implements DebugDrawable {
     // come straight from the weapon template, so a beast swings the same way a
     // player would with that weapon.
     if (this.visual?.heldWeapon) {
-      const w = WEAPON_REGISTRY[this.visual.heldWeapon.weaponId];
-      this.heldWeapon = createWeaponVisual(scene, w.fxType, w.id, w.rangedStyle, x, y, this.facing);
+      const w = resolveWeapon(this.visual.heldWeapon.weaponId);
+      if (w) {
+        this.heldWeapon = createWeaponVisual(scene, w.fxType, w.id, w.rangedStyle, x, y, this.facing);
+      }
     }
     this.sprite.setSize(20, 20);
   }

@@ -10,7 +10,7 @@ import {
   TileId,
   Layer,
   SERVER_TICK_MS,
-  AMMO_REGISTRY,
+  resolveAmmo,
   WEAPON_REGISTRY,
   WeaponId,
   CharacterClass,
@@ -95,7 +95,7 @@ export function arena(physics: PhysicsWorld = flatWorld()): Arena {
       } else if (e.kind === "projectile") {
         projectiles.push(new Projectile(
           physics,
-          AMMO_REGISTRY[e.ammoId],
+          resolveAmmo(e.ammoId)!,
           e.x,
           e.y,
           e.angle,

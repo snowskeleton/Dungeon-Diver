@@ -7,7 +7,7 @@ import { MovementBehavior, holdRange } from "./movement";
 // space rather than chasing, lobbing boulders and cracking the ground, whirling
 // its shell at anything that hugs it, and closing distance only with its
 // signature spin dash — which over-commits into a dizzy punish window. Enrages
-// at 50% HP (docs/bosses.md).
+// at 25% HP (docs/bosses.md).
 export class TurtleDragon extends Boss {
   static readonly type: EnemyType = "turtle-dragon";
   static readonly lore = "An ancient armored dragon-turtle that controls space and punishes the impatient.";
@@ -31,10 +31,10 @@ export class TurtleDragon extends Boss {
     return this.phaseKey() === "enrage" ? 700 : 1200;
   }
 
-  // Enrage below 50% HP: the moveset is rebuilt with a wider tremor and a
+  // Enrage below 25% HP: the moveset is rebuilt with a wider tremor and a
   // longer, tighter-recovering spin.
   protected phaseKey(): string {
-    return this.hpFraction < 0.5 ? "enrage" : "base";
+    return this.hpFraction < 0.25 ? "enrage" : "base";
   }
 
   protected abilities(): Spell[] {
@@ -93,12 +93,13 @@ export class TurtleDragon extends Boss {
       range: 210,
     });
 
-    // Lobbed rock spread. aimLock 200 on a 900ms wind-up leaves a late dodge
-    // window; the 30° fan means standing still eats the centre shot.
+    // Lobbed rock. aimLock 200 on a 900ms wind-up leaves a late dodge window.
+    // Enraged it fans into a 3-rock spread (the 30° fan makes standing still eat
+    // the centre shot); before enrage it lobs a single aimed rock.
     const belch = volley({
       id: "boulder-belch",
       ammoId: "boulder",
-      count: 3,
+      count: enraged ? 3 : 1,
       spreadDeg: 30,
       windUpMs: 900,
       recoverMs: 600,

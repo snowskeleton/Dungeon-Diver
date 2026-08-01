@@ -1,8 +1,7 @@
 import {
   TILE, TILE_SIZE, tileCenter,
   DungeonResult, RoomData, mazeDeepestTile,
-  WEAPON_REGISTRY, WeaponId, WeaponInstance, WeaponMod, Weapon,
-  AMMO_REGISTRY,
+  WEAPON_REGISTRY, resolveWeapon, resolveAmmo, WeaponId, WeaponInstance, WeaponMod, Weapon,
   SHOP_TIERS,
   CharacterClass, partyRollableWeaponIds,
   DebugConfig,
@@ -245,7 +244,7 @@ export class LootDirector {
    *  class's unique first-weapon categories. */
   private firstSupplyWeaponFor(player: Player): WeaponId | undefined {
     const forced = this.debug?.firstWeaponId;
-    if (forced && forced in WEAPON_REGISTRY && player.canEquip(forced)) {
+    if (forced && resolveWeapon(forced) && player.canEquip(forced)) {
       return forced as WeaponId;
     }
     return pickDistinct(partyRollableWeaponIds([player.character.id]), 1)[0];
@@ -605,7 +604,7 @@ export class LootDirector {
  *  damage in too or every bow would sort as the cheapest thing on the floor. This
  *  decides ORDER only — the actual prices are the fixed SHOP_TIERS. */
 function weaponQuality(w: Weapon): number {
-  const ammoBase = w.ammoId ? (AMMO_REGISTRY[w.ammoId]?.damage ?? 0) : 0;
+  const ammoBase = w.ammoId ? (resolveAmmo(w.ammoId)?.damage ?? 0) : 0;
   return w.damage + ammoBase;
 }
 

@@ -2,7 +2,7 @@ import { Room, Client } from "colyseus";
 import {
   InputMessage, SERVER_TICK_MS, MAX_CLIENTS, TILE, DEFAULT_COMBO_WINDOW_MS, DEFAULT_CHARGE_HOLD_MS, DEFAULT_ATTACK_BUFFER_MS,
   generateDungeon, DungeonResult, DungeonOptions, FloorChangeMessage,
-  MAP_SEED, AMMO_REGISTRY, RoomType,
+  MAP_SEED, resolveAmmo, RoomType,
   TRAP_MIN_FLOORS, TRAP_MAX_FLOORS,
   MAX_FLOORS,
   DebugConfig, toDungeonOptions,
@@ -666,7 +666,7 @@ export class GameRoom extends Room<GameState> {
     ammoId: string, x: number, y: number, angle: number, ownerId: string, affects: number,
     opts?: SpawnOpts,
   ): void {
-    const ammo = AMMO_REGISTRY[ammoId];
+    const ammo = resolveAmmo(ammoId);
     if (!ammo) return;
     const id = `proj_${this.projectileCounter++}`;
     // An inert marker carries no team mask, so the hit loop's canAffect checks

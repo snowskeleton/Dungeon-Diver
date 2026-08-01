@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import {
-  CharacterClass, CharacterType, getCharacter, WeaponId, Weapon, WEAPON_REGISTRY,
+  CharacterClass, CharacterType, getCharacter, Weapon, resolveWeapon,
   Facing, PlayerStateView, PLAYER_HURT_BOUNDS,
 } from "shared";
 import { Entity } from "./Entity";
@@ -38,7 +38,7 @@ export class RemotePlayer extends Entity implements DebugDrawable {
     const visualDef = CLIENT_CHARACTER_VISUAL_REGISTRY[characterType];
     // May be empty until the player claims their first supply-room weapon — then
     // `weapon` is undefined and setupCharacter renders no weapon (NoVisual).
-    const weapon = weaponId ? WEAPON_REGISTRY[weaponId as WeaponId] : undefined;
+    const weapon = weaponId ? resolveWeapon(weaponId) : undefined;
     super(scene, x, y, 0x9f7aea, character.maxHp);
     this.targetX = x;
     this.targetY = y;
@@ -60,14 +60,21 @@ export class RemotePlayer extends Entity implements DebugDrawable {
     this.isAttacking = state.isAttacking;
     this.setDowned(state.downed);
     this.ingestMovementState(state);
+    // The active weapon's tint rides on its slot (a rolled modifier's colour), not on
+    // the base template — read it from the active slot so the held icon matches.
+    const activeSlot = state.weapons.at(state.activeWeaponIndex);
+    const tint = activeSlot && activeSlot.tint >= 0 ? activeSlot.tint : null;
     // Active weapon changed on the server — hot-swap the visuals to match.
     if (weaponId && weaponId !== this.activeWeaponId) {
-      const w = WEAPON_REGISTRY[weaponId as WeaponId];
+      const w = resolveWeapon(weaponId);
       if (w) {
         this.activeWeaponId = weaponId;
         this.weapon = w;
-        this.swapWeapon(w.fxType, w.id, w.rangedStyle);
+        this.swapWeapon(w.fxType, w.id, w.rangedStyle, tint);
       }
+    } else {
+      // Same base weapon, but a mod may have recoloured the instance in hand.
+      this.setWeaponTint(tint);
     }
     if (attackSeq !== this.lastAttackSeq) {
       this.setPendingComboSwing(weaponId, state.comboStep, state.hardSwing);

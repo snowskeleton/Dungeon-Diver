@@ -10,20 +10,23 @@
 // Separate module from instance.ts purely to avoid an import cycle: this needs
 // WEAPON_REGISTRY, which lives in weapons/index.ts, which re-exports instance.ts.
 
-import { AMMO_REGISTRY } from "../ammo";
+import { resolveAmmo } from "../ammo";
 import { Weapon } from "./base";
 import { WeaponView, WeaponSlotView } from "./instance";
-import { WEAPON_REGISTRY } from "./index";
+import { resolveWeapon } from "./index";
 
 /** A synced slot as a WeaponView: visuals from the template (every client already
  *  has all of them), stats from the wire (the wielder's resolved numbers, which
  *  the template cannot know). Null for an unknown weapon id — better a missing
  *  row than an invented weapon. */
 export function viewFromSlot(slot: WeaponSlotView): WeaponView | null {
-  const template = WEAPON_REGISTRY[slot.weaponId];
+  const template = resolveWeapon(slot.weaponId);
   if (!template) return null;
   return {
     ...templateFields(template),
+    // The composed name overrides the template's — this is where "Cold Broadsword of
+    // Vampirism" reaches every name-showing surface (acquire flourish, HUD, panels).
+    name: slot.displayName || template.name,
     damage: slot.damage,
     attackCooldownMs: slot.attackCooldownMs,
     attackForce: slot.attackForce,
@@ -41,7 +44,7 @@ export function viewFromSlot(slot: WeaponSlotView): WeaponView | null {
 /** An unmodified template as a WeaponView — for a weapon nobody is wielding yet
  *  (a shop pedestal). */
 export function viewFromTemplate(template: Weapon): WeaponView {
-  const ammo = template.ammoId ? AMMO_REGISTRY[template.ammoId] : undefined;
+  const ammo = template.ammoId ? resolveAmmo(template.ammoId) : undefined;
   return {
     ...templateFields(template),
     damage: template.damage,

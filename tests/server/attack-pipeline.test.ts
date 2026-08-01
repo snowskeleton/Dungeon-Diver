@@ -3,6 +3,8 @@ import {
   SERVER_TICK_MS,
   WEAPON_REGISTRY,
   AMMO_REGISTRY,
+  resolveAmmo,
+  WeaponMod,
   UpgradeId,
   PLAYER_PROJECTILE_AFFECTS,
   ENEMY_PROJECTILE_AFFECTS,
@@ -152,7 +154,7 @@ describe("upgrades reach every attack through the one seam", () => {
     for (let i = 0; i < 15 && e.state.health === hp0; i++) a.stepWithInput("p1", 0, 0, true);
 
     const bow = p.weapon!;
-    const ammo = AMMO_REGISTRY[bow.ammoId!];
+    const ammo = resolveAmmo(bow.ammoId!)!;
     expect(hp0 - e.state.health).toBeCloseTo(ammo.damage + bow.damage + 3, 6);
   });
 
@@ -168,7 +170,7 @@ describe("upgrades reach every attack through the one seam", () => {
     }
 
     expect(a.projectiles.length).toBeGreaterThan(0);
-    const bolt = AMMO_REGISTRY[WEAPON_REGISTRY["oak-staff"].ammoId!];
+    const bolt = resolveAmmo(WEAPON_REGISTRY["oak-staff"].ammoId!)!;
     expect(hp0 - e.state.health).toBeCloseTo(bolt.damage + WEAPON_REGISTRY["oak-staff"].damage, 6);
   });
 
@@ -187,6 +189,27 @@ describe("upgrades reach every attack through the one seam", () => {
     expect(e.state.health).toBeLessThan(hp0); // the swing really landed
 
     const dealt = hp0 - e.state.health;
+    expect(p.state.health).toBeCloseTo(10 + dealt * 0.5, 6);
+  });
+
+  it("a Vampiric weapon MOD heals the wielder — a composed effect, not an upgrade", () => {
+    class Vampiric extends WeaponMod {
+      readonly label = "steals health";
+      override get lifestealPct() { return 0.5; }
+    }
+    const a = arena();
+    const p = a.addPlayer("p1", new Player(a.physics, 300, 300, "knight", "guy"));
+    p.addWeapon(WEAPON_REGISTRY["broadsword"], [new Vampiric()]);
+    p.state.facing = "right";
+    p.state.health = 10;
+    // Inside the sword's reach but outside the goo's contact radius, so the health
+    // change is the weapon lifesteal alone.
+    const e = a.addEnemy("e1", new GooGreen(a.physics, 322, 300));
+    const hp0 = e.state.health;
+
+    swingUntilHit(a, "p1", "e1");
+    const dealt = hp0 - e.state.health;
+    expect(dealt).toBeGreaterThan(0);
     expect(p.state.health).toBeCloseTo(10 + dealt * 0.5, 6);
   });
 });

@@ -71,7 +71,7 @@ not just felt.)*
 
 | Boss | Structure |
 |---|---|
-| Turtle Dragon | **2 phases** (enrage at 50%) |
+| Turtle Dragon | **2 phases** (enrage at 25%) |
 | Fire / Green / Grey Wyvern | **Flat rotation** + a low-HP desperation move |
 | Centaur Knight | **2 phases** (drops to relentless charging at 50%) |
 | Big Beast | **2 phases** (enrage at 40%) |
@@ -87,7 +87,7 @@ two big committed moves. **Sprite rows:** idle / walk / spin / damage.
 A wall of a boss. It has huge knockback resistance and doesn't chase hard — it *controls
 space* and forces you to fight on its terms, then over-commits so you can strike back.
 
-**Phase 1 (100%–50%)**
+**Phase 1 (100%–25%)**
 - **Shell Spin Dash** *(signature)* — Wind-up (~0.8s): withdraws into shell, rattles, dust
   kicks up. Strike: rockets in a straight line toward your telegraphed position,
   **ricocheting off up to 3 walls** over ~2.5s; immune to knockback while spinning.
@@ -96,14 +96,15 @@ space* and forces you to fight on its terms, then over-commits so you can strike
 - **Tremor Slam** — Wind-up (~0.7s): rears up on hind legs. Strike: slams down and sends
   **four cracks racing outward along the cardinal directions** (line hazards). Dodge:
   stand on a diagonal / between the cracks.
-- **Boulder Belch** — lobs 1–3 rocks that arc to **growing ground markers**, then burst
-  (Explosion 32×32). Dodge: leave the marked circles before they land.
+- **Boulder Belch** — lobs a **single aimed rock** that arcs to a **growing ground marker**,
+  then bursts (Explosion 32×32). Dodge: leave the marked circle before it lands.
 
-**Phase 2 (below 50%) — enrage**
+**Phase 2 (below 25%) — enrage**
 - Spin Dash gains extra ricochets and **chains into a second spin** if it still has line of
   sight (shorter recovery — punish is tighter).
 - Tremor Slam fires **eight cracks** (cardinals + diagonals) — you must move *through* the
   slam's origin ring rather than stand still.
+- Boulder Belch fans into a **3-rock spread** (30° arc) — standing still eats the centre shot.
 
 ---
 

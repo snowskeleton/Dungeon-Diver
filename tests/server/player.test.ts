@@ -3,7 +3,7 @@ import {
   SERVER_TICK_MS,
   DEFAULT_CHARGE_HOLD_MS,
   WEAPON_REGISTRY,
-  AMMO_REGISTRY,
+  resolveAmmo,
   CHARACTER_CLASSES,
   getCharacter,
   CharacterClass,
@@ -354,7 +354,7 @@ describe("the wire shape of a weapon slot", () => {
   it("carries ammo damage as ammo + weapon, matching what actually gets fired", () => {
     const p = newPlayer("ranger", "longbow");
     const slot = slotStateFor(p.weapon!);
-    const ammo = AMMO_REGISTRY[p.weapon!.ammoId!];
+    const ammo = resolveAmmo(p.weapon!.ammoId!)!;
 
     expect(slot.ammoDamage).toBe(ammo.damage + p.weapon!.damage);
     expect(slot.ammoSpeed).toBe(ammo.speed);
@@ -367,11 +367,39 @@ describe("the wire shape of a weapon slot", () => {
 
     expect(view.damage).toBe(p.weapon!.damage);
     expect(view.attackCooldownMs).toBe(Math.round(p.weapon!.attackCooldownMs));
-    expect(view.ammo!.damage).toBe(AMMO_REGISTRY[p.weapon!.ammoId!].damage + p.weapon!.damage);
+    expect(view.ammo!.damage).toBe(resolveAmmo(p.weapon!.ammoId!)!.damage + p.weapon!.damage);
   });
 
   it("leaves the ammo block empty for a melee weapon", () => {
     const slot = slotStateFor(newPlayer("knight", "broadsword").weapon!);
     expect(slot.ammoDamage).toBe(0);
+  });
+});
+
+// A runtime-composed weapon reaches the client as a DESCRIPTOR: resolved stats plus
+// the composed name and tint the template alone can't know. weaponId is only the
+// base-art selector now — the identity rides in these fields.
+describe("composed weapon crosses the wire as a descriptor", () => {
+  class FrostMod extends WeaponMod {
+    readonly label = "chills";
+    override get namePrefix() { return "Cold"; }
+    override get tint() { return 0x88ccff; }
+  }
+
+  it("slotStateFor writes the composed name and tint; viewFromSlot round-trips them", () => {
+    const p = newPlayer("knight", "broadsword");
+    const { added } = p.addWeapon(WEAPON_REGISTRY["broadsword"], [new FrostMod()]);
+    const slot = slotStateFor(added);
+    expect(slot.displayName).toBe(added.displayName);
+    expect(slot.tint).toBe(0x88ccff);
+    expect(viewFromSlot(slot)!.name).toBe(`Cold ${WEAPON_REGISTRY["broadsword"].name}`);
+  });
+
+  it("an unmodified weapon carries its plain name and -1 (no) tint", () => {
+    const p = newPlayer("knight", "broadsword");
+    const slot = slotStateFor(p.weapon!);
+    expect(slot.tint).toBe(-1);
+    expect(slot.displayName).toBe(WEAPON_REGISTRY["broadsword"].name);
+    expect(viewFromSlot(slot)!.name).toBe(WEAPON_REGISTRY["broadsword"].name);
   });
 });

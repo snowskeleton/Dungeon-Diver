@@ -38,6 +38,14 @@ export interface AmmoView {
 export interface WeaponSlotView {
   uid: string;
   weaponId: string;
+  /** The composed display name (see WeaponInstance.displayName): the base name
+   *  wrapped by its modifiers' affixes, e.g. "Cold Broadsword of Vampirism". The
+   *  client shows this verbatim — `weaponId` is only the BASE-ART selector now, not
+   *  the weapon's identity, so a runtime-composed weapon needs its name on the wire. */
+  displayName: string;
+  /** Art tint as 0xRRGGBB, or -1 for none. -1 rather than null because the wire
+   *  field is a Colyseus int32; the client applies it to the held icon + swing FX. */
+  tint: number;
   damage: number;
   attackCooldownMs: number;
   attackForce: number;
@@ -49,6 +57,10 @@ export interface WeaponSlotView {
    *  this is a Colyseus ArraySchema, which is array-LIKE but not an Array. */
   modLabels: Iterable<string> & { length: number };
 }
+
+/** Sentinel `tint` value meaning "no tint" on the wire (a Colyseus int32 can't be
+ *  null). Kept here beside WeaponSlotView so producer and consumer share one name. */
+export const NO_TINT = -1;
 
 /**
  * The read surface anything displaying or swinging a weapon needs. Both a `Weapon`
@@ -90,6 +102,32 @@ export abstract class WeaponMod {
   get attackForcePct(): number { return 0; }
   /** Percent ATTACK SPEED, not cooldown — see resolveCooldown for why. */
   get attackSpeedPct(): number { return 0; }
+
+  // ── Presentation: how this mod reshapes the composed weapon (see WeaponInstance) ──
+  // A modifier owns not just its numbers but how it reads and looks, so a
+  // runtime-composed weapon can be shown to the player without the client ever
+  // reconstructing the mod. Every default is empty, so a stat-only roll changes
+  // nothing about name or colour.
+
+  /** A word placed BEFORE the base name — a Frost mod → "Cold" → "Cold Broadsword". */
+  get namePrefix(): string | null { return null; }
+  /** A phrase placed AFTER the base name — "of Vampirism" → "Broadsword of Vampirism". */
+  get nameSuffix(): string | null { return null; }
+  /** A colour (0xRRGGBB) this mod tints the weapon art with; null = no tint. When
+   *  several mods tint, the last-applied wins (see WeaponInstance.tint). */
+  get tint(): number | null { return null; }
+
+  /** Fraction of damage dealt that heals the wielder (0 = none). A real gameplay
+   *  effect the combat resolver reads, proving the presentation plumbing carries an
+   *  actual ability and not just a cosmetic. See VampiricMod. */
+  get lifestealPct(): number { return 0; }
+
+  /** A short, filename-safe, deterministic fragment identifying this mod in a
+   *  weapon's signature/uid — derived from the label ("+2 damage" → "2damage"),
+   *  which reads well in logs and is stable across runs. Override for a custom key. */
+  get signatureFragment(): string {
+    return this.label.replace(/[^a-z0-9]+/gi, "").toLowerCase();
+  }
 }
 
 /** (base + Σflat) × (1 + Σpct). Flats all land before any percent, and percents
@@ -104,6 +142,15 @@ export function foldStat(base: number, flat: number, pct: number): number {
  *  simply halves it and can never reach zero. Floored regardless. */
 export function resolveCooldown(base: number, speedPct: number): number {
   return Math.max(MIN_ATTACK_COOLDOWN_MS, base / (1 + speedPct));
+}
+
+/** A deterministic, human-readable identity for a composed weapon: the base id plus
+ *  each modifier's fragment ("broadsword+2damage+10attackspeed"). Stable across runs
+ *  for the same base+mods, so it doubles as a debug/replay label and the readable
+ *  stem of a weapon instance's uid (the mint site appends a uniquifier for dupes). */
+export function weaponSignature(templateId: string, mods: WeaponMod[]): string {
+  if (mods.length === 0) return templateId;
+  return [templateId, ...mods.map(m => m.signatureFragment)].join("+");
 }
 
 export class WeaponInstance implements WeaponView {
@@ -160,6 +207,39 @@ export class WeaponInstance implements WeaponView {
 
   get attackCooldownMs(): number {
     return resolveCooldown(this.template.attackCooldownMs, this.sum(m => m.attackSpeedPct));
+  }
+
+  // ── Composed presentation ─────────────────────────────────────────────────────
+  // The composed identity the client renders. Computed here, authoritatively, and
+  // sent as plain data on the wire (see slotStateFor / WeaponSlotState) — the client
+  // never reconstructs it from modifiers, so a weapon can be composed from an
+  // unbounded mix of mods at runtime without the client knowing every combination.
+
+  /** The composed display name: base name wrapped by every mod's prefix/suffix in
+   *  application order — "Cold Broadsword of Vampirism". Just the template name when
+   *  unmodified. */
+  get displayName(): string {
+    const prefixes = this.mods.map(m => m.namePrefix).filter((s): s is string => s !== null);
+    const suffixes = this.mods.map(m => m.nameSuffix).filter((s): s is string => s !== null);
+    return [...prefixes, this.template.name, ...suffixes].join(" ");
+  }
+
+  /** The colour the client tints this weapon's art with — the last tinting mod wins
+   *  (deterministic and order-stable) — or null for the template's own colours. */
+  get tint(): number | null {
+    let t: number | null = null;
+    for (const m of this.mods) if (m.tint !== null) t = m.tint;
+    return t;
+  }
+
+  /** Total lifesteal fraction across this instance's mods (see WeaponMod.lifestealPct). */
+  get lifestealPct(): number {
+    return this.sum(m => m.lifestealPct);
+  }
+
+  /** This instance's deterministic signature (see weaponSignature). */
+  get signature(): string {
+    return weaponSignature(this.template.id, this.mods);
   }
 
   /** Display strings for every mod on this instance, in the order applied. */

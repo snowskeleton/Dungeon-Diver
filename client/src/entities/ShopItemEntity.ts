@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { WEAPON_REGISTRY, WeaponId } from "shared";
+import { resolveWeapon } from "shared";
 import { InteractPrompt } from "./InteractPrompt";
 
 // In-world view of one shop pedestal: a pedestal base, the weapon icon hovering
@@ -22,7 +22,7 @@ export class ShopItemEntity {
       .setStrokeStyle(1, 0x6666aa).setDepth(1.5);
     this.objects.push(pedestal);
 
-    const held = WEAPON_REGISTRY[weaponId as WeaponId]?.rangedStyle === "held";
+    const held = resolveWeapon(weaponId)?.rangedStyle === "held";
     this.icon = held ? scene.add.sprite(x, y - 6, weaponId, 0) : scene.add.image(x, y - 6, weaponId);
     this.icon.setDisplaySize(ICON, ICON).setDepth(2.5);
     this.objects.push(this.icon);
