@@ -1,4 +1,30 @@
 export type Facing = "up" | "down" | "left" | "right";
+
+// The one facing rule, shared so client (local sprite) and server (authoritative)
+// never drift. Facing follows the DOMINANT movement axis: whichever of |dx|/|dy|
+// is larger decides horizontal-vs-vertical, so a stick pushed WNW faces left and
+// one pushed NNW faces up — the split is the true 45° line, not a per-axis snap.
+// On a near-tie (the diagonal band, ±FACING_HYSTERESIS) the previous facing is
+// kept if it's still one of the two candidate directions, so holding a diagonal
+// doesn't jitter between up and left; otherwise the horizontal candidate wins
+// (which keeps keyboard diagonals, always exact ties, behaving as they always did:
+// facing sideways rather than snapping vertical). No input at all keeps `prev`.
+const FACING_HYSTERESIS = 0.35;
+export function facingFromInput(dx: number, dy: number, prev: Facing): Facing {
+  const ax = Math.abs(dx);
+  const ay = Math.abs(dy);
+  if (ax < 1e-3 && ay < 1e-3) return prev;
+  const horiz: Facing = dx > 0 ? "right" : "left";
+  const vert: Facing = dy > 0 ? "down" : "up";
+  if (ay < 1e-3) return horiz; // purely horizontal
+  if (ax < 1e-3) return vert; // purely vertical
+  const near = Math.min(ax, ay) / Math.max(ax, ay) >= 1 - FACING_HYSTERESIS;
+  if (near) {
+    if (prev === horiz || prev === vert) return prev; // hold through the diagonal band
+    return ax >= ay ? horiz : vert;
+  }
+  return ax > ay ? horiz : vert;
+}
 export type AiState = "patrol" | "chase" | "attack";
 
 export type TileEffect = "damage" | "slow" | null;
@@ -12,7 +38,11 @@ export interface TileProps {
 
 // Client → server input message
 export interface InputMessage {
-  dx: number;       // -1, 0, or 1
+  // Movement intent as a vector. Keyboard sends the eight quantized directions
+  // (each component -1/0/1); a gamepad stick sends its analog tilt (|(dx,dy)| ≤ 1),
+  // so the player moves in the exact stick direction. move() normalizes, so speed
+  // is constant regardless of tilt magnitude — the analog part is direction only.
+  dx: number;
   dy: number;
   attack: boolean;
   // The class movement ability (Charge / Blink / Dash / Vault). A discrete control

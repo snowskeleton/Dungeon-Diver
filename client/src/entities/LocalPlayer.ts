@@ -2,9 +2,9 @@ import Phaser from "phaser";
 import { Room } from "colyseus.js";
 import {
   InputMessage, CharacterClass, CharacterType, Character, getCharacter,
-  Weapon, WeaponView, WeaponSlotView, UpgradeSlotView, resolveWeapon, Facing,
+  Weapon, WeaponView, WeaponSlotView, UpgradeSlotView, resolveWeapon, Facing, facingFromInput,
   GameStateView, PlayerStateView, ShopStateView, ShopItemStateView, OfferStateView, RewardStateView, ChestStateView, DroppedWeaponStateView,
-  PLAYER_HURT_BOUNDS,
+  PLAYER_HURT_BOUNDS, FOOT_OFFSET,
 } from "shared";
 import { Entity } from "./Entity";
 import { InputSource, InputActions } from "../input/InputSource";
@@ -21,6 +21,15 @@ import { loadOptions } from "../options/gameOptions";
 // Must match GameRoom BUY_RADIUS so the client prompt appears exactly when the
 // server will accept the purchase.
 const SHOP_BUY_RADIUS = 40;
+
+// Prediction reconciliation threshold. Below this, a gap between predicted and
+// server position is just the latency lead (the client leads the server by ~one
+// round-trip) and is left to stand — correcting it would fight the prediction and
+// bring the lag right back. Above it, the client genuinely mispredicted (knockback,
+// enemy separation, a teleport) and snaps to the server. Sized well above the
+// worst-case steady-state lead so normal play NEVER snaps (a snap on the lead is
+// what makes prediction feel like it isn't working).
+const RECONCILE_SNAP_PX = 48;
 
 export class LocalPlayer extends Entity implements DebugDrawable {
   readonly room: Room;
@@ -97,6 +106,15 @@ export class LocalPlayer extends Entity implements DebugDrawable {
   downed = false;
   reviveProgress = 0;
 
+  // Client-side movement prediction. `predicted` is the visual position we render
+  // and steer locally each frame; `serverPos` is the last authoritative position we
+  // reconcile against. moveSpeed/speedMultiplier are the synced pace we integrate at.
+  private readonly walkableAt: (x: number, y: number) => boolean;
+  private predicted = { x: 0, y: 0 };
+  private serverPos = { x: 0, y: 0 };
+  private moveSpeed = 0;
+  private speedMultiplier = 1;
+
   constructor(
     scene: Phaser.Scene,
     x: number,
@@ -105,11 +123,16 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     inputSource: InputSource,
     characterClass: CharacterClass = "knight",
     characterType: CharacterType = "guy",
+    walkableAt: (x: number, y: number) => boolean = () => true,
   ) {
     const character = getCharacter(characterClass);
     const visualDef = CLIENT_CHARACTER_VISUAL_REGISTRY[characterType];
     super(scene, x, y, 0x63b3ed, character.maxHp);
     this.character = character;
+    this.walkableAt = walkableAt;
+    this.predicted = { x, y };
+    this.serverPos = { x, y };
+    this.moveSpeed = character.speed;
     // Empty-handed at spawn — the first weapon is claimed from a supply pedestal,
     // so no weapon FX render until syncFromServer swaps one in.
     this.weapon = undefined;
@@ -140,9 +163,13 @@ export class LocalPlayer extends Entity implements DebugDrawable {
       this.handleActions();
     }
 
+    // Analog sticks jitter every frame, so send only on a MEANINGFUL move change
+    // (or any button edge) — otherwise a held stick floods the socket at 60 Hz for
+    // sub-degree wobble the server can't act on anyway.
+    const MOVE_EPS = 0.03;
     if (
-      input.dx !== this.lastInput.dx ||
-      input.dy !== this.lastInput.dy ||
+      Math.abs(input.dx - this.lastInput.dx) > MOVE_EPS ||
+      Math.abs(input.dy - this.lastInput.dy) > MOVE_EPS ||
       input.attack !== this.lastInput.attack ||
       input.ability !== this.lastInput.ability
     ) {
@@ -157,17 +184,44 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     const risingEdge = input.attack && !this.prevAttack;
     const facingLocked = !!this.weapon?.isRanged && input.attack && !risingEdge;
     if (!facingLocked) {
-      if (input.dx > 0) this.facing = "right";
-      else if (input.dx < 0) this.facing = "left";
-      else if (input.dy > 0) this.facing = "down";
-      else if (input.dy < 0) this.facing = "up";
+      this.facing = facingFromInput(input.dx, input.dy, this.facing);
     }
     this.prevAttack = input.attack;
+
+    // Client-side prediction: move the sprite locally THIS frame instead of waiting
+    // for the input→server→broadcast round-trip, so control feels instant. The
+    // server stays authoritative — syncFromServer reconciles (and snaps on any real
+    // divergence: knockback, a wall the prediction missed, a teleport).
+    this.predictMovement(input);
+    this.setPosition(this.predicted.x, this.predicted.y);
 
     const isMoving = input.dx !== 0 || input.dy !== 0;
     const action = this.serverAttacking ? "attack" : isMoving ? "walk" : "idle";
     this.playAnim(action, this.facing);
     this.renderMovementFX();
+  }
+
+  // Integrate the local player's position from this frame's input, mirroring the
+  // server's normalize-then-move with a per-axis wall stop (so we don't predict
+  // through walls and rubber-band). Suspended while the room is paused or this
+  // player is downed — those are server-driven, so we just track the server.
+  private predictMovement(input: InputMessage) {
+    if (this.downed || this.roomState.paused) {
+      this.predicted = { x: this.serverPos.x, y: this.serverPos.y };
+      return;
+    }
+    const len = Math.hypot(input.dx, input.dy);
+    const speed = this.moveSpeed * this.speedMultiplier;
+    if (len === 0 || speed <= 0) return;
+    const dt = Math.min(this.scene.game.loop.delta, 100) / 1000; // clamp a hitch
+    const step = speed * dt;
+    const ux = (input.dx / len) * step;
+    const uy = (input.dy / len) * step;
+    // Per-axis, tested at the FOOT point the server collides from.
+    const nx = this.predicted.x + ux;
+    if (this.walkableAt(nx, this.predicted.y + FOOT_OFFSET)) this.predicted.x = nx;
+    const ny = this.predicted.y + uy;
+    if (this.walkableAt(this.predicted.x, ny + FOOT_OFFSET)) this.predicted.y = ny;
   }
 
   // Edge-detect the discrete controls (cycle weapon, open/close the pause menu)
@@ -461,7 +515,18 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     } else {
       this.setWeaponTint(tint);
     }
-    this.setPosition(state.x, state.y);
+    // Reconcile prediction against the authoritative position. The client owns its
+    // visual position frame-to-frame (setPosition happens in update from `predicted`);
+    // here we only correct it. Small gaps are the legitimate latency lead and are
+    // left alone; a large gap is a real divergence the client couldn't predict
+    // (knockback, enemy separation, a teleport/blink, a wall we clipped) — snap.
+    this.serverPos = { x: state.x, y: state.y };
+    this.moveSpeed = state.moveSpeed || this.character.speed;
+    this.speedMultiplier = state.speedMultiplier ?? 1;
+    if (Math.hypot(state.x - this.predicted.x, state.y - this.predicted.y) > RECONCILE_SNAP_PX) {
+      this.predicted = { x: state.x, y: state.y };
+      this.setPosition(state.x, state.y);
+    }
     // Track the SYNCED max HP so +max-HP upgrades move the bar's full mark — the
     // character base is only the starting value, and leaving it fixed made a
     // buffed player's bar read past full (looked like HP grew without limit).

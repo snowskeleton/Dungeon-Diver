@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import { Room } from "colyseus.js";
 import {
-  TILE_SIZE, ROOM_W, ROOM_H, generateDungeon, roomCellAt, MAP_SEED,
+  TILE_SIZE, ROOM_W, ROOM_H, TILE_PROPS, generateDungeon, roomCellAt, MAP_SEED,
   FloorChangeMessage, BarrierStateMessage,
   WEAPON_REGISTRY, AMMO_REGISTRY, DungeonOptions, DungeonResult, toDungeonOptions,
   RoomType, DebugConfig, DEFAULT_DEBUG_CONFIG,
@@ -254,7 +254,17 @@ export class GameScene extends Phaser.Scene {
 
     // No connecting spinner any more: the party has been connected since the
     // lobby, so by the time this scene exists the room is already in hand.
-    this.localManager = new LocalPlayerManager(this, this.party);
+    // Closes over `this.dungeon`, so it always tests the CURRENT floor (rebuildMap
+    // swaps the dungeon in place on descent). Mirrors the server's wall test: a tile
+    // is walkable when it's empty (null) or its TILE_PROPS say so; off-map blocks.
+    const walkableAt = (x: number, y: number): boolean => {
+      const col = Math.floor(x / TILE_SIZE);
+      const row = Math.floor(y / TILE_SIZE);
+      const tile = this.dungeon.mapData[row]?.[col];
+      if (tile === undefined) return false;
+      return tile === null || (TILE_PROPS[tile]?.walkable ?? false);
+    };
+    this.localManager = new LocalPlayerManager(this, this.party, walkableAt);
 
     const spawn = this.dungeon.playerSpawns[0];
     const locals = this.localManager.buildAll(spawn.x, spawn.y);

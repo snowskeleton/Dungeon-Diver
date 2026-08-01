@@ -85,6 +85,12 @@ export class GameRoom extends Room<GameState> {
     }
 
     this.setState(new GameState());
+    // Broadcast state at ~60 Hz instead of the 20 Hz default. The simulation still
+    // ticks at SERVER_TICK_MS (20 Hz), but pushing patches out three times as often
+    // cuts the return-trip half of movement latency — the biggest contributor to
+    // the "sluggish / keeps going after I let go" feel, most noticeable on an analog
+    // stick. Cheap for a 1–4 player room, and it smooths remote players too.
+    this.setPatchRate(1000 / 60);
     // The room opens in its lobby phase: the floor below is generated, but
     // nothing lives on it and nothing ticks until the host starts the run.
     this.state.roomName = clampName(options?.roomName, MAX_ROOM_NAME_LEN, "Dungeon run");

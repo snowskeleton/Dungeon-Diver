@@ -147,6 +147,31 @@ export class MenuScene extends Phaser.Scene {
     this.select(0);
   }
 
+  // Gamepad support for the canvas title menu (the DOM overlays get theirs from
+  // GamepadMenuCursor). Edge-detected each frame so a held stick/button steps
+  // once; the DOM panels behind Options/Debug take over while modalOpen.
+  private padUp = false;
+  private padDown = false;
+  private padConfirm = false;
+
+  update() {
+    if (this.modalOpen) return;
+    const pad = this.input.gamepad?.getPad(0);
+    if (!pad) return;
+
+    const up = (pad.axes[1]?.getValue() ?? 0) < -0.5 || (pad.buttons[12]?.pressed ?? false);
+    const down = (pad.axes[1]?.getValue() ?? 0) > 0.5 || (pad.buttons[13]?.pressed ?? false);
+    const confirm = (pad.buttons[0]?.pressed ?? false) || (pad.buttons[9]?.pressed ?? false);
+
+    if (up && !this.padUp) this.select(this.selected - 1);
+    if (down && !this.padDown) this.select(this.selected + 1);
+    if (confirm && !this.padConfirm) void this.activate();
+
+    this.padUp = up;
+    this.padDown = down;
+    this.padConfirm = confirm;
+  }
+
   private select(index: number) {
     if (this.modalOpen) return;
     const count = this.items.length;

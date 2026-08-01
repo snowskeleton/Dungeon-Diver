@@ -4,6 +4,7 @@ import { UiLayer } from "./UiLayer";
 import { LocalPlayer } from "../entities/LocalPlayer";
 import { comparedStatLines, statLineText, viewFromTemplate } from "./weaponStats";
 import { promptKeyLabel } from "../options/keybindings";
+import { inputMode, inputModeVersion } from "../input/inputMode";
 
 /**
  * The always-on screen furniture: party HP, the floor line, the PAUSED overlay,
@@ -32,6 +33,10 @@ export class GameHud {
   private readonly perfText: Phaser.GameObjects.Text;
   private readonly scene: Phaser.Scene;
   private toastTimer?: Phaser.Time.TimerEvent;
+  // The controls hint is rebuilt when the player switches device (kbd↔pad) so its
+  // glyphs match what they're holding; -1 forces the first build.
+  private controlsHint?: Phaser.GameObjects.Text;
+  private hintModeVersion = -1;
 
   constructor(
     scene: Phaser.Scene,
@@ -153,27 +158,36 @@ export class GameHud {
     );
 
     if (showControlsHint) {
-      // Was anchored to the bottom of the MAP, so it sat wherever the last tile
-      // row happened to be rather than on screen. It's a HUD line — pin it to the
-      // bottom of the viewport like the rest of the readouts.
-      // Built from the live bindings so a rebind is reflected here too.
-      const move = ["up", "left", "down", "right"].map((a) => promptKeyLabel(a as never)).join("");
-      const hint = [
-        `Move ${move}`,
-        `${promptKeyLabel("attack")}: attack`,
-        `${promptKeyLabel("prevSlot")}/${promptKeyLabel("nextSlot")}: switch weapon`,
-        `${promptKeyLabel("menu")}: inventory`,
-        `${promptKeyLabel("interact")}: interact`,
-        "Esc: pause menu",
-      ].join("  |  ");
-      ui.add(
+      // Anchored to the bottom of the viewport (a HUD line, not a map row). Text is
+      // (re)built from the live bindings AND the active device — see refreshControlsHint.
+      this.controlsHint = ui.add(
         scene.add
-          .text(8, scene.scale.height - 20, hint, {
+          .text(8, scene.scale.height - 20, "", {
             fontSize: "11px", color: "#888888",
           })
           .setDepth(10),
       );
+      this.refreshControlsHint();
     }
+  }
+
+  // Build the controls line for the device the player is currently using: keyboard
+  // keys, or controller glyphs with movement collapsed to the left stick. Cheap, but
+  // only run when the device actually flips (tracked by inputModeVersion).
+  private refreshControlsHint(): void {
+    if (!this.controlsHint) return;
+    this.hintModeVersion = inputModeVersion();
+    const move = inputMode() === "pad"
+      ? "L-Stick"
+      : ["up", "left", "down", "right"].map((a) => promptKeyLabel(a as never)).join("");
+    this.controlsHint.setText([
+      `Move ${move}`,
+      `${promptKeyLabel("attack")}: attack`,
+      `${promptKeyLabel("prevSlot")}/${promptKeyLabel("nextSlot")}: switch weapon`,
+      `${promptKeyLabel("menu")}: inventory`,
+      `${promptKeyLabel("interact")}: interact`,
+      "Esc: pause menu",
+    ].join("  |  "));
   }
 
   /** A transient one-line message. Used where a key press has to say why it did
@@ -205,6 +219,9 @@ export class GameHud {
     this.pausedText.setVisible(opts.paused);
     this.updateStairsPrompt(opts.playersOnStairs, opts.stairsPartySize);
     this.updateStoreCard(opts.players[0]);
+    if (this.controlsHint && this.hintModeVersion !== inputModeVersion()) {
+      this.refreshControlsHint();
+    }
   }
 
   /** Live FPS + round-trip latency. `latencyMs` is null until the first pong

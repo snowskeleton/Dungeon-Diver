@@ -13,6 +13,9 @@ export class UpgradeSlotState extends Schema implements UpgradeSlotView {
 
 export class PlayerState extends EntityState implements PlayerStateView {
   @type("string") facing: Facing = "down";
+  // Base move speed (px/sec, pre-multiplier), synced so the client can predict its
+  // own movement at the server's exact pace.
+  @type("float32") moveSpeed: number = 0;
   @type("boolean") isAttacking: boolean = false;
   // Increments once per swing — clients edge-detect this to restart the attack
   // animation even when isAttacking never flips false (held attack key).

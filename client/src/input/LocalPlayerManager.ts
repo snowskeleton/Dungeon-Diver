@@ -1,7 +1,12 @@
 import Phaser from "phaser";
 import { Party, PartyMember } from "../net/Party";
 import { LocalPlayer } from "../entities/LocalPlayer";
-import { KeyboardInputSource, GamepadInputSource, InputSource } from "./InputSource";
+import {
+  KeyboardInputSource,
+  GamepadInputSource,
+  CombinedInputSource,
+  InputSource,
+} from "./InputSource";
 
 /**
  * The Phaser half of same-screen co-op: one LocalPlayer view per connection the
@@ -12,17 +17,24 @@ import { KeyboardInputSource, GamepadInputSource, InputSource } from "./InputSou
  * exists to draw them, everyone has been connected for as long as it took the
  * host to press Start.
  *
- * Input devices are assigned by seat order: seat 0 is the keyboard, every seat
- * after it is a gamepad. (A second keyboard seat returns with controller support.)
+ * Input devices are assigned by seat order: seat 0 reads the keyboard OR the
+ * first controller (P1 can use either), and every couch seat after it claims the
+ * next controller.
  */
+/** Is the given world point (a player's foot position) on a walkable tile? Used by
+ *  local-player movement prediction to stop at walls the way the server does. */
+export type WalkableAt = (x: number, y: number) => boolean;
+
 export class LocalPlayerManager {
   private scene: Phaser.Scene;
   private party: Party;
   private localPlayers: LocalPlayer[] = [];
+  private walkableAt: WalkableAt;
 
-  constructor(scene: Phaser.Scene, party: Party) {
+  constructor(scene: Phaser.Scene, party: Party, walkableAt: WalkableAt) {
     this.scene = scene;
     this.party = party;
+    this.walkableAt = walkableAt;
   }
 
   /** Build a view for every party member, in seat order. */
@@ -39,16 +51,24 @@ export class LocalPlayerManager {
       this.inputSourceFor(index),
       member.loadout.characterClass,
       member.loadout.characterType,
+      this.walkableAt,
     );
     this.localPlayers.push(player);
     return player;
   }
 
   private inputSourceFor(index: number): InputSource {
-    // Seat 0 is the keyboard; every seat after it is a gamepad. The old arrow-
-    // cluster keyboard seat is gone until controller support returns it.
-    if (index === 0) return new KeyboardInputSource(this.scene.input.keyboard!);
-    return new GamepadInputSource(this.scene, index - 1);
+    // Seat 0 drives from the keyboard OR the first controller, interchangeably,
+    // so a solo player can pick up an Xbox pad and just play. Each couch player
+    // after P1 claims the next controller (seat 1 → pad 1, seat 2 → pad 2, …);
+    // P1's pad 0 is theirs alone.
+    if (index === 0) {
+      return new CombinedInputSource(
+        new KeyboardInputSource(this.scene.input.keyboard!),
+        new GamepadInputSource(this.scene, 0),
+      );
+    }
+    return new GamepadInputSource(this.scene, index);
   }
 
   update() {

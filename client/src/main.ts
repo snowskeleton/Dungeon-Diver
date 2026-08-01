@@ -4,6 +4,7 @@ import { BrowseScene } from "./scenes/BrowseScene";
 import { LobbyScene } from "./scenes/LobbyScene";
 import { GameScene } from "./scenes/GameScene";
 import { reportPlaceholders } from "./dev/PlaceholderReport";
+import { gamepadMenuCursor } from "./ui/GamepadMenuCursor";
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
@@ -20,6 +21,10 @@ const game = new Phaser.Game({
     gamepad: true,
   },
 });
+
+// Controller navigation for the DOM menus, always live: it is inert until an
+// overlay opens, so one start() covers the title screen through the pause menu.
+gamepadMenuCursor.start();
 
 if (import.meta.env.DEV) {
   reportPlaceholders();

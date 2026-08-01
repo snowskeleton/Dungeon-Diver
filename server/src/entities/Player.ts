@@ -1,7 +1,7 @@
 import {
   InputMessage, CharacterClass, CharacterType, Character, getCharacter,
   Weapon, WeaponInstance, WeaponMod, weaponSignature, resolveWeapon, resolveAmmo, MAX_WEAPONS,
-  PLAYER_BODY_PROFILE, PLAYER_ATTACK_AFFECTS, Facing, Attack, foldStat,
+  PLAYER_BODY_PROFILE, PLAYER_ATTACK_AFFECTS, Facing, facingFromInput, Attack, foldStat,
   ComboSwing, DEFAULT_COMBO_WINDOW_MS, DEFAULT_CHARGE_HOLD_MS, DEFAULT_ATTACK_BUFFER_MS,
   canClassUseWeapon,
 } from "shared";
@@ -579,11 +579,11 @@ export class Player extends Entity implements Caster, MovementCaster {
     // except the first press frame, which still turns you to aim.
     const facingLocked = weapon?.isRanged && input.attack && !risingEdge;
     if (!facingLocked) {
-      if (input.dx > 0) this.state.facing = "right";
-      else if (input.dx < 0) this.state.facing = "left";
-      else if (input.dy > 0) this.state.facing = "down";
-      else if (input.dy < 0) this.state.facing = "up";
+      this.state.facing = facingFromInput(input.dx, input.dy, this.state.facing);
     }
+    // Publish the speed the client should predict with (upgrades folded in, before
+    // the tile speedMultiplier the client already has).
+    this.state.moveSpeed = this.stats.speed;
 
     // A channelled movement ability owns the body's velocity this tick (dashDrive
     // set drivingThisTick), so normal movement input is suppressed for its duration.

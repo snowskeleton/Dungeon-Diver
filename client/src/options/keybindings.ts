@@ -1,19 +1,23 @@
-// The keyboard binding registry — the one source of truth for which physical
-// keys drive which action for the (single) keyboard player.
+// The binding registry — the one source of truth for which physical controls
+// drive which action, across BOTH input devices.
 //
-// Each action carries two interchangeable slots, Key 1 and Key 2; either being
-// down fires the action, and either may be left unbound (0). A physical key does
-// exactly one thing, so bindings are globally unique across the whole table —
-// binding a key that's already in use unbinds it wherever it was.
+// Each action carries a keyboard binding (two interchangeable keys, Key 1 / Key 2,
+// either 0 = unbound) AND a controller binding (one gamepad button index, or
+// PAD_UNBOUND). Keyboard keys are globally unique across the whole table — binding
+// a key that's already in use unbinds it wherever it was — and so are gamepad
+// buttons, in their own namespace (a keycode and a button index never collide
+// because they live in separate fields).
 //
-// A second couch player used to live on the arrow cluster; that seat is gone
-// until controller support brings it back (index 0 is now the only keyboard
-// seat). The arrows survive as the default Key 2 for movement etc., so a lone
-// player who reaches for them still moves.
+// Movement (up/down/left/right) has NO gamepad button: on a controller you move
+// with the left stick, which is analog and not a rebindable button. Those rows
+// show "L-Stick" in the controller column and their `pad` stays PAD_UNBOUND.
 //
-// KeyboardInputSource reads its keys from here; the rebind menu edits a draft of
-// it; nothing else needs to know a keycode. When we need to SHOW a key to the
-// player (the "press F to take" reward prompt), keyLabel() is the formatter.
+// KeyboardInputSource and GamepadInputSource both read their half from here; the
+// rebind menu edits a draft of it; nothing else needs to know a keycode or button
+// index. When we need to SHOW a control to the player (the "press F to take"
+// prompt), promptKeyLabel() is the device-aware formatter.
+
+import { inputMode } from "../input/inputMode";
 
 export type BindableAction =
   | "up"
@@ -27,11 +31,30 @@ export type BindableAction =
   | "menu"
   | "interact";
 
-/** The two interchangeable keys for one action, `[key1, key2]`; 0 = unbound. */
-export type ActionBinding = [number, number];
+/** No gamepad button bound (movement, or an explicitly-cleared action). */
+export const PAD_UNBOUND = -1;
+
+/** One action's controls: `keys` = two interchangeable keyboard keys (0 = unbound);
+ *  `pad` = a gamepad button index, or PAD_UNBOUND. */
+export interface ActionBinding {
+  keys: [number, number];
+  pad: number;
+}
 export type KeyBindings = Record<BindableAction, ActionBinding>;
 
 export const BINDING_SLOTS = 2;
+
+/** Movement is the analog left stick — no bindable button. */
+export const MOVEMENT_ACTIONS: ReadonlySet<BindableAction> = new Set([
+  "up",
+  "down",
+  "left",
+  "right",
+]);
+
+export function isMovementAction(action: BindableAction): boolean {
+  return MOVEMENT_ACTIONS.has(action);
+}
 
 /** The rebind screen renders this order, one row each. */
 export const BINDABLE_ACTIONS: { action: BindableAction; label: string }[] = [
@@ -49,18 +72,36 @@ export const BINDABLE_ACTIONS: { action: BindableAction; label: string }[] = [
 
 const K = Phaser.Input.Keyboard.KeyCodes;
 
-/** Ships as WASD + a set of secondary keys (the old arrow-cluster scheme). */
+// Standard W3C gamepad button indices (what an Xbox pad reports on macOS/Chrome).
+export const PAD = {
+  A: 0,
+  B: 1,
+  X: 2,
+  Y: 3,
+  LB: 4,
+  RB: 5,
+  LT: 6,
+  RT: 7,
+  VIEW: 8,
+  MENU: 9,
+  LS: 10,
+  RS: 11,
+} as const;
+
+/** Ships as WASD + arrow-cluster secondaries for the keyboard, and the usual
+ *  Xbox layout for the controller (A attack, B ability, LB/RB switch, Start menu,
+ *  X interact). */
 export const DEFAULT_BINDINGS: KeyBindings = {
-  up:       [K.W, K.UP],
-  down:     [K.S, K.DOWN],
-  left:     [K.A, K.LEFT],
-  right:    [K.D, K.RIGHT],
-  attack:   [K.SPACE, K.ENTER],
-  ability:  [K.SHIFT, K.FORWARD_SLASH],
-  prevSlot: [K.Q, K.OPEN_BRACKET],
-  nextSlot: [K.E, K.CLOSED_BRACKET],
-  menu:     [K.I, K.BACK_SLASH],
-  interact: [K.F, K.PERIOD],
+  up:       { keys: [K.W, K.UP],                 pad: PAD_UNBOUND },
+  down:     { keys: [K.S, K.DOWN],               pad: PAD_UNBOUND },
+  left:     { keys: [K.A, K.LEFT],               pad: PAD_UNBOUND },
+  right:    { keys: [K.D, K.RIGHT],              pad: PAD_UNBOUND },
+  attack:   { keys: [K.SPACE, K.ENTER],          pad: PAD.A },
+  ability:  { keys: [K.SHIFT, K.FORWARD_SLASH],  pad: PAD.B },
+  prevSlot: { keys: [K.Q, K.OPEN_BRACKET],       pad: PAD.LB },
+  nextSlot: { keys: [K.E, K.CLOSED_BRACKET],     pad: PAD.RB },
+  menu:     { keys: [K.I, K.BACK_SLASH],         pad: PAD.MENU },
+  interact: { keys: [K.F, K.PERIOD],             pad: PAD.X },
 };
 
 // ── Display names ──────────────────────────────────────────────────────────
@@ -110,11 +151,42 @@ export function keyLabel(code: number): string {
   return raw.length === 1 ? raw : raw.charAt(0) + raw.slice(1).toLowerCase();
 }
 
-/** The first bound key for an action, formatted — for an in-world "press X"
- *  prompt, which wants one key, not both. Falls back to Key 2 if Key 1 is
- *  unbound, and to an em-dash if neither is. */
+// Controller button glyphs, by index. Short so they fit an in-world prompt pill.
+const PAD_LABELS: Record<number, string> = {
+  [PAD.A]: "Ⓐ",
+  [PAD.B]: "Ⓑ",
+  [PAD.X]: "Ⓧ",
+  [PAD.Y]: "Ⓨ",
+  [PAD.LB]: "LB",
+  [PAD.RB]: "RB",
+  [PAD.LT]: "LT",
+  [PAD.RT]: "RT",
+  [PAD.VIEW]: "View",
+  [PAD.MENU]: "Menu",
+  [PAD.LS]: "L3",
+  [PAD.RS]: "R3",
+  12: "D↑",
+  13: "D↓",
+  14: "D←",
+  15: "D→",
+};
+
+/** Human-facing name for a gamepad button index. Unbound reads as an em-dash. */
+export function padLabel(button: number): string {
+  if (button < 0) return "—";
+  return PAD_LABELS[button] ?? `B${button}`;
+}
+
+/** The control to SHOW for an action, in the device the player is currently
+ *  using: a controller glyph when they're on the pad (or "L-Stick" for movement),
+ *  otherwise the keyboard key. Prompts re-read this each frame, so it flips the
+ *  instant the player switches devices. */
 export function promptKeyLabel(action: BindableAction): string {
-  const [k1, k2] = loadBindings()[action];
+  if (inputMode() === "pad") {
+    if (isMovementAction(action)) return "L-Stick";
+    return padLabel(loadBindings()[action].pad);
+  }
+  const [k1, k2] = loadBindings()[action].keys;
   return keyLabel(k1 || k2);
 }
 
@@ -122,20 +194,25 @@ export function promptKeyLabel(action: BindableAction): string {
 const STORAGE_KEY = "game2.keybindings";
 let cached: KeyBindings | null = null;
 
-// Bumped on every save so a live KeyboardInputSource can notice its keys are
-// stale and rebuild — that's what makes a rebind from the pause menu apply to
-// the run in progress instead of only the next one.
+// Bumped on every save so a live input source can notice its bindings are stale
+// and rebuild — that's what makes a rebind from the pause menu apply to the run in
+// progress instead of only the next one.
 let version = 0;
 export function bindingsVersion(): number {
   return version;
 }
 
-function mergeDefaults(saved: Partial<Record<BindableAction, ActionBinding>>): KeyBindings {
+function mergeDefaults(saved: Partial<Record<BindableAction, unknown>>): KeyBindings {
   const merged = cloneBindings(DEFAULT_BINDINGS);
   for (const { action } of BINDABLE_ACTIONS) {
-    const pair = saved[action];
-    if (Array.isArray(pair) && pair.length === 2) {
-      merged[action] = [Number(pair[0]) || 0, Number(pair[1]) || 0];
+    const entry = saved[action];
+    if (!entry || typeof entry !== "object") continue;
+    const e = entry as Partial<ActionBinding>;
+    if (Array.isArray(e.keys) && e.keys.length === 2) {
+      merged[action].keys = [Number(e.keys[0]) || 0, Number(e.keys[1]) || 0];
+    }
+    if (typeof e.pad === "number" && !isMovementAction(action)) {
+      merged[action].pad = Math.trunc(e.pad);
     }
   }
   return merged;
@@ -167,7 +244,10 @@ export function saveBindings(bindings: KeyBindings) {
 export function cloneBindings(bindings: KeyBindings): KeyBindings {
   const out = {} as KeyBindings;
   for (const { action } of BINDABLE_ACTIONS) {
-    out[action] = [bindings[action][0], bindings[action][1]];
+    out[action] = {
+      keys: [bindings[action].keys[0], bindings[action].keys[1]],
+      pad: bindings[action].pad,
+    };
   }
   return out;
 }

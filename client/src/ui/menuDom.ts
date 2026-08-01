@@ -127,6 +127,14 @@ const CSS = `
   .m-field { display: flex; gap: 8px; align-items: center; }
   .m-field label { font-size: 11px; color: #777799; }
   .m-checkbox { display: flex; gap: 6px; align-items: center; font-size: 11px; color: #99aacc; cursor: pointer; }
+  /* Gamepad focus ring — laid on whichever element the controller cursor points
+     at. A bright outline that reads on every panel surface (rows, tiles, cards,
+     buttons, chips), drawn outside the box so it never shifts layout. */
+  .gp-focus {
+    outline: 2px solid #ffe066 !important;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 2px rgba(255,224,102,0.35) !important;
+  }
 `;
 
 /** Inject a stylesheet once, keyed by id. The shared CSS below and every panel's

@@ -77,6 +77,10 @@ export interface EntityStateView extends SyncedSchema {
 
 export interface PlayerStateView extends EntityStateView {
   readonly facing: Facing;
+  /** The player's current base move speed (px/sec, before speedMultiplier). Synced
+   *  so the client can predict its own movement at the exact server pace — the
+   *  effective speed is `moveSpeed * speedMultiplier`. */
+  readonly moveSpeed: number;
   readonly isAttacking: boolean;
   readonly attackSeq: number;
   /** Combo swing index the current attack belongs to (0 first, 1 reverse, 2
