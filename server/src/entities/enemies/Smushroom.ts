@@ -55,10 +55,10 @@ export class Smushroom extends CastingEnemy {
 
     const target = this.pickTarget(players);
 
-    // Already gassing: keep shambling toward the player so the caster-anchored cloud
-    // is dragged onto them (it's not a stationary drop). The cloud runs regardless.
+    // Already gassing: hold still while the cloud lingers. The cloud is caster-
+    // anchored, so a stationary smushroom keeps it centred where it was released
+    // instead of dragging the hazard around.
     if (this.caster.busy) {
-      if (target) this.pathToward(target);
       this.caster.update(this, dtMs, this.selfAim);
       this.syncCastState();
       return;

@@ -497,6 +497,15 @@ export abstract class Enemy extends Entity implements Caster {
    *  block is in the way we follow the flow-field gradient around it. Without a
    *  navigator (test-built enemy) it's always a beeline. */
   protected pathToward(target: { id: string; dx: number; dy: number }): void {
+    const heading = this.pathHeading(target);
+    this.chase(heading.dx, heading.dy);
+  }
+
+  /** The direction this enemy should actually travel to reach the target: the flow-
+   *  field heading around walls when there's no clear line of sight, else the straight
+   *  delta. Locomotion that isn't a plain chase (the frog-flower's hop) steers by this
+   *  so it paths intelligently instead of beelining into cover. */
+  protected pathHeading(target: { id: string; dx: number; dy: number }): { dx: number; dy: number } {
     const kind = this.cruiseHeight > 0 ? "air" : "ground";
     if (this.nav && this.homeRoomId) {
       // Navigate the COLLISION body, which sits at the feet (FOOT_OFFSET below the
@@ -509,13 +518,10 @@ export abstract class Enemy extends Entity implements Caster {
       const ty = this.footY + target.dy;
       if (!this.nav.lineOfSight(kind, this.homeRoomId, fx, fy, tx, ty)) {
         const heading = this.nav.sample(kind, this.homeRoomId, target.id, fx, fy);
-        if (heading) {
-          this.chase(heading.dx, heading.dy);
-          return;
-        }
+        if (heading) return { dx: heading.dx, dy: heading.dy };
       }
     }
-    this.chase(target.dx, target.dy);
+    return { dx: target.dx, dy: target.dy };
   }
 
   // Reusable movement helpers subclasses (e.g. bosses) can call.

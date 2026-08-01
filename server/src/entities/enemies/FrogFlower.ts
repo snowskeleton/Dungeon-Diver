@@ -44,7 +44,7 @@ export class FrogFlower extends ApproachCastEnemy {
 
   // Bound toward the target: move during the hop window, hold still during the pause,
   // driving a visible jump arc via airHeight (see hopApproach).
-  protected override approach(target: { dx: number; dy: number }, dtMs: number): void {
+  protected override approach(target: { id: string; dx: number; dy: number }, dtMs: number): void {
     this.updateFacing(target.dx, target.dy);
     const r = hopApproach({
       hopClock: this.hopClock,
@@ -55,8 +55,10 @@ export class FrogFlower extends ApproachCastEnemy {
     });
     this.hopClock = r.hopClock;
     if (r.moving) {
-      // A hop covers ground faster than a glide would — brief and bounding.
-      this.move(target.dx, target.dy, this.speed * 1.6);
+      // Hop along the FLOW-FIELD heading (around walls), not the raw beeline — a hop
+      // covers ground faster than a glide would, brief and bounding.
+      const h = this.pathHeading(target);
+      this.move(h.dx, h.dy, this.speed * 1.6);
       this.setAirHeight(r.airHeight);
     }
   }
