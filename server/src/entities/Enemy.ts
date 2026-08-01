@@ -111,7 +111,7 @@ export abstract class Enemy extends Entity implements Caster {
   protected get aggroRadius(): number { return 360; }
   // Center-to-center; must exceed 2×ENTITY_RADIUS (10px) or attacks never land.
   protected get attackRadius(): number { return 14; }
-  protected get attackDamage(): number { return 10; }
+  protected get attackDamage(): number { return 4; }
   protected get attackCooldownMs(): number { return 1200; }
   /** 0 = full knockback; higher absorbs more force. */
   protected get knockbackResistance(): number { return 3; }

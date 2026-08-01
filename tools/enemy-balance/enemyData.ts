@@ -209,6 +209,11 @@ export interface StatCell {
   value: number | null;
   declaredIn: string | null; // which class declares the getter (provenance)
   inherited: boolean; // true if not declared on the leaf class
+  // true only when this cell is declared on the leaf AND an ancestor also
+  // declares it — i.e. resetting (deleting the leaf getter) falls back to a
+  // real inherited value rather than wiping the stat entirely. Base/root
+  // getters with no ancestor are NOT resettable.
+  resettable: boolean;
 }
 export interface EnemyRow {
   className: string;
@@ -232,6 +237,22 @@ function buildIndex(): { byName: Map<string, ClassInfo>; files: ParsedFile[] } {
   return { byName, files };
 }
 
+/** Does `start` or any class above it declare a getter for `stat`? */
+function ancestorDeclares(
+  start: string | null,
+  stat: string,
+  byName: Map<string, ClassInfo>,
+): boolean {
+  let cur = start;
+  while (cur) {
+    const ci: ClassInfo | undefined = byName.get(cur);
+    if (!ci) return false;
+    if (ci.getters[stat]) return true;
+    cur = ci.extends;
+  }
+  return false;
+}
+
 function resolveStat(
   leaf: string,
   stat: string,
@@ -243,11 +264,15 @@ function resolveStat(
     if (!ci) break;
     const g = ci.getters[stat];
     if (g) {
-      return { value: g.value, declaredIn: cur, inherited: cur !== leaf };
+      const inherited = cur !== leaf;
+      // Resettable only if declared on the leaf AND some ancestor also declares
+      // it (so deleting the leaf getter leaves a real inherited value behind).
+      const resettable = !inherited && ancestorDeclares(ci.extends, stat, byName);
+      return { value: g.value, declaredIn: cur, inherited, resettable };
     }
     cur = ci.extends;
   }
-  return { value: null, declaredIn: null, inherited: true };
+  return { value: null, declaredIn: null, inherited: true, resettable: false };
 }
 
 export function loadModel(): Model {
@@ -304,8 +329,17 @@ export function applyEdit(req: EditRequest): { ok: true; file: string } {
   const own = ci.getters[req.stat]; // present only if declared on THIS class
 
   if (req.value === null) {
-    // reset: delete the leaf's own getter (if any); otherwise nothing to do
-    if (own) text = text.slice(0, own.fullStart) + text.slice(own.fullEnd);
+    // reset: delete the leaf's own getter so the stat falls back to an inherited
+    // default. Refuse when nothing above declares it — deleting a root/base
+    // getter would wipe the value outright, not "reset" it.
+    if (own) {
+      if (!ancestorDeclares(ci.extends, req.stat, byName)) {
+        throw new Error(
+          `cannot reset ${req.className}.${req.stat}: no inherited default to fall back to`,
+        );
+      }
+      text = text.slice(0, own.fullStart) + text.slice(own.fullEnd);
+    }
   } else if (own) {
     // replace the returned expression in place
     text = text.slice(0, own.exprStart) + String(req.value) + text.slice(own.exprEnd);

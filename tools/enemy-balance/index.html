@@ -250,7 +250,7 @@ function renderRow(row, cols) {
         commit({ className: row.className, stat: s.key, value: Number(v) });
       };
       td.appendChild(input);
-      if (!cell.inherited) {
+      if (cell.resettable) {
         const rst = document.createElement("span");
         rst.className = "reset";
         rst.textContent = "↺";
