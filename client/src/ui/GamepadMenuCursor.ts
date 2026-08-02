@@ -85,13 +85,25 @@ export class GamepadMenuCursor {
   }
 
   private tick() {
-    if (captureLock) return; // a rebind cell is swallowing the next button press
     const overlay = this.topOverlay();
+    const pad = this.firstPad();
+
+    // While a rebind cell is swallowing the next controller input we take NO menu
+    // action — but we must keep sampling the pad so the press being bound isn't
+    // also seen as navigation the instant the lock lifts. The lock releases the
+    // frame the button is captured, often while it's still physically held; if we
+    // skipped sampling, `dirActive` would then read that held button as a fresh
+    // press and move the ring. Syncing held-state (silently) makes it read as
+    // "already held", so nothing fires until the player releases and presses again.
+    if (captureLock) {
+      if (pad) this.syncHeldSilently(pad);
+      return;
+    }
+
     if (!overlay) {
       this.clearRing();
       return;
     }
-    const pad = this.firstPad();
     if (!pad) return;
 
     const items = this.focusables(overlay);
@@ -117,10 +129,20 @@ export class GamepadMenuCursor {
     const right = this.dirActive(pad, "right", dx > AXIS_THRESHOLD, now);
     const left = this.dirActive(pad, "left", dx < -AXIS_THRESHOLD, now);
 
-    const step = (down ? 1 : 0) - (up ? 1 : 0) + (right ? 1 : 0) - (left ? 1 : 0);
-    if (step !== 0) {
-      const next = (index + step + items.length) % items.length;
-      this.setRing(items[next]);
+    // Navigate by on-screen geometry, not DOM order: each direction steps to the
+    // nearest focusable that actually lies that way. This is what makes "down" go
+    // down and "right" go right even when a panel mixes rows and columns (the
+    // rebind grid). A pure-vertical or pure-horizontal menu still walks in order
+    // because there's only ever one candidate on the pressed axis.
+    const dir: Dir | null = down ? "down" : up ? "up" : right ? "right" : left ? "left" : null;
+    if (dir) {
+      let next = this.bestInDirection(items, index, dir);
+      // Vertical wraps top↔bottom (a familiar list feel); horizontal stops at the
+      // edge so left/right never jumps rows.
+      if (next === -1 && (dir === "up" || dir === "down")) {
+        next = this.wrapVertical(items, index, dir);
+      }
+      if (next !== -1) this.setRing(items[next]);
     }
 
     const aDown = pad.buttons[BTN_A]?.pressed ?? false;
@@ -130,6 +152,28 @@ export class GamepadMenuCursor {
     const bDown = pad.buttons[BTN_B]?.pressed ?? false;
     if (bDown && !this.bWasDown) this.escape();
     this.bWasDown = bDown;
+  }
+
+  /** Record the pad's current direction/A/B state WITHOUT acting on it, used while
+   *  a rebind cell holds the capture lock. Any direction currently down is marked
+   *  held with its repeat clock pushed out, so when the lock lifts mid-hold the
+   *  next `tick()` won't mistake the still-pressed button for a fresh press. */
+  private syncHeldSilently(pad: Gamepad) {
+    const now = performance.now();
+    const dy = this.axis(pad, 1);
+    const dx = this.axis(pad, 0);
+    const state: Record<Dir, boolean> = {
+      up: dy < -AXIS_THRESHOLD || (pad.buttons[DPAD.up]?.pressed ?? false),
+      down: dy > AXIS_THRESHOLD || (pad.buttons[DPAD.down]?.pressed ?? false),
+      left: dx < -AXIS_THRESHOLD || (pad.buttons[DPAD.left]?.pressed ?? false),
+      right: dx > AXIS_THRESHOLD || (pad.buttons[DPAD.right]?.pressed ?? false),
+    };
+    for (const dir of ["up", "down", "left", "right"] as Dir[]) {
+      this.held[dir] = state[dir];
+      this.nextFire[dir] = state[dir] ? now + REPEAT_DELAY_MS : 0;
+    }
+    this.aWasDown = pad.buttons[BTN_A]?.pressed ?? false;
+    this.bWasDown = pad.buttons[BTN_B]?.pressed ?? false;
   }
 
   /** True on the frame a direction should step: fires on press, then repeats
@@ -151,6 +195,70 @@ export class GamepadMenuCursor {
       return true; // repeat
     }
     return false;
+  }
+
+  /** Index of the nearest focusable lying in `dir` from the current one, or -1.
+   *  A candidate must sit on the correct side along the primary axis; among those
+   *  we prefer the one that overlaps the current element on the cross axis, then
+   *  the closest. Falls back to any candidate on the correct side so a diagonal
+   *  layout never strands the cursor. */
+  private bestInDirection(items: HTMLElement[], index: number, dir: Dir): number {
+    const cur = items[index].getBoundingClientRect();
+    const cx = cur.left + cur.width / 2;
+    const cy = cur.top + cur.height / 2;
+    const vertical = dir === "up" || dir === "down";
+    const sign = dir === "down" || dir === "right" ? 1 : -1;
+
+    let best = -1;
+    let bestScore = Infinity;
+    for (let i = 0; i < items.length; i++) {
+      if (i === index) continue;
+      const r = items[i].getBoundingClientRect();
+      const mx = r.left + r.width / 2;
+      const my = r.top + r.height / 2;
+      // Primary = distance along the pressed axis (must be on the correct side);
+      // cross = misalignment on the other axis.
+      const primary = (vertical ? my - cy : mx - cx) * sign;
+      const cross = Math.abs(vertical ? mx - cx : my - cy);
+      if (primary <= 1) continue; // not actually in this direction
+      // Weight cross-axis misalignment heavily so we stay in the same column/row.
+      const score = primary + cross * 3;
+      if (score < bestScore) {
+        bestScore = score;
+        best = i;
+      }
+    }
+    return best;
+  }
+
+  /** When a vertical step falls off the edge, wrap to the far end: pressing down
+   *  at the bottom lands on the topmost item, up at the top lands on the bottom.
+   *  Prefers the item best aligned with the current column so multi-column layouts
+   *  wrap within their own column. `dir` is the press, so the target sits at the
+   *  OPPOSITE extreme. */
+  private wrapVertical(items: HTMLElement[], index: number, dir: Dir): number {
+    const cur = items[index].getBoundingClientRect();
+    const cx = cur.left + cur.width / 2;
+    // Pressing "down" wraps to the topmost row (minimal y); "up" to the bottommost.
+    const wantMinY = dir === "down";
+
+    let best = -1;
+    let bestScore = Infinity;
+    for (let i = 0; i < items.length; i++) {
+      if (i === index) continue;
+      const r = items[i].getBoundingClientRect();
+      const my = r.top + r.height / 2;
+      const mx = r.left + r.width / 2;
+      const cross = Math.abs(mx - cx);
+      // Rank by how far toward the target edge the item is, then column alignment.
+      const edge = wantMinY ? my : -my;
+      const score = edge + cross * 3;
+      if (score < bestScore) {
+        bestScore = score;
+        best = i;
+      }
+    }
+    return best;
   }
 
   private axis(pad: Gamepad, i: number): number {

@@ -147,6 +147,7 @@ export function showKeybindMenu(): Promise<void> {
       e.stopPropagation();
       const target = capturing;
       capturing = null;
+      setGamepadCaptureLock(false);
       if (e.keyCode === ESCAPE_CODE || e.key === "Escape") {
         note("Rebind cancelled.", "info");
         render();
@@ -247,6 +248,9 @@ export function showKeybindMenu(): Promise<void> {
       cancelCapture();
       capturing = { action, device: "kbd", slot };
       note("Press any key…  (Esc to cancel)", "info");
+      // Lock the DOM gamepad cursor too: a controller button pressed during a
+      // keyboard capture must not drift the ring (it can't bind a key anyway).
+      setGamepadCaptureLock(true);
       render();
     };
 
