@@ -1,5 +1,6 @@
 import { TILE, TileId, TILE_SIZE, tileCenter } from "./types";
 import type { RoomType } from "./types";
+import { makeRng } from "./rng";
 
 // Default room grid dimensions (overridable per-call via DungeonOptions)
 const DEFAULT_GRID_COLS = 5;
@@ -80,17 +81,6 @@ const ROOM_TYPE_WEIGHTS: { type: RoomType; weight: number }[] = [
 const ROOM_TYPE_WEIGHT_TOTAL = ROOM_TYPE_WEIGHTS.reduce((n, e) => n + e.weight, 0);
 
 export type { RoomType };
-
-// Mulberry32 seeded RNG — deterministic, same seed → same map on client and server
-function makeRng(seed: number) {
-  let s = seed;
-  return () => {
-    s = (s + 0x6D2B79F5) | 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 function pickRoomType(rng: () => number): RoomType {
   // One rng draw, scaled to the weight total — the draw order (and so every

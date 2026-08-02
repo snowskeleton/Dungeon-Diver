@@ -1,10 +1,13 @@
 import { EnemyClass } from "../../entities/Enemy";
+import { Rng } from "shared";
 
 /** The slice of GameRoom a challenge is allowed to touch. Deliberately tiny, the
  *  same way `Caster` (server/src/spells) is the tiny interface a Spell needs — it
  *  keeps challenges out of GameRoom's internals and makes them testable alone. */
 export interface ChallengeContext {
   readonly roomId: string;
+  /** The floor's seeded sim RNG, for reproducible wave/spawn draws. */
+  readonly rng: Rng;
   /** Enemies in this room that are not yet dying. */
   livingEnemyCount(roomId: string): number;
   spawnEnemyInRoom(roomId: string, cls: EnemyClass): void;

@@ -1,4 +1,4 @@
-import { WeaponMod } from "shared";
+import { WeaponMod, Rng, randInt } from "shared";
 
 // Concrete rolls that can land on a weapon instance. Same shape as Upgrade: one
 // class per modifier, contributions as getters, collected in a plain array. The
@@ -54,9 +54,9 @@ export class VampiricMod extends WeaponMod {
  * reward is meaningfully better than a floor-1 one without needing a separate
  * table of tiers — the scalar is just a function of depth.
  */
-export function rollWeaponMod(floor: number): WeaponMod {
+export function rollWeaponMod(floor: number, rng: Rng): WeaponMod {
   const scale = 1 + (floor - 1) * 0.35;
-  const pick = Math.floor(Math.random() * 5);
+  const pick = randInt(rng, 5);
   switch (pick) {
     case 0: return new SharpMod(Math.max(1, Math.round(2 * scale)));
     case 1: return new SavageMod(round2(0.1 * scale));

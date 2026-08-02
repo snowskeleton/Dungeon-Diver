@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { generateDungeon, RoomType, TILE_SIZE, RoomData } from "shared";
+import { generateDungeon, RoomType, TILE_SIZE, RoomData, makeRng } from "shared";
 import { PhysicsWorld } from "../../server/src/physics/PhysicsWorld";
 import { FloorManager } from "../../server/src/floor/FloorManager";
 import { WaveChallenge } from "../../server/src/rooms/challenges/WaveChallenge";
@@ -37,6 +37,7 @@ function room(type: RoomType) {
 
   const ctx: ChallengeContext = {
     roomId: roomData.id,
+    rng: makeRng(1),
     livingEnemyCount: () =>
       [...dying].filter(([id, d]) => !d && floor.getEnemyRoom(id) === roomData.id).length,
     spawnEnemyInRoom: () => { spawn(); },

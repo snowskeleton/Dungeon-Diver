@@ -12,6 +12,7 @@ import {
   MAX_ROOM_NAME_LEN, MAX_PLAYER_NAME_LEN,
   resolveCharacterClass, resolveCharacterType,
   coinDenominations,
+  Rng, makeRng, randInt,
 } from "shared";
 import { allocateRoomCode } from "./roomCodes";
 import { GameState } from "../schema/GameState";
@@ -57,6 +58,11 @@ export class GameRoom extends Room<GameState> {
   private challenges = new Map<string, RoomChallenge>();
   private currentDungeon!: DungeonResult;
   private currentSeed = MAP_SEED;
+  // The floor's seeded sim RNG. Re-derived per floor from the floor seed (distinct
+  // from the map-generation stream) so loot/spawn/scatter rolls are reproducible —
+  // the groundwork for rollback netcode. Shared into the loot + spawn directors and
+  // challenge contexts. See shared/src/rng.ts.
+  private simRng: Rng = makeRng(1);
   private stairsActive = false;
   // Set once when the whole party is downed at the same time — the run is over.
   private runEnded = false;
@@ -348,6 +354,12 @@ export class GameRoom extends Room<GameState> {
 
   private initFloor(seed: number) {
     this.currentSeed = seed;
+    // A sim stream distinct from the dungeon-generation stream (XOR the seed) so
+    // loot/spawn draws don't correlate with map carving. Re-derived each floor so a
+    // floor's rolls are reproducible from its seed.
+    this.simRng = makeRng((seed ^ 0x9e3779b9) | 0);
+    this.loot.rng = this.simRng;
+    this.spawner.rng = this.simRng;
     this.state.seed = seed;
     this.state.dungeonOpts = JSON.stringify(this.dungeonOpts);
     this.currentDungeon = generateDungeon(seed, this.dungeonOpts);
@@ -441,6 +453,7 @@ export class GameRoom extends Room<GameState> {
   private challengeContext(roomId: string): ChallengeContext {
     return {
       roomId,
+      rng: this.simRng,
       livingEnemyCount: (rid) => this.livingEnemyCount(rid),
       spawnEnemyInRoom: (rid, cls) => this.spawner.spawnEnemyInRoom(rid, cls),
       enemyPool: () => this.spawner.enemyPool(),
@@ -513,7 +526,7 @@ export class GameRoom extends Room<GameState> {
   /** How many floors a trap swallows. Inclusive of both bounds. */
   private rollTrapDepth(): number {
     const span = TRAP_MAX_FLOORS - TRAP_MIN_FLOORS + 1;
-    return TRAP_MIN_FLOORS + Math.floor(Math.random() * span);
+    return TRAP_MIN_FLOORS + randInt(this.simRng, span);
   }
 
   /** Descend `steps` floors. The stairs pass 1; a trap passes more. Advancing N
@@ -654,8 +667,8 @@ export class GameRoom extends Room<GameState> {
   private dropCoins(enemy: Enemy): void {
     const values = coinDenominations(enemy.goldValue);
     for (const value of values) {
-      const angle = Math.random() * Math.PI * 2;
-      const dist = Math.random() * COIN_SCATTER_RADIUS;
+      const angle = this.simRng() * Math.PI * 2;
+      const dist = this.simRng() * COIN_SCATTER_RADIUS;
       const x = enemy.state.x + Math.cos(angle) * dist;
       const y = enemy.state.y + Math.sin(angle) * dist;
       const id = `coin_${this.coinCounter++}`;
@@ -1000,13 +1013,6 @@ const COIN_SCATTER_RADIUS = 14;
 const REVIVE_RADIUS = 40;
 const REVIVE_MS = 3000;
 const REVIVE_HP_FRACTION = 0.5;
-
-function shuffle<T>(items: T[]): void {
-  for (let i = items.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [items[i], items[j]] = [items[j], items[i]];
-  }
-}
 
 /** Trim a client-supplied display string to something safe to render and list.
  *  Names reach a room browser other people read, so a blank or oversized one is

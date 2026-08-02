@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { UPGRADE_IDS, UpgradeId, WEAPON_REGISTRY, WeaponInstance } from "shared";
+import { UPGRADE_IDS, UpgradeId, WEAPON_REGISTRY, WeaponInstance, makeRng } from "shared";
 import {
   UPGRADES,
   Upgrade,
@@ -14,6 +14,9 @@ import {
 } from "../../server/src/upgrades";
 import { Player } from "../../server/src/entities/Player";
 import { flatWorld } from "../helpers/world";
+
+// A fixed seeded stream for the statistical rollWeaponMod tests below.
+const modRng = makeRng(20260802);
 
 describe("the upgrade set", () => {
   const instances = () => UPGRADES.map(U => new U());
@@ -193,7 +196,7 @@ describe("weapon modifiers", () => {
 describe("rolling a weapon modifier", () => {
   it("always produces a labelled modifier that changes something", () => {
     for (let i = 0; i < 200; i++) {
-      const m = rollWeaponMod(1 + (i % 8));
+      const m = rollWeaponMod(1 + (i % 8), modRng);
       expect(m.label.length).toBeGreaterThan(0);
       // A mod must change SOMETHING — a stat, or a real effect like lifesteal.
       const total = Math.abs(m.damageFlat) + Math.abs(m.damagePct)
@@ -208,7 +211,7 @@ describe("rolling a weapon modifier", () => {
       let total = 0;
       let n = 0;
       for (let i = 0; i < 4000; i++) {
-        const v = pick(rollWeaponMod(floor));
+        const v = pick(rollWeaponMod(floor, modRng));
         if (v > 0) { total += v; n++; }
       }
       return n ? total / n : 0;
@@ -220,7 +223,7 @@ describe("rolling a weapon modifier", () => {
   it("keeps rolled percentages to two decimals, so stat panels stay readable", () => {
     for (let floor = 1; floor <= 10; floor++) {
       for (let i = 0; i < 200; i++) {
-        const m = rollWeaponMod(floor);
+        const m = rollWeaponMod(floor, modRng);
         for (const pct of [m.damagePct, m.attackSpeedPct, m.attackForcePct]) {
           expect(Math.round(pct * 100) / 100).toBe(pct);
         }
@@ -230,7 +233,7 @@ describe("rolling a weapon modifier", () => {
 
   it("never rolls a flat bonus below 1 — a '+0 damage' roll would be a dud", () => {
     for (let i = 0; i < 500; i++) {
-      const m = rollWeaponMod(1);
+      const m = rollWeaponMod(1, modRng);
       if (m.damageFlat > 0) expect(m.damageFlat).toBeGreaterThanOrEqual(1);
       if (m.attackForceFlat > 0) expect(m.attackForceFlat).toBeGreaterThanOrEqual(1);
     }
@@ -239,7 +242,7 @@ describe("rolling a weapon modifier", () => {
   it("can roll each of its four kinds", () => {
     const kinds = new Set<string>();
     for (let i = 0; i < 500; i++) {
-      const m = rollWeaponMod(3);
+      const m = rollWeaponMod(3, modRng);
       if (m.damageFlat) kinds.add("flat");
       if (m.damagePct) kinds.add("pct");
       if (m.attackSpeedPct) kinds.add("speed");

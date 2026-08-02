@@ -12,6 +12,7 @@ import {
   CharacterClass,
   MAX_WEAPONS,
   DEFAULT_DEBUG_CONFIG,
+  makeRng,
 } from "shared";
 import { LootDirector, WRONG_CLASS_MSG } from "../../server/src/rooms/LootDirector";
 import { GameState } from "../../server/src/schema/GameState";
@@ -22,7 +23,11 @@ import { PhysicsWorld } from "../../server/src/physics/PhysicsWorld";
 // reward, an HP charge for nothing, or a pedestal that kills the buyer. Every
 // grant path is driven through its validate-then-grant surface.
 
-function floor(type: RoomType, floorNumber = 1) {
+// `seed` overrides the loot RNG for this floor. Loot rolls are seeded (reproducible
+// from the floor seed in production), so distribution tests that sample across many
+// freshly-built floors must vary the seed per sample — otherwise every fresh
+// LootDirector re-seeds identically and the "distribution" collapses to one outcome.
+function floor(type: RoomType, floorNumber = 1, seed?: number) {
   const dungeon: DungeonResult = generateDungeon(1, { showcaseRoomType: type });
   const physics = new PhysicsWorld(dungeon.mapData, dungeon.cols, dungeon.rows);
   const state = new GameState();
@@ -38,6 +43,7 @@ function floor(type: RoomType, floorNumber = 1) {
   players.set("party", new Player(physics, x0, y0, "knight", "guy"));
   const loot = new LootDirector(state, players);
   loot.setFloor(dungeon);
+  if (seed !== undefined) loot.rng = makeRng(seed);
   const room = dungeon.rooms.find(r => r.type === type)!;
   return { dungeon, physics, state, loot, room, players };
 }
@@ -332,15 +338,15 @@ describe("room-clear rewards", () => {
 
   // Drop one reward pedestal at (RX, RY), keyed "r". The kind is a weighted roll
   // over weapon/upgrade/gold, so a caller who needs a specific kind re-rolls.
-  function rewardFloor() {
-    const f = floor("combat");
+  function rewardFloor(seed?: number) {
+    const f = floor("combat", 1, seed);
     f.loot.dropRoomReward("r", RX, RY);
     return { ...f, reward: f.state.rewards.get("r")! };
   }
 
   function rewardOfKind(kind: "weapon" | "upgrade" | "gold") {
     for (let i = 0; i < 1000; i++) {
-      const f = rewardFloor();
+      const f = rewardFloor(i);
       if (f.reward.kind === kind) return f;
     }
     throw new Error(`never rolled a ${kind} reward`);
@@ -364,7 +370,7 @@ describe("room-clear rewards", () => {
   // chests now, so this path only ever hands out an upgrade or gold.
   it("never rolls a weapon from a room-clear pedestal", () => {
     for (let i = 0; i < 300; i++) {
-      expect(rewardFloor().reward.kind).not.toBe("weapon");
+      expect(rewardFloor(i).reward.kind).not.toBe("weapon");
     }
   });
 
@@ -407,8 +413,27 @@ describe("room-clear rewards", () => {
 
   it("rolls both non-weapon kinds over many drops", () => {
     const kinds = new Set<string>();
-    for (let i = 0; i < 300; i++) kinds.add(rewardFloor().reward.kind);
+    for (let i = 0; i < 300; i++) kinds.add(rewardFloor(i).reward.kind);
     expect(kinds).toEqual(new Set(["upgrade", "gold"]));
+  });
+
+  it("is reproducible from the floor seed — same seed, same roll sequence", () => {
+    // The determinism guardrail (shared/src/rng.ts): a floor's loot is a pure
+    // function of its seed, so a host and a rolled-back replay agree. Same seed →
+    // identical kinds; a different seed must be able to diverge.
+    const seq = (seed: number) => {
+      const f = floor("combat", 1, seed);
+      // Roll a whole sequence from ONE seeded stream (distinct room ids so each is a
+      // fresh drop), so the stream advances and the sequence actually varies.
+      return Array.from({ length: 20 }, (_unused, i) => {
+        f.loot.dropRoomReward(`r${i}`, RX, RY);
+        return f.state.rewards.get(`r${i}`)!.kind;
+      });
+    };
+    expect(seq(12345)).toEqual(seq(12345));
+    // Across seeds the whole sequence should not be identical (astronomically
+    // unlikely for a 20-long kind sequence to collide by chance).
+    expect(seq(12345)).not.toEqual(seq(99999));
   });
 
   it("shrugs off a malformed claim message", () => {
@@ -422,8 +447,8 @@ describe("room-clear rewards", () => {
 });
 
 describe("maze chests", () => {
-  function chestFloor() {
-    const f = floor("maze");
+  function chestFloor(seed?: number) {
+    const f = floor("maze", 1, seed);
     f.loot.spawnChests();
     return { ...f, chest: f.state.chests.get(f.room.id)! };
   }
@@ -505,7 +530,7 @@ describe("maze chests", () => {
     let brownMods = 0;
     const runs = 300;
     for (let i = 0; i < runs; i++) {
-      const { chest } = chestFloor();
+      const { chest } = chestFloor(i);
       if (chest.gold) { gold++; goldMods = chest.mods.length; }
       else brownMods = chest.mods.length;
     }

@@ -1,4 +1,5 @@
 import { RoomChallenge, ChallengeContext } from "./RoomChallenge";
+import { pick } from "shared";
 
 /** How many rooms-worth of enemies the whole horde is. `enemiesPerRoom()` sets both
  *  the initial batch (already placed by the floor pass) and the concurrent cap, so a
@@ -61,7 +62,7 @@ export class WaveChallenge extends RoomChallenge {
     // Refill up to the concurrent cap, drawing from the reserve, so the room stays
     // full rather than thinning out as the fight goes on.
     while (this.reserve > 0 && living < cap && pool.length > 0) {
-      ctx.spawnEnemyInRoom(ctx.roomId, pool[Math.floor(Math.random() * pool.length)]);
+      ctx.spawnEnemyInRoom(ctx.roomId, pick(ctx.rng, pool));
       this.reserve--;
       living++;
     }

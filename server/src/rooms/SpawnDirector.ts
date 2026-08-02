@@ -5,6 +5,7 @@ import {
   DungeonResult, DungeonOptions, RoomData, RoomType,
   DebugConfig, roomInteriorRect,
   partyHpMultiplier, floorGoldBudget,
+  Rng, makeRng, pick,
 } from "shared";
 import { GameState } from "../schema/GameState";
 import { Enemy, EnemyClass } from "../entities/Enemy";
@@ -31,6 +32,10 @@ const NO_RABBLE_ROOM_TYPES: RoomType[] = [
  *  floor's one boss, and boss-summoned minions. Owns the enemy id counter, and
  *  registers each spawn with the physics world, the schema, and FloorManager. */
 export class SpawnDirector {
+  /** The floor's seeded sim RNG — set by GameRoom each floor so the enemy pool
+   *  draws and per-enemy patrol phase are reproducible from the floor seed (see
+   *  shared/src/rng.ts). Never Math.random. */
+  rng: Rng = makeRng(1);
   private enemyCounter = 0;
   private dungeon!: DungeonResult;
   private physics!: PhysicsWorld;
@@ -114,7 +119,7 @@ export class SpawnDirector {
       for (let i = 0; i < count; i++) {
         // Round-robin walks the listed creatures in order, wrapping to the start
         // when the quota outruns the list; with no list it's a random draw.
-        const cls = roundRobin ? pool[filled++ % pool.length] : pool[Math.floor(Math.random() * pool.length)];
+        const cls = roundRobin ? pool[filled++ % pool.length] : pick(this.rng, pool);
         // Deferred: the enemy is built now (so the room locks and never pre-clears)
         // but stays hidden until a player walks in.
         this.spawnEnemyInRoom(room.id, cls, true);
@@ -198,6 +203,7 @@ export class SpawnDirector {
   ): InstanceType<C> {
     const id = `enemy_${this.enemyCounter++}`;
     const enemy = new Cls(this.physics, x, y) as InstanceType<C>;
+    enemy.setInitialPatrolAngle(this.rng() * Math.PI * 2);
     // Tougher enemies (and bosses, and boss-summoned adds — all mint here) the
     // bigger the party. Party size is fixed once the run starts (the room locks),
     // so reading it at spawn is authoritative for the enemy's whole life.
@@ -307,6 +313,6 @@ export class SpawnDirector {
       }
     }
     if (candidates.length === 0) return null;
-    return candidates[Math.floor(Math.random() * candidates.length)];
+    return pick(this.rng, candidates);
   }
 }

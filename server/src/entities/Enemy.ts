@@ -102,7 +102,15 @@ export abstract class Enemy extends Entity implements Caster {
   private emergeRemainingMs = 0;
   protected patrolOriginX: number;
   protected patrolOriginY: number;
-  private patrolAngle: number = Math.random() * Math.PI * 2;
+  // Initial idle-wander phase. Seeded per-spawn from the floor's sim RNG (see
+  // SpawnDirector.addEnemy) so enemies don't all patrol in lockstep, deterministically
+  // rather than from Math.random. (The cos/sin below are a known cross-engine
+  // transcendental hazard, cosmetic here — revisit only if we pursue rollback.)
+  private patrolAngle = 0;
+  /** Set once at spawn to desynchronize idle wander. */
+  setInitialPatrolAngle(angle: number): void {
+    this.patrolAngle = angle;
+  }
   private attackCooldown: number = 0;
 
   // ── Stats (override per enemy) ──────────────────────────────────────────────

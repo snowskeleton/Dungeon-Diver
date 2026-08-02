@@ -5,6 +5,7 @@ import {
   SHOP_TIERS,
   CharacterClass, partyRollableWeaponIds,
   DebugConfig,
+  Rng, makeRng, pick,
 } from "shared";
 import { GameState } from "../schema/GameState";
 import { ShopState, ShopItemState } from "../schema/ShopState";
@@ -57,6 +58,10 @@ export const WRONG_CLASS_MSG = "Your class can't use that weapon.";
  *  silent no-op or success. */
 export class LootDirector {
   private dungeon!: DungeonResult;
+  /** The floor's seeded sim RNG — set by GameRoom each floor so loot rolls are
+   *  reproducible from the floor seed (see shared/src/rng.ts). Every random draw in
+   *  here draws from this, never Math.random. */
+  rng: Rng = makeRng(1);
   // Monotonic id source for dropped-weapon keys. Scoped to the run — uniqueness is
   // all it's for, so it never resets (a floor change clears the map, not this).
   private dropCounter = 0;
@@ -147,14 +152,14 @@ export class LootDirector {
       chest.roomId = room.id;
       chest.x = pos.x;
       chest.y = pos.y;
-      chest.gold = Math.random() < GOLD_CHEST_CHANCE;
+      chest.gold = this.rng() < GOLD_CHEST_CHANCE;
 
       // Roll the contents now, at floor generation. The weapon a chest holds is
       // fixed the moment the floor exists, so opening it can't be re-rolled by
       // walking away and coming back.
       chest.weaponId = this.rollShopWeapons(1)[0];
       const modCount = chest.gold ? GOLD_CHEST_MODS : BROWN_CHEST_MODS;
-      for (let i = 0; i < modCount; i++) chest.mods.push(rollWeaponMod(this.state.floor));
+      for (let i = 0; i < modCount; i++) chest.mods.push(rollWeaponMod(this.state.floor, this.rng));
 
       // NOT a collision body: you walk through it and open it by proximity/interact,
       // exactly like the reward and offer pedestals (B1). The chest used to be a solid
@@ -247,7 +252,7 @@ export class LootDirector {
     if (forced && resolveWeapon(forced) && player.canEquip(forced)) {
       return forced as WeaponId;
     }
-    return pickDistinct(partyRollableWeaponIds([player.character.id]), 1)[0];
+    return pickDistinct(this.rng, partyRollableWeaponIds([player.character.id]), 1)[0];
   }
 
   /** Drop a single-reward pedestal where a room's last enemy fell. Called once, on
@@ -470,7 +475,7 @@ export class LootDirector {
     for (let i = 0; i < weaponCount; i++) choices.push(this.rollWeaponChoice());
 
     const pool = upgradePool(this.state.floor);
-    shuffle(pool);
+    shuffle(this.rng, pool);
     for (const upgrade of pool.slice(0, OFFER_CHOICES - choices.length)) {
       const choice = new OfferChoiceState();
       choice.kind = "upgrade";
@@ -479,7 +484,7 @@ export class LootDirector {
       choice.description = upgrade.description;
       choices.push(choice);
     }
-    shuffle(choices);
+    shuffle(this.rng, choices);
 
     for (const choice of choices) offer.choices.push(choice);
     return offer;
@@ -494,7 +499,7 @@ export class LootDirector {
     reward.x = x;
     reward.y = y;
     const template = WEAPON_REGISTRY[weaponId];
-    const mods = [rollWeaponMod(this.state.floor)];
+    const mods = [rollWeaponMod(this.state.floor, this.rng)];
     const preview = new WeaponInstance(template, "preview", mods);
     reward.kind = "weapon";
     reward.name = template.name;
@@ -523,7 +528,7 @@ export class LootDirector {
     if (kind === "upgrade") {
       const pool = upgradePool(this.state.floor);
       if (pool.length > 0) {
-        const upgrade = pool[Math.floor(Math.random() * pool.length)];
+        const upgrade = pick(this.rng, pool);
         reward.kind = "upgrade";
         reward.upgradeId = upgrade.id;
         reward.name = upgrade.name;
@@ -544,7 +549,7 @@ export class LootDirector {
   // Weighted pick over the reward kinds (see ROOM_REWARD_WEIGHTS).
   private pickRewardKind(): "weapon" | "upgrade" | "gold" {
     const total = ROOM_REWARD_WEIGHTS.reduce((n, e) => n + e.weight, 0);
-    let roll = Math.random() * total;
+    let roll = this.rng() * total;
     for (const entry of ROOM_REWARD_WEIGHTS) {
       roll -= entry.weight;
       if (roll < 0) return entry.kind;
@@ -558,7 +563,7 @@ export class LootDirector {
   // won't have.
   private rollWeaponChoice(): OfferChoiceState {
     const template = WEAPON_REGISTRY[this.rollShopWeapons(1)[0]];
-    const mods = [rollWeaponMod(this.state.floor)];
+    const mods = [rollWeaponMod(this.state.floor, this.rng)];
     const preview = new WeaponInstance(template, "preview", mods);
     const choice = new OfferChoiceState();
     choice.kind = "weapon";
@@ -574,7 +579,7 @@ export class LootDirector {
   // equip never rolls. All shared loot — shops, chests, offer/reward weapon
   // choices — routes through here, so the filter is applied in exactly one place.
   private rollShopWeapons(n: number): WeaponId[] {
-    return pickDistinct(partyRollableWeaponIds(this.partyClasses()), n);
+    return pickDistinct(this.rng, partyRollableWeaponIds(this.partyClasses()), n);
   }
 
   // ---- geometry ------------------------------------------------------------
@@ -616,20 +621,20 @@ function isNear(player: Player, x: number, y: number): boolean {
 }
 
 /** In-place Fisher–Yates. Used for offer choices so a weapon isn't always slot 0. */
-function shuffle<T>(items: T[]): void {
+function shuffle<T>(rng: Rng, items: T[]): void {
   for (let i = items.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rng() * (i + 1));
     [items[i], items[j]] = [items[j], items[i]];
   }
 }
 
 /** Up to `n` distinct items drawn uniformly (partial Fisher–Yates from the front),
  *  without mutating the source. */
-function pickDistinct<T>(pool: readonly T[], n: number): T[] {
+function pickDistinct<T>(rng: Rng, pool: readonly T[], n: number): T[] {
   const all = [...pool];
   const count = Math.min(n, all.length);
   for (let i = 0; i < count; i++) {
-    const j = i + Math.floor(Math.random() * (all.length - i));
+    const j = i + Math.floor(rng() * (all.length - i));
     [all[i], all[j]] = [all[j], all[i]];
   }
   return all.slice(0, count);
