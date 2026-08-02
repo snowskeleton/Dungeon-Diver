@@ -10,7 +10,7 @@ import { RehitGate } from "../../server/src/combat/RehitGate";
 
 class Dummy implements CombatTarget {
   state: { x: number; y: number };
-  damageable = true;
+  present = true;
   /** Grounded by default, as a real player/enemy on the floor is. Set to AIR to
    *  exercise the elevation gate. */
   elevation = Elevation.GROUND;
@@ -130,7 +130,7 @@ describe("CombatSystem.resolve", () => {
   it("skips targets that are not damageable", () => {
     const combat = new CombatSystem();
     const corpse = new Dummy(0, 0);
-    corpse.damageable = false;
+    corpse.present = false;
     combat.resolve([source()], groups(new Map(), new Map([["e1", corpse]])));
 
     expect(corpse.taken).toHaveLength(0);

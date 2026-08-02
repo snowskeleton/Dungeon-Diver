@@ -1,45 +1,24 @@
-import { Attack, canAffect, shapeHitsBox, HurtBounds, ELEVATION_ALL, reachesElevation } from "shared";
+import { Attack } from "shared";
 import { HitSource } from "./HitSource";
+import { OverlapSystem, OverlapArea, OverlapGroup } from "./OverlapSystem";
 
-// A thing a HitSource can land on: a body with a position, a hurt radius, a
-// vulnerability flag, and a takeHit receiver. Players and enemies implement this
-// (Entity provides the defaults). Its map key is passed in separately so the
-// resolver can do owner self-exclusion without the target knowing its own id.
-export interface CombatTarget {
-  readonly state: { x: number; y: number };
-  /** The box this target can be damaged on — its DRAWN sprite's extent, measured
-   *  from the art (shared/enemies/hurtBounds.generated.ts), offset from the
-   *  sprite centre. Deliberately unrelated to the physics body it walks with. */
-  readonly hurtBounds: HurtBounds;
-  /** False while dead/dying so a corpse takes no further hits. */
-  readonly damageable: boolean;
-  /** The Elevation band this target occupies (GROUND / AIR), from its airHeight.
-   *  A source only lands if its `reaches` mask includes this band. */
-  readonly elevation: number;
+// A thing a HitSource can land on: an OverlapArea (position, hurt box, elevation,
+// `present` flag) plus a takeHit receiver. Players and enemies implement this (Entity
+// provides the defaults; `present` aliases `damageable`). Its map key is passed in
+// separately so the resolver can do owner self-exclusion without the target knowing
+// its own id.
+export interface CombatTarget extends OverlapArea {
   /** Applies the hit; returns the damage actually dealt (see Entity.takeHit). */
   takeHit(attack: Attack): number;
 }
 
 // One group of candidate targets sharing a Layer (all players, all enemies). The
-// group carries the layer so targets don't each store a copy, and the resolver's
-// team check is one bit test per group rather than per target.
+// group carries the layer so targets don't each store a copy, and the team check is
+// one bit test per group.
 export interface TargetGroup {
   layer: number;
   targets: Map<string, CombatTarget>;
 }
-
-// The single combat resolver. There are no per-pair loops anywhere else — every
-// damage source in the game (melee swings, projectiles, contact, boss abilities)
-// flows through here:
-//
-//   for each source × candidate target:
-//     land the hit iff  source.affects reaches the target's layer
-//                  AND  the shapes overlap
-//                  AND  the target isn't the source's own owner
-//                  AND  the source's dedupe policy claims it
-//
-// New content (boss AOE, cuttable props, hazard tiles) is a new source or a new
-// TargetGroup — never a new loop. See docs/layers.md.
 
 // One landed hit, reported back to the caller. This is the resolver's only output:
 // it already knows every (source, target) pair that connected, so impact feedback —
@@ -56,36 +35,36 @@ export interface HitEvent {
   damage: number;
 }
 
+// The single combat resolver. It is now one CONSUMER of the shared OverlapSystem
+// (the Godot-Area-style sensor engine): every damage source in the game (melee
+// swings, projectiles, contact, boss abilities) is a sensor, every target an area,
+// and the overlap callback applies the Attack. There are no per-pair loops anywhere
+// else — new content (boss AOE, cuttable props, hazard tiles) is a new source or a
+// new TargetGroup, never a new loop. See docs/layers.md.
 export class CombatSystem {
+  private readonly overlap = new OverlapSystem();
+
   resolve(sources: HitSource[], groups: TargetGroup[]): HitEvent[] {
     const hits: HitEvent[] = [];
+    // A HitSource is structurally an OverlapSensor (shape/affects/reaches/ownerId/
+    // claim). A TargetGroup's `targets` are the group's `areas` (two groups per tick —
+    // players and enemies — so this mapping is negligible).
+    const areaGroups: OverlapGroup<CombatTarget>[] = groups.map((g) => ({
+      layer: g.layer,
+      areas: g.targets,
+    }));
     for (const src of sources) {
-      for (const group of groups) {
-        if (!canAffect(src.affects, group.layer)) continue;
-        group.targets.forEach((target, id) => {
-          if (!target.damageable) return;
-          if (src.ownerId === id) return;
-          if (!reachesElevation(src.reaches ?? ELEVATION_ALL, target.elevation)) return;
-          const hb = target.hurtBounds;
-          const box = {
-            cx: target.state.x + hb.offsetX,
-            cy: target.state.y + hb.offsetY,
-            halfW: hb.halfW,
-            halfH: hb.halfH,
-          };
-          if (!shapeHitsBox(src.shape, box)) return;
-          if (!src.claim(id)) return;
-          const dealt = target.takeHit(src.attack);
-          src.onDealt?.(id, dealt);
-          hits.push({
-            x: box.cx,
-            y: box.cy,
-            targetId: id,
-            ownerId: src.ownerId,
-            damage: dealt,
-          });
+      this.overlap.detect(src, areaGroups, (id, target, box) => {
+        const dealt = target.takeHit(src.attack);
+        src.onDealt?.(id, dealt);
+        hits.push({
+          x: box.cx,
+          y: box.cy,
+          targetId: id,
+          ownerId: src.ownerId,
+          damage: dealt,
         });
-      }
+      });
     }
     return hits;
   }

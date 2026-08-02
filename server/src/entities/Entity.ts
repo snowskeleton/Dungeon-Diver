@@ -419,6 +419,13 @@ export abstract class Entity {
     return !this.isDead;
   }
 
+  /** OverlapArea eligibility — combat's neutral name for `damageable`, so the shared
+   *  OverlapSystem can test a combat target the same way it tests a pickup or trigger.
+   *  Reads the getter so subclass overrides (Player i-frames, Boss stone form) flow through. */
+  get present(): boolean {
+    return this.damageable;
+  }
+
   /** True while above the airborne threshold — used to gate tile hazards and to
    *  pick the elevation band below. Reads the synced airHeight so it tracks a
    *  swoop / vault in flight. */
