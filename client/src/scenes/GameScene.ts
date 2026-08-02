@@ -41,6 +41,8 @@ import { PauseMenu } from "../ui/PauseMenu";
 import { GameOptions, OPTION_FIELDS, loadOptions, saveOptions } from "../options/gameOptions";
 import { showFieldPanel } from "../ui/FieldPanel";
 import { showKeybindMenu } from "../ui/KeybindMenu";
+import { loadBindings } from "../options/keybindings";
+import { isGamepadCaptureLocked } from "../ui/GamepadMenuCursor";
 
 /** What LobbyScene hands over: a party that is already in the room, and the
  *  debug knobs the floor was built with (null unless this client hosted a debug
@@ -354,16 +356,7 @@ export class GameScene extends Phaser.Scene {
     //   2. an in-world overlay is up (offer picker, then inventory) — close it
     //   3. the pause menu is up — resume
     //   4. bare gameplay — open the pause menu
-    this.input.keyboard!.addKey("ESC").on("down", () => {
-      if (this.dialogOpen) return;
-
-      for (const player of this.localManager.getAll()) {
-        if (player.closeTopOverlay()) return;
-      }
-
-      if (this.pauseMenu.isOpen) this.resume();
-      else this.openPauseMenu();
-    });
+    this.input.keyboard!.addKey("ESC").on("down", () => this.handlePauseControl());
 
     // Below the HP/floor/gold stack (gold sits at y=56) so the weapon row and
     // the gold line don't overlap in the top-left.
@@ -504,9 +497,52 @@ export class GameScene extends Phaser.Scene {
   }
 
   // ── Pause menu (playtest D7) ───────────────────────────────────────────────
-  // The menu is per-SCREEN, not per-player: one machine, one Escape key. The
-  // pause it triggers still travels on P1's connection, so the room freezes for
-  // the whole party exactly as the inventory menu already did.
+  // The menu is per-SCREEN, not per-player: one machine, one Escape key (or the
+  // controller's reserved Pause button). The pause it triggers still travels on
+  // P1's connection, so the room freezes for the whole party exactly as the
+  // inventory menu already did.
+
+  // Escape peels one layer at a time (playtest B3), and the bottom of the stack
+  // is a menu rather than the exit:
+  //   1. a dialog owned by the pause menu is up — it handles its own Escape
+  //   2. an in-world overlay is up (offer picker, then inventory) — close it
+  //   3. the pause menu is up — resume
+  //   4. bare gameplay — open the pause menu
+  private handlePauseControl() {
+    if (this.dialogOpen) return;
+
+    for (const player of this.localManager.getAll()) {
+      if (player.closeTopOverlay()) return;
+    }
+
+    if (this.pauseMenu.isOpen) this.resume();
+    else this.openPauseMenu();
+  }
+
+  // Rising-edge state for the controller's reserved Pause button (bindings.pause),
+  // polled per-frame in update() since it doesn't ride the InputActions path.
+  private pausePadWasDown = false;
+
+  // The pad has no Escape key, so its reserved Start button drives the same pause
+  // peel. Any connected pad counts (co-op couch play), mirroring the one keyboard.
+  private pollPausePad() {
+    // A rebind screen is capturing the next button — don't also read it as pause.
+    if (isGamepadCaptureLocked()) return;
+    const gamepad = this.input.gamepad;
+    if (!gamepad) return;
+    const button = loadBindings().pause.pad;
+    if (button < 0) return;
+    let down = false;
+    for (let i = 0; i < 4; i++) {
+      const pad = gamepad.getPad(i);
+      if (pad && (pad.buttons[button]?.pressed ?? false)) {
+        down = true;
+        break;
+      }
+    }
+    if (down && !this.pausePadWasDown) this.handlePauseControl();
+    this.pausePadWasDown = down;
+  }
 
   private openPauseMenu() {
     const first = this.localManager.getAll()[0];
@@ -810,6 +846,7 @@ export class GameScene extends Phaser.Scene {
 
   update() {
     if (!this.ready) return;
+    this.pollPausePad();
     this.localManager.update();
     this.remotePlayers.forEach((rp) => rp.update());
     this.enemies.forEach((e) => e.update());

@@ -26,6 +26,10 @@ const FOCUSABLE_SELECTOR = [
   ".m-tile",
   ".m-card",
   ".m-chip",
+  // Rebind cells (Controls screen): each is a clickable button that starts a
+  // capture or clears a slot, so a controller can drive the rebind screen too.
+  ".kb-key:not(:disabled)",
+  ".kb-clear:not(:disabled)",
   "input:not([type=checkbox]):not(:disabled)",
   "input[type=checkbox]:not(:disabled)",
   "select:not(:disabled)",
@@ -42,6 +46,12 @@ type Dir = "up" | "down" | "left" | "right";
 let captureLock = false;
 export function setGamepadCaptureLock(locked: boolean) {
   captureLock = locked;
+}
+/** True while a rebind cell is swallowing the next controller press — callers that
+ *  poll the pad directly (e.g. the in-game Pause button) must stand down so the
+ *  press being bound isn't also consumed as a game action. */
+export function isGamepadCaptureLocked(): boolean {
+  return captureLock;
 }
 
 // Standard W3C gamepad mapping (what Xbox pads report on macOS/Chrome):

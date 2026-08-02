@@ -16,14 +16,17 @@
 import { addStyle, button, el, menuPanel } from "./menuDom";
 import { setGamepadCaptureLock } from "./GamepadMenuCursor";
 import {
+  ALL_BINDING_ROWS,
   BINDABLE_ACTIONS,
   BINDING_SLOTS,
   BindableAction,
   DEFAULT_BINDINGS,
   KeyBindings,
   PAD_UNBOUND,
+  RESERVED_ROWS,
   cloneBindings,
   isMovementAction,
+  isReservedAction,
   keyLabel,
   loadBindings,
   padLabel,
@@ -54,6 +57,12 @@ const CSS = `
   }
   .kb-clear:hover { border-color: #ff6b6b; color: #ff6b6b; }
   .kb-fixed { flex: 1; padding: 6px 8px; font-size: 12px; color: #8888aa; text-align: center; }
+  .kb-row.reserved { opacity: 0.55; }
+  .kb-locked {
+    flex: 1; min-width: 0; padding: 6px 8px; font-size: 12px; font-family: monospace;
+    border-radius: 4px; border: 1px dashed #3a3a5a; background: #12121f; color: #8888aa;
+    text-align: center; cursor: not-allowed;
+  }
 `;
 
 const ESCAPE_CODE = 27;
@@ -188,6 +197,11 @@ export function showKeybindMenu(): Promise<void> {
         render();
         return;
       }
+      if (prior && isReservedAction(prior.action)) {
+        note(`${keyLabel(code)} is reserved for "${labelOf(prior.action)}".`, "error");
+        render();
+        return;
+      }
       if (prior) draft[prior.action].keys[prior.slot] = 0;
       draft[action].keys[slot] = code;
       note(
@@ -201,6 +215,11 @@ export function showKeybindMenu(): Promise<void> {
       const prior = findPad(draft, button);
       if (prior === action) {
         note("", "info");
+        render();
+        return;
+      }
+      if (prior && isReservedAction(prior)) {
+        note(`${padLabel(button)} is reserved for "${labelOf(prior)}".`, "error");
         render();
         return;
       }
@@ -249,6 +268,21 @@ export function showKeybindMenu(): Promise<void> {
             el("div", { className: "kb-action", text: label }),
             el("div", { className: "kb-group" }, keyCells),
             padCell(action),
+          ]),
+        );
+      }
+      // Reserved rows are read-only: shown so players can see the fixed control, but
+      // greyed and unclickable (no capture, no unbind).
+      for (const { action, label } of RESERVED_ROWS) {
+        rows.push(
+          el("div", { className: "kb-row reserved" }, [
+            el("div", { className: "kb-action", text: label }),
+            el("div", { className: "kb-group" }, [
+              el("div", { className: "kb-locked", text: keyLabel(draft[action].keys[0] || draft[action].keys[1]) }),
+            ]),
+            el("div", { className: "kb-cell" }, [
+              el("div", { className: "kb-locked", text: padLabel(draft[action].pad) }),
+            ]),
           ]),
         );
       }
@@ -312,15 +346,16 @@ export function showKeybindMenu(): Promise<void> {
 }
 
 function labelOf(action: BindableAction): string {
-  return BINDABLE_ACTIONS.find((a) => a.action === action)?.label ?? action;
+  return ALL_BINDING_ROWS.find((a) => a.action === action)?.label ?? action;
 }
 
-/** Which keyboard cell a keycode currently lives in, or null if free. */
+/** Which keyboard cell a keycode currently lives in, or null if free. Reserved
+ *  rows are included so a reserved key reads as occupied (and is protected). */
 function findKey(
   bindings: KeyBindings,
   code: number,
 ): { action: BindableAction; slot: number } | null {
-  for (const { action } of BINDABLE_ACTIONS) {
+  for (const { action } of ALL_BINDING_ROWS) {
     for (let slot = 0; slot < BINDING_SLOTS; slot++) {
       if (bindings[action].keys[slot] === code) return { action, slot };
     }
@@ -328,9 +363,10 @@ function findKey(
   return null;
 }
 
-/** Which action a gamepad button is currently bound to, or null if free. */
+/** Which action a gamepad button is currently bound to, or null if free. Reserved
+ *  rows are included so a reserved button reads as occupied (and is protected). */
 function findPad(bindings: KeyBindings, button: number): BindableAction | null {
-  for (const { action } of BINDABLE_ACTIONS) {
+  for (const { action } of ALL_BINDING_ROWS) {
     if (!isMovementAction(action) && bindings[action].pad === button) return action;
   }
   return null;

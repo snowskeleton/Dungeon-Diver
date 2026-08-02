@@ -29,7 +29,9 @@ export type BindableAction =
   | "prevSlot"
   | "nextSlot"
   | "menu"
-  | "interact";
+  | "interact"
+  // Reserved (shown but never rebindable — see RESERVED_ACTIONS).
+  | "pause";
 
 /** No gamepad button bound (movement, or an explicitly-cleared action). */
 export const PAD_UNBOUND = -1;
@@ -56,7 +58,16 @@ export function isMovementAction(action: BindableAction): boolean {
   return MOVEMENT_ACTIONS.has(action);
 }
 
-/** The rebind screen renders this order, one row each. */
+/** Reserved controls: shown in the rebind screen for reference but never editable.
+ *  Pause is the ESC-equivalent (keyboard Esc, controller Start) — deliberately
+ *  fixed so Esc can also cancel an in-progress capture without ambiguity. */
+export const RESERVED_ACTIONS: ReadonlySet<BindableAction> = new Set(["pause"]);
+
+export function isReservedAction(action: BindableAction): boolean {
+  return RESERVED_ACTIONS.has(action);
+}
+
+/** The rebind screen renders this order, one editable row each. */
 export const BINDABLE_ACTIONS: { action: BindableAction; label: string }[] = [
   { action: "up",       label: "Move Up" },
   { action: "down",     label: "Move Down" },
@@ -68,6 +79,18 @@ export const BINDABLE_ACTIONS: { action: BindableAction; label: string }[] = [
   { action: "nextSlot", label: "Next Weapon" },
   { action: "menu",     label: "Inventory / Menu" },
   { action: "interact", label: "Interact / Open" },
+];
+
+/** Reserved rows, rendered greyed-out below the editable ones. */
+export const RESERVED_ROWS: { action: BindableAction; label: string }[] = [
+  { action: "pause", label: "Pause / Menu" },
+];
+
+/** Every binding row (editable + reserved) — the set that persistence and
+ *  conflict checks must iterate so a reserved control's slot stays accounted for. */
+export const ALL_BINDING_ROWS: { action: BindableAction; label: string }[] = [
+  ...BINDABLE_ACTIONS,
+  ...RESERVED_ROWS,
 ];
 
 const K = Phaser.Input.Keyboard.KeyCodes;
@@ -100,8 +123,10 @@ export const DEFAULT_BINDINGS: KeyBindings = {
   ability:  { keys: [K.SHIFT, K.FORWARD_SLASH],  pad: PAD.B },
   prevSlot: { keys: [K.Q, K.OPEN_BRACKET],       pad: PAD.LB },
   nextSlot: { keys: [K.E, K.CLOSED_BRACKET],     pad: PAD.RB },
-  menu:     { keys: [K.I, K.BACK_SLASH],         pad: PAD.MENU },
+  menu:     { keys: [K.I, K.BACK_SLASH],         pad: PAD.VIEW },
   interact: { keys: [K.F, K.PERIOD],             pad: PAD.X },
+  // Reserved: Esc / Start. Not editable — kept in sync with the GameScene handler.
+  pause:    { keys: [K.ESC, 0],                  pad: PAD.MENU },
 };
 
 // ── Display names ──────────────────────────────────────────────────────────
@@ -122,6 +147,7 @@ const PRETTY: Record<number, string> = {
   [K.RIGHT]: "→",
   [K.SPACE]: "Space",
   [K.ENTER]: "Enter",
+  [K.ESC]: "Esc",
   [K.SHIFT]: "Shift",
   [K.CTRL]: "Ctrl",
   [K.ALT]: "Alt",
@@ -205,6 +231,8 @@ export function bindingsVersion(): number {
 function mergeDefaults(saved: Partial<Record<BindableAction, unknown>>): KeyBindings {
   const merged = cloneBindings(DEFAULT_BINDINGS);
   for (const { action } of BINDABLE_ACTIONS) {
+    // Reserved actions are never read from storage — their defaults are law.
+    if (isReservedAction(action)) continue;
     const entry = saved[action];
     if (!entry || typeof entry !== "object") continue;
     const e = entry as Partial<ActionBinding>;
@@ -213,6 +241,20 @@ function mergeDefaults(saved: Partial<Record<BindableAction, unknown>>): KeyBind
     }
     if (typeof e.pad === "number" && !isMovementAction(action)) {
       merged[action].pad = Math.trunc(e.pad);
+    }
+  }
+  // Reserved controls are exclusive: an older save (or a default change) could
+  // leave an editable action sitting on a reserved key/button — strip it so the
+  // reserved control keeps sole ownership.
+  for (const { action } of RESERVED_ROWS) {
+    const { keys, pad } = merged[action];
+    for (const { action: other } of BINDABLE_ACTIONS) {
+      for (let slot = 0; slot < BINDING_SLOTS; slot++) {
+        if (merged[other].keys[slot] && keys.includes(merged[other].keys[slot])) {
+          merged[other].keys[slot] = 0;
+        }
+      }
+      if (pad >= 0 && merged[other].pad === pad) merged[other].pad = PAD_UNBOUND;
     }
   }
   return merged;
@@ -243,7 +285,7 @@ export function saveBindings(bindings: KeyBindings) {
 
 export function cloneBindings(bindings: KeyBindings): KeyBindings {
   const out = {} as KeyBindings;
-  for (const { action } of BINDABLE_ACTIONS) {
+  for (const { action } of ALL_BINDING_ROWS) {
     out[action] = {
       keys: [bindings[action].keys[0], bindings[action].keys[1]],
       pad: bindings[action].pad,
