@@ -9,7 +9,7 @@ import {
   ConnectionData,
   DungeonResult,
 } from "shared";
-import type Matter from "matter-js";
+import type { PhysicsBody } from "../../server/src/physics/PhysicsWorld";
 import { PhysicsWorld } from "../../server/src/physics/PhysicsWorld";
 import { FloorManager } from "../../server/src/floor/FloorManager";
 
@@ -32,9 +32,9 @@ function northConn(d: DungeonResult): { conn: ConnectionData; parent: RoomData; 
 // The exact per-tick sequence GameRoom.tick runs around the one-way barrier:
 // commit from the sprite position (sticky), re-lock on entry, step the body, then
 // run the softlock guard with the SETTLED sprite position.
-function driveNorth(physics: PhysicsWorld, floor: FloorManager, body: Matter.Body, ticks: number) {
+function driveNorth(physics: PhysicsWorld, floor: FloorManager, body: PhysicsBody, ticks: number) {
   let committedRoom: string | undefined;
-  const spriteOf = () => ({ x: body.position.x, y: body.position.y - FOOT_OFFSET });
+  const spriteOf = () => ({ x: body.x, y: body.y - FOOT_OFFSET });
   for (let i = 0; i < ticks; i++) {
     const s = spriteOf();
     if (committedRoom) {

@@ -8,7 +8,7 @@ import {
   RoomData,
   DungeonResult,
 } from "shared";
-import type Matter from "matter-js";
+import type { PhysicsBody } from "../../server/src/physics/PhysicsWorld";
 import { PhysicsWorld } from "../../server/src/physics/PhysicsWorld";
 import { FloorManager } from "../../server/src/floor/FloorManager";
 import { GooBlue } from "../../server/src/entities/enemies";
@@ -43,15 +43,15 @@ function setup() {
 }
 
 /** Drive a body straight at a point, the way GameRoom drives a player. */
-function pushToward(physics: PhysicsWorld, body: Matter.Body, tx: number, ty: number, steps: number) {
+function pushToward(physics: PhysicsWorld, body: PhysicsBody, tx: number, ty: number, steps: number) {
   for (let i = 0; i < steps; i++) {
-    const dx = tx - body.position.x;
-    const dy = ty - body.position.y;
+    const dx = tx - body.x;
+    const dy = ty - body.y;
     const len = Math.hypot(dx, dy) || 1;
     physics.setVelocityPxPerSec(body, (dx / len) * 200, (dy / len) * 200);
     physics.step();
   }
-  return { x: body.position.x, y: body.position.y };
+  return { x: body.x, y: body.y };
 }
 
 const gateOf = (conn: ConnectionData) => ({ x: conn.barrierChild.cx, y: conn.barrierChild.cy });
@@ -307,7 +307,7 @@ describe("the one-way barrier, in physics", () => {
       gate.x, gate.y - TILE_SIZE * 2 - 8,
       PLAYER_BODY_PROFILE.layer, PLAYER_BODY_PROFILE.solidMask,
     );
-    const startDist = Math.hypot(body.position.x - gate.x, body.position.y - gate.y);
+    const startDist = Math.hypot(body.x - gate.x, body.y - gate.y);
     const end = pushToward(physics, body, gate.x, gate.y, 40);
 
     expect(Math.hypot(end.x - gate.x, end.y - gate.y)).toBeLessThan(startDist * 0.5);

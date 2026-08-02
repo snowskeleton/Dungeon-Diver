@@ -1,6 +1,4 @@
-import Matter from "matter-js";
 import {
-  TILE_PROPS,
   TILE_SIZE,
   TileId,
   SERVER_TICK_MS,
@@ -11,34 +9,35 @@ import {
   PLAYER_BODY_PROFILE,
   PLAYER_COMMITTED_SOLID_MASK,
   wallKind,
+  CollisionWorld,
+  CircleBody,
+  StaticRect,
+  StaticShape,
 } from "shared";
 
 // ---- Coordinate mapping (defined here and nowhere else) ----
 // Schema state.x/y is the sprite CENTER — that's the client contract and it
-// doesn't change. The physics body is a small circle at the sprite's FEET,
-// matching the old foot-box collision:
-//   body.position = (state.x, state.y + FOOT_OFFSET)
+// doesn't change. The physics body is a small circle at the sprite's FEET:
+//   body position = (state.x, state.y + FOOT_OFFSET)
 // FOOT_OFFSET/ENTITY_RADIUS live in shared (the client debug overlay draws the
 // exact collision circle); re-exported here so physics code keeps local names.
 // NOTE: ENTITY_RADIUS must stay ≤ ~14 or entities can't fit through 32px gaps.
 export { FOOT_OFFSET, ENTITY_RADIUS };
 
-// Physical collision is governed by the shared `Layer` vocabulary: a body's
-// `layer` is its matter `category`, its `solidMask` is its matter `mask`. Walls
-// block players and enemies (projectiles are not matter bodies). See
-// docs/layers.md for the full model.
-const WALL_SOLID_MASK = Layer.PLAYER | Layer.ENEMY;
+/** The dynamic-body handle the rest of the sim holds (`Entity.body`). Opaque — it
+ *  only ever flows back into PhysicsWorld methods. Was `Matter.Body`. */
+export type PhysicsBody = CircleBody;
 
-export function pxPerSecToVelocity(pxPerSec: number): number {
-  return pxPerSec / 60;
-}
+// Physical collision is governed by the shared `Layer` vocabulary: a body's
+// `layer` is its category, its `solidMask` is what it blocks against. Walls block
+// players and enemies (projectiles are not physics bodies). See docs/layers.md.
+const WALL_SOLID_MASK = Layer.PLAYER | Layer.ENEMY;
 
 // The two reference frames, converted in ONE place. "Sprite" space is the schema
 // state.x/y (the wire/render/hurt frame); "body" space is the collision frame, a
 // point FOOT_OFFSET below the sprite centre. Every FOOT_OFFSET conversion goes
-// through these two functions so no call site open-codes the arithmetic — see the
-// coordinate-mapping note above. Entity's footX/footY getters are the read-only
-// half of the same contract for code that only needs to ask "where are my feet?".
+// through these two functions so no call site open-codes the arithmetic. Entity's
+// footX/footY getters are the read-only half of the same contract.
 export function spriteToBody(pt: { x: number; y: number }): { x: number; y: number } {
   return { x: pt.x, y: pt.y + FOOT_OFFSET };
 }
@@ -49,9 +48,9 @@ export function bodyToSprite(pt: { x: number; y: number }): { x: number; y: numb
 
 export function syncStateFromBody(
   state: { x: number; y: number },
-  body: Matter.Body,
+  body: PhysicsBody,
 ): void {
-  const s = bodyToSprite(body.position);
+  const s = bodyToSprite({ x: body.x, y: body.y });
   state.x = s.x;
   state.y = s.y;
 }
@@ -60,10 +59,10 @@ type WallRect = { col: number; row: number; cols: number; rows: number };
 
 // Greedy rectangle decomposition of every tile matching `accept`: scan each row
 // into horizontal runs, then merge vertically-aligned equal-width runs into taller
-// rectangles. Extracted from buildWallBodies so it can run once per wall CLASS —
-// a run breaks whenever the class changes, so a single body never spans structural
-// and cover tiles (an airborne enemy must be stopped by the perimeter but not by
-// the cover block beside it, and that requires them to be distinct bodies).
+// rectangles. Run once per wall CLASS — a run breaks whenever the class changes, so
+// a single rect never spans structural and cover tiles (an airborne enemy must be
+// stopped by the perimeter but not by the cover block beside it, and that requires
+// them to be distinct shapes with distinct categories).
 function mergeWallRects(
   mapCols: number,
   mapRows: number,
@@ -107,78 +106,76 @@ function mergeWallRects(
   return merged;
 }
 
-// Collision-only corner rounding for cover blocks. The flow field is tile-granular
-// but bodies are round (ENTITY_RADIUS): a body steered diagonally past a block's 90°
-// corner clips it and matter shoves it straight back, so the enemy re-picks the same
-// heading next tick and deadlocks on the corner. Chamfering the COLLISION corner a
-// touch wider than the body radius lets it slide off instead of catching. The chamfer
-// is invisible — the rendered tile stays a hard square; only the physics corner is
-// clipped. Kept small so a body can't cut THROUGH a block, only skim its corner.
+// Collision-only corner rounding for cover blocks. Bodies are round (ENTITY_RADIUS):
+// a body steered diagonally past a block's 90° corner clips it and is shoved straight
+// back, so it re-picks the same heading next tick and deadlocks on the corner.
+// Chamfering the COLLISION corner a touch wider than the body radius lets it slide
+// off instead of catching. Invisible — the rendered tile stays a hard square; only
+// the physics corner is clipped. Small, so a body can't cut THROUGH a block.
 const COVER_CHAMFER = ENTITY_RADIUS + 3;
 
-function rectToBody(r: WallRect, label: string, category: number, chamferRadius = 0): Matter.Body {
-  return Matter.Bodies.rectangle(
-    r.col * TILE_SIZE + (r.cols * TILE_SIZE) / 2,
-    r.row * TILE_SIZE + (r.rows * TILE_SIZE) / 2,
-    r.cols * TILE_SIZE,
-    r.rows * TILE_SIZE,
-    {
-      isStatic: true,
-      label,
-      collisionFilter: { category, mask: WALL_SOLID_MASK },
-      ...(chamferRadius > 0 ? { chamfer: { radius: chamferRadius } } : {}),
-    },
-  );
+function wallRectToStatic(r: WallRect, category: number, chamfer: number): StaticRect {
+  return {
+    minX: r.col * TILE_SIZE,
+    minY: r.row * TILE_SIZE,
+    maxX: (r.col + r.cols) * TILE_SIZE,
+    maxY: (r.row + r.rows) * TILE_SIZE,
+    chamfer,
+    category,
+    mask: WALL_SOLID_MASK,
+  };
 }
 
-/** A small static blocker sealing a diagonal corner pinch (see buildWallBodies).
- *  Categorised as WALL so it blocks whatever a wall does, for players and enemies
- *  alike. */
-function cornerPlug(vx: number, vy: number, radius: number): Matter.Body {
-  return Matter.Bodies.circle(vx, vy, radius, {
-    isStatic: true,
-    label: "corner-plug",
-    collisionFilter: { category: Layer.WALL, mask: WALL_SOLID_MASK },
-  });
+function rectFromCenter(
+  cx: number, cy: number, w: number, h: number,
+  category: number, mask: number,
+): StaticRect {
+  return {
+    minX: cx - w / 2,
+    minY: cy - h / 2,
+    maxX: cx + w / 2,
+    maxY: cy + h / 2,
+    chamfer: 0,
+    category,
+    mask,
+  };
 }
 
-function buildWallBodies(
+// Populate `world` with the floor's wall geometry: structural rects (Layer.WALL),
+// chamfered cover rects (Layer.COVER), corner plugs, and the four world edges.
+function addWallShapes(
+  world: CollisionWorld,
   mapData: TileId[][],
   mapCols: number,
   mapRows: number,
-): Matter.Body[] {
+): void {
   const kindAt = (col: number, row: number) => wallKind(col, row, mapData[row][col] as TileId);
 
-  // Two separate passes, one per class, so cover and structure become distinct
-  // bodies with distinct collision categories — the walker's mask carries both,
-  // the airborne enemy's mask drops COVER (see AIRBORNE_ENEMY_BODY_PROFILE).
-  const bodies = [
-    ...mergeWallRects(mapCols, mapRows, (c, r) => kindAt(c, r) === "structural")
-      .map(r => rectToBody(r, "wall", Layer.WALL)),
-    ...mergeWallRects(mapCols, mapRows, (c, r) => kindAt(c, r) === "cover")
-      .map(r => rectToBody(r, "cover", Layer.COVER, COVER_CHAMFER)),
-  ];
+  // Two passes, one per class, so cover and structure get distinct categories — the
+  // walker's mask carries both, the airborne enemy's mask drops COVER.
+  for (const r of mergeWallRects(mapCols, mapRows, (c, r) => kindAt(c, r) === "structural")) {
+    world.addStaticRect(wallRectToStatic(r, Layer.WALL, 0));
+  }
+  for (const r of mergeWallRects(mapCols, mapRows, (c, r) => kindAt(c, r) === "cover")) {
+    world.addStaticRect(wallRectToStatic(r, Layer.COVER, COVER_CHAMFER));
+  }
 
-  // Corner plugs. Two obstacles that touch only at a diagonal corner leave a
-  // pinch a round body can squeeze through — worsened by the cover chamfer above,
-  // which rounds those very corners away. Wherever two diagonally-adjacent cells
-  // are solid but the two cells sharing their corner are BOTH open, drop a small
-  // static blocker on the shared vertex so the diagonal gap can't be walked (or
-  // knocked) through. The condition is exact for a pinch, so this never touches an
-  // ordinary wall corner.
+  // Corner plugs. Two obstacles that touch only at a diagonal corner leave a pinch a
+  // round body can squeeze through — worsened by the cover chamfer, which rounds
+  // those very corners away. Wherever two diagonally-adjacent cells are solid but the
+  // two cells sharing their corner are BOTH open, drop a small blocker on the shared
+  // vertex. The condition is exact for a pinch, so it never touches an ordinary corner.
   const solid = (c: number, r: number) =>
     c >= 0 && r >= 0 && c < mapCols && r < mapRows && kindAt(c, r) !== null;
   const PLUG_R = ENTITY_RADIUS + 1;
   for (let r = 0; r < mapRows; r++) {
     for (let c = 0; c < mapCols; c++) {
       if (!solid(c, r)) continue;
-      // Down-right diagonal: vertex at the bottom-right corner of (c,r).
       if (solid(c + 1, r + 1) && !solid(c + 1, r) && !solid(c, r + 1)) {
-        bodies.push(cornerPlug((c + 1) * TILE_SIZE, (r + 1) * TILE_SIZE, PLUG_R));
+        world.addStaticCircle({ x: (c + 1) * TILE_SIZE, y: (r + 1) * TILE_SIZE, r: PLUG_R, category: Layer.WALL, mask: WALL_SOLID_MASK });
       }
-      // Down-left diagonal: vertex at the bottom-left corner of (c,r).
       if (solid(c - 1, r + 1) && !solid(c - 1, r) && !solid(c, r + 1)) {
-        bodies.push(cornerPlug(c * TILE_SIZE, (r + 1) * TILE_SIZE, PLUG_R));
+        world.addStaticCircle({ x: c * TILE_SIZE, y: (r + 1) * TILE_SIZE, r: PLUG_R, category: Layer.WALL, mask: WALL_SOLID_MASK });
       }
     }
   }
@@ -186,37 +183,34 @@ function buildWallBodies(
   const w = mapCols * TILE_SIZE;
   const h = mapRows * TILE_SIZE;
   // The world edges are structural — nothing flies past the map bounds.
-  const edge = {
-    isStatic: true,
-    label: "world-edge",
-    collisionFilter: { category: Layer.WALL, mask: WALL_SOLID_MASK },
-  };
-  bodies.push(
-    Matter.Bodies.rectangle(w / 2, -16, w + 64, 32, edge),
-    Matter.Bodies.rectangle(w / 2, h + 16, w + 64, 32, edge),
-    Matter.Bodies.rectangle(-16, h / 2, 32, h + 64, edge),
-    Matter.Bodies.rectangle(w + 16, h / 2, 32, h + 64, edge),
-  );
-  return bodies;
+  world.addStaticRect(rectFromCenter(w / 2, -16, w + 64, 32, Layer.WALL, WALL_SOLID_MASK));
+  world.addStaticRect(rectFromCenter(w / 2, h + 16, w + 64, 32, Layer.WALL, WALL_SOLID_MASK));
+  world.addStaticRect(rectFromCenter(-16, h / 2, 32, h + 64, Layer.WALL, WALL_SOLID_MASK));
+  world.addStaticRect(rectFromCenter(w + 16, h / 2, 32, h + 64, Layer.WALL, WALL_SOLID_MASK));
 }
 
+/** The number of integrate-then-resolve substeps per tick — matches the old
+ *  matter-js `Engine.update` granularity (three sub-updates per tick). */
+const SUBSTEPS = 3;
+
+type BarrierBounds = { minX: number; minY: number; maxX: number; maxY: number };
+
 export class PhysicsWorld {
-  private engine: Matter.Engine;
+  private world: CollisionWorld;
   private mapData: TileId[][];
   private mapCols: number;
   private mapRows: number;
-  private wallBodies: Matter.Body[] = [];
-  private barriers = new Map<string, Matter.Body>();
+  // A barrier's static shape (to remove it) plus its bounds (for the point test that
+  // projectiles — not physics bodies — use to die at a shut door).
+  private barriers = new Map<string, StaticShape>();
+  private barrierBounds = new Map<string, BarrierBounds>();
 
   constructor(mapData: TileId[][], mapCols: number, mapRows: number) {
     this.mapData = mapData;
     this.mapCols = mapCols;
     this.mapRows = mapRows;
-    this.engine = Matter.Engine.create();
-    this.engine.gravity.x = 0;
-    this.engine.gravity.y = 0;
-    this.wallBodies = buildWallBodies(mapData, mapCols, mapRows);
-    Matter.Composite.add(this.engine.world, this.wallBodies);
+    this.world = new CollisionWorld(TILE_SIZE);
+    addWallShapes(this.world, mapData, mapCols, mapRows);
   }
 
   tileAt(x: number, y: number): TileId | null {
@@ -227,122 +221,100 @@ export class PhysicsWorld {
   }
 
   rebuildWalls(mapData: TileId[][], mapCols: number, mapRows: number): void {
-    for (const body of this.wallBodies) Matter.Composite.remove(this.engine.world, body);
-    for (const body of this.barriers.values()) Matter.Composite.remove(this.engine.world, body);
+    this.world.clearStatic();
     this.barriers.clear();
+    this.barrierBounds.clear();
     this.mapData = mapData;
     this.mapCols = mapCols;
     this.mapRows = mapRows;
-    this.wallBodies = buildWallBodies(mapData, mapCols, mapRows);
-    Matter.Composite.add(this.engine.world, this.wallBodies);
+    addWallShapes(this.world, mapData, mapCols, mapRows);
   }
 
   addBarrier(id: string, cx: number, cy: number, w: number, h: number): void {
     if (this.barriers.has(id)) return;
-    const body = Matter.Bodies.rectangle(cx, cy, w, h, {
-      isStatic: true,
-      label: `barrier_${id}`,
-      collisionFilter: { category: Layer.WALL, mask: WALL_SOLID_MASK },
-    });
-    this.barriers.set(id, body);
-    Matter.Composite.add(this.engine.world, body);
+    const rect = rectFromCenter(cx, cy, w, h, Layer.WALL, WALL_SOLID_MASK);
+    this.barriers.set(id, this.world.addStaticRect(rect));
+    this.barrierBounds.set(id, { minX: rect.minX, minY: rect.minY, maxX: rect.maxX, maxY: rect.maxY });
   }
 
-  /** A locked room's exit barrier. Unlike addBarrier this is NOT a wall: it sits
-   *  on Layer.BARRIER_EXIT, which only a committed player's mask includes, so it
-   *  blocks the way out without blocking the way in. See shared/src/layers.ts. */
+  /** A locked room's exit barrier. Unlike addBarrier this is NOT a wall: it sits on
+   *  Layer.BARRIER_EXIT, which only a committed player's mask includes, so it blocks
+   *  the way out without blocking the way in. See shared/src/layers.ts. */
   addExitBarrier(id: string, cx: number, cy: number, w: number, h: number): void {
     if (this.barriers.has(id)) return;
-    const body = Matter.Bodies.rectangle(cx, cy, w, h, {
-      isStatic: true,
-      label: `barrier_${id}`,
-      collisionFilter: { category: Layer.BARRIER_EXIT, mask: Layer.PLAYER },
-    });
-    this.barriers.set(id, body);
-    Matter.Composite.add(this.engine.world, body);
+    const rect = rectFromCenter(cx, cy, w, h, Layer.BARRIER_EXIT, Layer.PLAYER);
+    this.barriers.set(id, this.world.addStaticRect(rect));
+    this.barrierBounds.set(id, { minX: rect.minX, minY: rect.minY, maxX: rect.maxX, maxY: rect.maxY });
   }
 
   /** Set this player body's solid mask from its commitment plus any movement-ability
    *  phase-through. `committed` adds the one-way exit-barrier bit; `dropMask` removes
    *  bits for the current tick (a Dash phases through ENEMY, a Vault through
    *  ENEMY|COVER). Recomputed every tick, so the drop is inherently transient. */
-  setPlayerCommitted(body: Matter.Body, committed: boolean, dropMask = 0): void {
+  setPlayerCommitted(body: PhysicsBody, committed: boolean, dropMask = 0): void {
     const base = committed ? PLAYER_COMMITTED_SOLID_MASK : PLAYER_BODY_PROFILE.solidMask;
-    body.collisionFilter.mask = base & ~dropMask;
+    body.mask = base & ~dropMask;
   }
 
-  /** Is this point inside a standing barrier? Projectiles are not matter bodies,
-   *  so they'd otherwise sail straight through a shut door (playtest B5). Both
-   *  sides block: a one-way barrier is one-way for *walking*, not for arrows. */
+  /** Is this point inside a standing barrier? Projectiles are not physics bodies, so
+   *  they'd otherwise sail through a shut door (playtest B5). Both sides block: a
+   *  one-way barrier is one-way for *walking*, not for arrows. */
   barrierAt(x: number, y: number): boolean {
-    for (const body of this.barriers.values()) {
-      const b = body.bounds;
-      if (x >= b.min.x && x <= b.max.x && y >= b.min.y && y <= b.max.y) return true;
+    for (const b of this.barrierBounds.values()) {
+      if (x >= b.minX && x <= b.maxX && y >= b.minY && y <= b.maxY) return true;
     }
     return false;
   }
 
   removeBarrier(id: string): void {
-    const body = this.barriers.get(id);
-    if (!body) return;
-    Matter.Composite.remove(this.engine.world, body);
+    const shape = this.barriers.get(id);
+    if (!shape) return;
+    this.world.removeStatic(shape);
     this.barriers.delete(id);
+    this.barrierBounds.delete(id);
   }
 
-  // `layer` is the body's matter category (what it IS); `solidMask` is what it
-  // physically blocks against. Both come from the entity's InteractionProfile.
-  createEntityBody(spriteX: number, spriteY: number, layer: number, solidMask: number): Matter.Body {
-    const bodyPos = spriteToBody({ x: spriteX, y: spriteY });
-    const body = Matter.Bodies.circle(
-      bodyPos.x,
-      bodyPos.y,
-      ENTITY_RADIUS,
-      {
-        friction: 0,
-        frictionStatic: 0,
-        frictionAir: 0,
-        restitution: 0,
-        inertia: Infinity,
-        collisionFilter: { category: layer, mask: solidMask },
-      },
-    );
-    Matter.Composite.add(this.engine.world, body);
+  // `layer` is the body's category (what it IS); `solidMask` is what it physically
+  // blocks against. Both come from the entity's InteractionProfile.
+  createEntityBody(spriteX: number, spriteY: number, layer: number, solidMask: number): PhysicsBody {
+    const p = spriteToBody({ x: spriteX, y: spriteY });
+    const body = new CircleBody(p.x, p.y, ENTITY_RADIUS, layer, solidMask);
+    this.world.add(body);
     return body;
   }
 
-  removeBody(body: Matter.Body): void {
-    Matter.Composite.remove(this.engine.world, body);
+  removeBody(body: PhysicsBody): void {
+    this.world.remove(body);
   }
 
-  // Makes a body static (or dynamic again). A static body is NEVER displaced by
-  // the solver — a player who walks into it is shoved out instead of pushing it.
-  // High mass is not enough: matter's Verlet integrator drifts even a 1e12-mass
-  // body under sustained contact. Bosses use this so they can't be nudged; they
-  // move themselves by setEntityPosition (which still sweeps players aside).
-  setBodyStatic(body: Matter.Body, isStatic: boolean): void {
-    Matter.Body.setStatic(body, isStatic);
+  // Makes a body static (or dynamic again). A static body is NEVER displaced — a
+  // player who walks into it is shoved out instead of pushing it. Bosses use this so
+  // they can't be nudged; they move themselves by setEntityPosition (which still
+  // sweeps players aside via the separation pass).
+  setBodyStatic(body: PhysicsBody, isStatic: boolean): void {
+    body.isStatic = isStatic;
   }
 
-  setVelocityPxPerSec(body: Matter.Body, vx: number, vy: number): void {
-    Matter.Body.setVelocity(body, {
-      x: pxPerSecToVelocity(vx),
-      y: pxPerSecToVelocity(vy),
-    });
+  setVelocityPxPerSec(body: PhysicsBody, vx: number, vy: number): void {
+    body.vx = vx;
+    body.vy = vy;
   }
 
-  setEntityPosition(body: Matter.Body, spriteX: number, spriteY: number): void {
-    Matter.Body.setPosition(body, spriteToBody({ x: spriteX, y: spriteY }));
-    Matter.Body.setVelocity(body, { x: 0, y: 0 });
+  setEntityPosition(body: PhysicsBody, spriteX: number, spriteY: number): void {
+    const p = spriteToBody({ x: spriteX, y: spriteY });
+    body.x = p.x;
+    body.y = p.y;
+    body.vx = 0;
+    body.vy = 0;
   }
 
-  setEntityDead(body: Matter.Body): void {
-    body.collisionFilter.mask = CORPSE_SOLID_MASK;
-    Matter.Body.setVelocity(body, { x: 0, y: 0 });
+  setEntityDead(body: PhysicsBody): void {
+    body.mask = CORPSE_SOLID_MASK;
+    body.vx = 0;
+    body.vy = 0;
   }
 
   step(): void {
-    const SUB = 3;
-    for (let i = 0; i < SUB; i++)
-      Matter.Engine.update(this.engine, SERVER_TICK_MS / SUB);
+    this.world.step(SERVER_TICK_MS / 1000, SUBSTEPS);
   }
 }

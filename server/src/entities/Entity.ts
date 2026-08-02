@@ -1,4 +1,3 @@
-import type Matter from "matter-js";
 import {
   TILE_PROPS, TileId, TILE_SIZE, FOOT_OFFSET, TILE_DAMAGE_INTERVAL_MS, InteractionProfile, Attack,
   KNOCKBACK_SCALE, KNOCKBACK_MIN_FRACTION, KNOCKBACK_STUN_MS_PER_UNIT, KNOCKBACK_STUN_MAX_MS, SERVER_TICK_MS,
@@ -8,7 +7,7 @@ import { EntityState } from "../schema/EntityState";
 import { HitSource } from "../combat/HitSource";
 import type { SpawnProjectile, SpawnOpts, EnemyClass } from "./Enemy";
 import type { AttackStats } from "../spells/Spell";
-import { PhysicsWorld, syncStateFromBody } from "../physics/PhysicsWorld";
+import { PhysicsWorld, PhysicsBody, syncStateFromBody } from "../physics/PhysicsWorld";
 
 // A damage effect an entity produced during its tick, drained by GameRoom into the
 // combat resolver / projectile pool. A boss channel, a player's swing, and a
@@ -28,7 +27,7 @@ const KNOCKBACK_CUTOFF = 5; // px/sec — below this, snap to zero
 export abstract class Entity {
   abstract state: EntityState;
 
-  body!: Matter.Body;
+  body!: PhysicsBody;
   protected physics!: PhysicsWorld;
   protected timeSinceLastDamage: number = 0;
 

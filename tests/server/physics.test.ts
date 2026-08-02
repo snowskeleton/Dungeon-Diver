@@ -16,23 +16,22 @@ import {
 } from "shared";
 import {
   PhysicsWorld,
-  pxPerSecToVelocity,
   syncStateFromBody,
 } from "../../server/src/physics/PhysicsWorld";
 import { Player } from "../../server/src/entities/Player";
 import { GooGreen } from "../../server/src/entities/enemies";
 import { flatWorld, flatMap, physicsTick, COLS, ROWS } from "../helpers/world";
 
-// PhysicsWorld is the only file that touches matter-js, so the coordinate
-// mapping and the px/sec conversion are tested here or nowhere.
+// PhysicsWorld is the only file that owns the hand-rolled collision core, so the
+// coordinate mapping and the movement integration are tested here or nowhere.
 
 describe("coordinate mapping", () => {
   it("puts the body at the sprite's FEET and reads the centre back", () => {
     const world = flatWorld();
     const body = world.createEntityBody(300, 400, Layer.PLAYER, PLAYER_BODY_PROFILE.solidMask);
 
-    expect(body.position.x).toBe(300);
-    expect(body.position.y).toBe(400 + FOOT_OFFSET);
+    expect(body.x).toBe(300);
+    expect(body.y).toBe(400 + FOOT_OFFSET);
 
     const state = { x: 0, y: 0 };
     syncStateFromBody(state, body);
@@ -54,19 +53,12 @@ describe("coordinate mapping", () => {
     const body = world.createEntityBody(0, 0, Layer.PLAYER, PLAYER_BODY_PROFILE.solidMask);
     world.setVelocityPxPerSec(body, 500, 500);
     world.setEntityPosition(body, 300, 300);
-    expect(body.velocity).toEqual({ x: 0, y: 0 });
+    expect({ x: body.vx, y: body.vy }).toEqual({ x: 0, y: 0 });
   });
 });
 
-describe("velocity conversion", () => {
-  it("converts px/sec to matter's per-frame units", () => {
-    // Get this wrong and everything in the game moves ~3× off.
-    expect(pxPerSecToVelocity(60)).toBe(1);
-    expect(pxPerSecToVelocity(300)).toBe(5);
-    expect(pxPerSecToVelocity(0)).toBe(0);
-  });
-
-  it("actually moves a body that far in a second of ticks", () => {
+describe("velocity", () => {
+  it("moves a body px/sec — a second of ticks carries it that far", () => {
     const world = flatWorld();
     const body = world.createEntityBody(300, 300, Layer.PLAYER, PLAYER_BODY_PROFILE.solidMask);
 
@@ -76,7 +68,7 @@ describe("velocity conversion", () => {
       world.step();
     }
 
-    expect(body.position.x - 300).toBeCloseTo(100, 0);
+    expect(body.x - 300).toBeCloseTo(100, 0);
   });
 });
 
@@ -172,7 +164,7 @@ describe("entity separation", () => {
     const corpse = new GooGreen(world, 300, 300);
     world.setEntityDead(corpse.body);
 
-    expect(corpse.body.collisionFilter.mask).toBe(CORPSE_SOLID_MASK);
+    expect(corpse.body.mask).toBe(CORPSE_SOLID_MASK);
     expect(canAffect(CORPSE_SOLID_MASK, Layer.PLAYER)).toBe(false);
     expect(canAffect(CORPSE_SOLID_MASK, Layer.WALL)).toBe(true);
   });
@@ -208,8 +200,8 @@ describe("collision profiles", () => {
   it("puts the created body on the layer and mask it was asked for", () => {
     const world = flatWorld();
     const body = world.createEntityBody(0, 0, Layer.ENEMY, Layer.WALL);
-    expect(body.collisionFilter.category).toBe(Layer.ENEMY);
-    expect(body.collisionFilter.mask).toBe(Layer.WALL);
+    expect(body.category).toBe(Layer.ENEMY);
+    expect(body.mask).toBe(Layer.WALL);
   });
 
   it("adds and removes the exit-barrier bit as a player commits", () => {
@@ -217,12 +209,12 @@ describe("collision profiles", () => {
     const body = world.createEntityBody(0, 0, Layer.PLAYER, PLAYER_BODY_PROFILE.solidMask);
 
     world.setPlayerCommitted(body, true);
-    expect(body.collisionFilter.mask).toBe(PLAYER_COMMITTED_SOLID_MASK);
-    expect(canAffect(body.collisionFilter.mask!, Layer.BARRIER_EXIT)).toBe(true);
+    expect(body.mask).toBe(PLAYER_COMMITTED_SOLID_MASK);
+    expect(canAffect(body.mask, Layer.BARRIER_EXIT)).toBe(true);
 
     world.setPlayerCommitted(body, false);
-    expect(body.collisionFilter.mask).toBe(PLAYER_BODY_PROFILE.solidMask);
-    expect(canAffect(body.collisionFilter.mask!, Layer.BARRIER_EXIT)).toBe(false);
+    expect(body.mask).toBe(PLAYER_BODY_PROFILE.solidMask);
+    expect(canAffect(body.mask, Layer.BARRIER_EXIT)).toBe(false);
   });
 });
 
