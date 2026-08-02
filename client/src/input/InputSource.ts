@@ -109,7 +109,7 @@ const STICK_DEADZONE = 0.15;
 // fine enough to feel free while still giving movement a crisp, repeatable
 // heading. The server normalizes speed and facing compares |dx| vs |dy|, so only
 // the (snapped) direction matters.
-const SNAP_DIRECTIONS = 16;
+const SNAP_DIRECTIONS = 8;
 function snapStick(x: number, y: number): { dx: number; dy: number } {
   const step = (2 * Math.PI) / SNAP_DIRECTIONS;
   const angle = Math.round(Math.atan2(y, x) / step) * step;
