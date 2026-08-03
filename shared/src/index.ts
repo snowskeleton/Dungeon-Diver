@@ -1,5 +1,6 @@
 export * from "./types";
 export * from "./rng";
+export * from "./observable";
 export * from "./physics";
 export * from "./layers";
 export * from "./combat";
