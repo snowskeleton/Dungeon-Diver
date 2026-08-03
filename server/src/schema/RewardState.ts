@@ -1,4 +1,4 @@
-import { Schema, type } from "@colyseus/schema";
+import { Observable, ObservableMap, ObservableList, tracked } from "shared";
 import { WeaponMod, RewardStateView } from "shared";
 import { WeaponSlotState } from "./WeaponSlotState";
 
@@ -12,25 +12,25 @@ import { WeaponSlotState } from "./WeaponSlotState";
 // previewed (the client draws the weapon icon / upgrade name / gold amount), so a
 // player can see what they're about to grab.
 
-export class RewardState extends Schema implements RewardStateView {
-  @type("string") roomId: string = "";
-  @type("number") x: number = 0;
-  @type("number") y: number = 0;
+export class RewardState extends Observable implements RewardStateView {
+  @tracked("string") roomId: string = "";
+  @tracked("number") x: number = 0;
+  @tracked("number") y: number = 0;
   /** True once someone has taken it — drives the ghost-out client-side and makes a
    *  duplicated or racing "claimReward" message harmless rather than a double-grant,
    *  exactly as `consumed` does for an offer. */
-  @type("boolean") claimed: boolean = false;
+  @tracked("boolean") claimed: boolean = false;
 
-  @type("string") kind: "weapon" | "upgrade" | "gold" = "gold";
-  @type("string") name: string = "";
-  @type("string") description: string = "";
+  @tracked("string") kind: "weapon" | "upgrade" | "gold" = "gold";
+  @tracked("string") name: string = "";
+  @tracked("string") description: string = "";
   /** kind === "upgrade": which Upgrade class to instantiate on claim. */
-  @type("string") upgradeId: string = "";
+  @tracked("string") upgradeId: string = "";
   /** kind === "gold": how much this adds to the shared purse. */
-  @type("number") gold: number = 0;
+  @tracked("number") gold: number = 0;
   /** kind === "weapon": the rolled weapon, already resolved so the pedestal can show
    *  the exact stats the player will receive (modifiers included). */
-  @type(WeaponSlotState) weapon = new WeaponSlotState();
+  @tracked(WeaponSlotState) weapon = new WeaponSlotState();
 
   /**
    * SERVER-ONLY — deliberately not decorated with `@type`, so it never syncs.

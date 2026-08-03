@@ -89,6 +89,10 @@ export class ObservableMap<T> implements SyncedMap<T> {
     return this.map.values();
   }
 
+  entries(): IterableIterator<[string, T]> {
+    return this.map.entries();
+  }
+
   /** Iterates [key, value] entries, like MapSchema. */
   [Symbol.iterator](): IterableIterator<[string, T]> {
     return this.map.entries();

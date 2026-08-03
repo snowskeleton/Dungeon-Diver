@@ -469,11 +469,13 @@ describe("maze chests", () => {
   });
 
   it("keeps its contents server-side, so opening it is still a surprise", () => {
-    // weaponId and mods are deliberately UNDECORATED on ChestState.
+    // weaponId and mods are deliberately UNTRACKED on ChestState, so they never enter
+    // the dirty set the delta encoder would send — but the tier flag (gold) does.
     const { chest } = chestFloor();
-    const synced = JSON.parse(JSON.stringify(chest.toJSON()));
-    expect(synced.weaponId).toBeUndefined();
-    expect(synced.mods).toBeUndefined();
+    const wireFields = chest.consumeDirty();
+    expect(wireFields.has("weaponId")).toBe(false);
+    expect(wireFields.has("mods")).toBe(false);
+    expect(wireFields.has("gold")).toBe(true);
   });
 
   it("hands over the weapon it has been holding, mods and all", () => {

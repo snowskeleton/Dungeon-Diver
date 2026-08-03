@@ -1,62 +1,54 @@
-import { SyncedList } from "../stateViews";
 import { Unsubscribe } from "./Observable";
 
 /**
- * The drop-in for Colyseus `ArraySchema`. Satisfies the client-facing `SyncedList`
- * contract (iterable, length, at, forEach) plus `onAdd` (which the client reaches via
- * a cast for offer.consumed / claimedBy) and the server-facing mutations (push,
- * splice). Lists are re-encoded whole for the delta (they are short — weapons,
- * upgrades, offer choices, mod labels — so per-index diffing isn't worth it); `dirty`
- * flags that a re-encode is due.
+ * The drop-in for Colyseus `ArraySchema` — which, like this, extends `Array`. That
+ * gives numeric indexing (`list[0]`), `includes`, `entries`, `at`, `forEach`, and
+ * iteration for free (all of which call sites and the client rely on), so this only
+ * adds `onAdd` (the client reaches it via a cast on offer.consumed / claimedBy) and
+ * overrides the two mutators the sim uses (`push`, `splice`) to fire callbacks and
+ * flag the list dirty for the delta encoder. Lists are short (weapons, upgrades,
+ * offer choices, mod labels), so they re-encode whole rather than per-index.
  *
  * onAdd(cb, triggerAll=true) fires for every element ALREADY present, then for each
  * future `push`ed element — matching Colyseus.
  */
-export class ObservableList<T> implements SyncedList<T> {
-  private readonly arr: T[] = [];
+export class ObservableList<T> extends Array<T> {
+  // Derived arrays (splice's return value, map/filter results) are plain Arrays, not
+  // ObservableLists — so they carry none of the bookkeeping below and compare cleanly.
+  static get [Symbol.species](): ArrayConstructor {
+    return Array;
+  }
+
+  // Non-enumerable-ish bookkeeping. Declared here; Array subclass fields initialise
+  // after super(). (map/filter build a fresh list via Symbol.species with these at
+  // their defaults, which is harmless — we never read callbacks off a derived list.)
   private addCbs?: Set<(item: T, index: number) => void>;
   private _dirty = false;
 
   onAdd(cb: (item: T, index: number) => void, triggerAll = true): Unsubscribe {
     (this.addCbs ??= new Set()).add(cb);
-    if (triggerAll) this.arr.forEach((v, i) => cb(v, i));
+    if (triggerAll) this.forEach((v, i) => cb(v, i));
     return () => {
       this.addCbs?.delete(cb);
     };
   }
 
-  push(...items: T[]): number {
+  override push(...items: T[]): number {
     for (const item of items) {
-      this.arr.push(item);
+      super.push(item);
       this._dirty = true;
-      this.addCbs?.forEach((cb) => cb(item, this.arr.length - 1));
+      this.addCbs?.forEach((cb) => cb(item, this.length - 1));
     }
-    return this.arr.length;
+    return this.length;
   }
 
-  /** Remove `deleteCount` elements at `start`, returning them (like Array.splice).
-   *  No onRemove — the client re-diffs lists (by weapon uid, etc.) rather than
-   *  listening for element removal. */
-  splice(start: number, deleteCount = this.arr.length - start): T[] {
-    const removed = this.arr.splice(start, deleteCount);
-    if (removed.length > 0) this._dirty = true;
+  override splice(start: number, deleteCount?: number, ...items: T[]): T[] {
+    const removed =
+      deleteCount === undefined
+        ? super.splice(start)
+        : super.splice(start, deleteCount, ...items);
+    if (removed.length > 0 || items.length > 0) this._dirty = true;
     return removed;
-  }
-
-  at(index: number): T | undefined {
-    return this.arr.at(index);
-  }
-
-  get length(): number {
-    return this.arr.length;
-  }
-
-  forEach(cb: (value: T, index: number, list: unknown) => void): void {
-    this.arr.forEach((v, i) => cb(v, i, this));
-  }
-
-  [Symbol.iterator](): IterableIterator<T> {
-    return this.arr[Symbol.iterator]();
   }
 
   /** True if the list changed since the last consumeDirty() (delta encoding). */

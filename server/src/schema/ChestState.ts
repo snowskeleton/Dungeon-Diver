@@ -1,4 +1,4 @@
-import { Schema, type } from "@colyseus/schema";
+import { Observable, ObservableMap, ObservableList, tracked } from "shared";
 import { WeaponMod, WeaponId, ChestStateView } from "shared";
 
 // A maze room's treasure chest, at its deepest tile, keyed in GameState.chests by
@@ -10,17 +10,17 @@ import { WeaponMod, WeaponId, ChestStateView } from "shared";
 // what separates it from the shrine (a deliberate 1-of-3 build decision) and the
 // shop (a paid one) — a chest is a surprise, so what's inside is never previewed.
 
-export class ChestState extends Schema implements ChestStateView {
-  @type("string") roomId: string = "";
-  @type("number") x: number = 0;
-  @type("number") y: number = 0;
+export class ChestState extends Observable implements ChestStateView {
+  @tracked("string") roomId: string = "";
+  @tracked("number") x: number = 0;
+  @tracked("number") y: number = 0;
   /** True once someone has opened it — drives the open animation client-side and
    *  makes a duplicated or racing "chestOpen" message harmless rather than a
    *  double-grant, exactly as `claimed` does for an offer. */
-  @type("boolean") opened: boolean = false;
+  @tracked("boolean") opened: boolean = false;
   /** The rarer gold chest. Purely a rarity tier: it uses row 1 of the sprite sheet
    *  and rolls an extra modifier onto the weapon inside. */
-  @type("boolean") gold: boolean = false;
+  @tracked("boolean") gold: boolean = false;
 
   /**
    * SERVER-ONLY — deliberately not decorated with `@type`, so they never sync.

@@ -4,6 +4,12 @@ import {
 import { CoinState } from "../schema/CoinState";
 import { PlayerState } from "../schema/PlayerState";
 
+/** Just enough of a players map for the pickup scan — a plain Map (tests) and the
+ *  live ObservableMap both satisfy it, so Coin doesn't couple to the container type. */
+type PlayerLookup = {
+  forEach(cb: (value: PlayerState, key: string, map: unknown) => void): void;
+};
+
 // A gold coin lying on the floor. Like a Projectile it is kinematic — no matter-js
 // body — so the server just integrates its position directly and the client lerps
 // to it. A coin lies still for COIN_IDLE_MS, then homes toward the nearest player
@@ -24,7 +30,7 @@ export class Coin {
   /** Advance one tick. Returns true once collected — GameRoom then adds `value` to
    *  the purse and removes the coin. Collection is checked every tick regardless of
    *  the idle phase, so walking over a just-dropped coin picks it up immediately. */
-  update(dtMs: number, players: Map<string, PlayerState>): boolean {
+  update(dtMs: number, players: PlayerLookup): boolean {
     const nearest = this.nearestPlayer(players);
     if (nearest && nearest.dist <= COIN_PICKUP_RADIUS) return true;
 
@@ -46,7 +52,7 @@ export class Coin {
   }
 
   private nearestPlayer(
-    players: Map<string, PlayerState>,
+    players: PlayerLookup,
   ): { dist: number; dx: number; dy: number } | null {
     let best: { dist: number; dx: number; dy: number } | null = null;
     players.forEach((p) => {

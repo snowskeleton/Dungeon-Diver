@@ -1,4 +1,4 @@
-import { Room, Client } from "colyseus";
+import { LocalRoom, RoomClient } from "./LocalRoom";
 import {
   InputMessage, SERVER_TICK_MS, MAX_CLIENTS, TILE, DEFAULT_COMBO_WINDOW_MS, DEFAULT_CHARGE_HOLD_MS, DEFAULT_ATTACK_BUFFER_MS,
   generateDungeon, DungeonResult, DungeonOptions, FloorChangeMessage,
@@ -35,7 +35,7 @@ import { PhysicsWorld } from "../physics/PhysicsWorld";
 import { FloorManager } from "../floor/FloorManager";
 import { FlowFieldSystem } from "../pathfinding/FlowFieldSystem";
 
-export class GameRoom extends Room<GameState> {
+export class GameRoom extends LocalRoom<GameState> {
   maxClients = MAX_CLIENTS;
 
   private players = new Map<string, Player>();
@@ -142,7 +142,7 @@ export class GameRoom extends Room<GameState> {
     // The loot interactions. Validation and granting live in LootDirector; GameRoom
     // only resolves the sender to a Player and relays any user-facing error (e.g. a
     // weapon the player's class can't use) back to that one client as `loot_error`.
-    const relayError = (client: Client, error: string | null) => {
+    const relayError = (client: RoomClient, error: string | null) => {
       if (error) client.send("loot_error", { reason: error });
     };
 
@@ -243,7 +243,7 @@ export class GameRoom extends Room<GameState> {
 
   /** Guard for every lobby-only message. Answers the client rather than dropping
    *  the message, so a late click says why nothing happened. */
-  private requireLobby(client: Client, action: string): boolean {
+  private requireLobby(client: RoomClient, action: string): boolean {
     if (this.state.phase === "lobby") return true;
     client.send("lobby_error", { reason: `The run has started — you can't ${action} now.` });
     return false;
@@ -480,7 +480,7 @@ export class GameRoom extends Room<GameState> {
     return n;
   }
 
-  onJoin(client: Client, options?: JoinRoomOptions) {
+  onJoin(client: RoomClient, options?: JoinRoomOptions) {
     const spawns = this.currentDungeon.playerSpawns;
     const spawn = spawns[this.spawnIndex % spawns.length];
     this.spawnIndex++;
@@ -501,7 +501,7 @@ export class GameRoom extends Room<GameState> {
     }
   }
 
-  onLeave(client: Client) {
+  onLeave(client: RoomClient) {
     const player = this.players.get(client.sessionId);
     if (player) this.physics.removeBody(player.body);
     this.players.delete(client.sessionId);

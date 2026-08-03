@@ -1,4 +1,4 @@
-import { Schema, type } from "@colyseus/schema";
+import { Observable, ObservableMap, ObservableList, tracked } from "shared";
 import { WeaponInstance, DroppedWeaponStateView } from "shared";
 import { WeaponSlotState } from "./WeaponSlotState";
 
@@ -12,14 +12,14 @@ import { WeaponSlotState } from "./WeaponSlotState";
 // exactly what you'd get, while the modifiers that produced them ride along on the
 // undecorated `instance` field.
 
-export class DroppedWeaponState extends Schema implements DroppedWeaponStateView {
-  @type("number") x: number = 0;
-  @type("number") y: number = 0;
+export class DroppedWeaponState extends Observable implements DroppedWeaponStateView {
+  @tracked("number") x: number = 0;
+  @tracked("number") y: number = 0;
   /** Template id, so the client picks the right icon. */
-  @type("string") weaponId: string = "";
-  @type("string") name: string = "";
+  @tracked("string") weaponId: string = "";
+  @tracked("string") name: string = "";
   /** Resolved stats for the ground preview (mods folded in). */
-  @type(WeaponSlotState) weapon = new WeaponSlotState();
+  @tracked(WeaponSlotState) weapon = new WeaponSlotState();
 
   /**
    * SERVER-ONLY — deliberately not decorated with `@type`, so it never syncs.
@@ -30,7 +30,7 @@ export class DroppedWeaponState extends Schema implements DroppedWeaponStateView
    * value is behaviour (getters) and `@type` holds only primitives/Schemas — and the
    * client has no use for them anyway (`weapon` already carries the resolved numbers
    * it draws). Same pattern as RewardState.mods / ChestState.weaponId. Colyseus
-   * preserves an undecorated property through MapSchema.set, so it survives here.
+   * preserves an undecorated property through ObservableMap.set, so it survives here.
    */
   instance!: WeaponInstance;
 }
