@@ -1,5 +1,4 @@
 import Phaser from "phaser";
-import { Room } from "colyseus.js";
 import {
   InputMessage, CharacterClass, CharacterType, Character, getCharacter,
   Weapon, WeaponView, WeaponSlotView, UpgradeSlotView, resolveWeapon, Facing, facingFromInput,
@@ -7,6 +6,7 @@ import {
   PLAYER_HURT_BOUNDS, FOOT_OFFSET,
 } from "shared";
 import { Entity } from "./Entity";
+import { RoomLike } from "../net/RoomLike";
 import { InputSource, InputActions } from "../input/InputSource";
 import { CLIENT_CHARACTER_VISUAL_REGISTRY } from "../characters";
 import { DebugDrawable, DebugShape, DEBUG_COLORS, hurtBoxShape } from "../debug/DebugDraw";
@@ -32,7 +32,7 @@ const SHOP_BUY_RADIUS = 40;
 const RECONCILE_SNAP_PX = 48;
 
 export class LocalPlayer extends Entity implements DebugDrawable {
-  readonly room: Room;
+  readonly room: RoomLike;
   /** The same room state, typed. The server's schema classes `implements` these
    *  views, so a renamed @type field fails the server build instead of silently
    *  reading undefined here. One cast, at the boundary. */
@@ -119,7 +119,7 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     scene: Phaser.Scene,
     x: number,
     y: number,
-    room: Room,
+    room: RoomLike,
     inputSource: InputSource,
     characterClass: CharacterClass = "knight",
     characterType: CharacterType = "guy",

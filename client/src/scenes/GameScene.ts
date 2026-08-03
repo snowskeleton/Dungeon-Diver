@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { Room } from "colyseus.js";
+import { RoomLike } from "../net/RoomLike";
 import {
   TILE_SIZE, ROOM_W, ROOM_H, TILE_PROPS, generateDungeon, roomCellAt, MAP_SEED,
   FloorChangeMessage, BarrierStateMessage,
@@ -69,7 +69,7 @@ export class GameScene extends Phaser.Scene {
   private enemies = new Map<string, EnemyEntity>();
   private projectiles = new Map<string, ProjectileEntity>();
   private localSessionIds = new Set<string>();
-  private observerRoom: Room | null = null;
+  private observerRoom: RoomLike | null = null;
   private inventoryHud!: InventoryHud;
   private challengeBanner!: ChallengeBanner;
   private darkness!: DarknessOverlay;
@@ -295,7 +295,10 @@ export class GameScene extends Phaser.Scene {
         if (st.floor) this.currentFloor = st.floor;
       };
       syncMapFromState();
-      first.room.onStateChange.once(syncMapFromState);
+      // Re-check on state changes (guarded: only rebuilds if seed/opts actually
+      // differ, so firing more than once is harmless). Colyseus offered `.once`;
+      // RoomLike keeps the surface minimal.
+      first.room.onStateChange(syncMapFromState);
 
       first.room.onMessage("floor_change", (msg: FloorChangeMessage) => {
         this.handleFloorChange(msg);
@@ -642,7 +645,7 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private setupWorldSync(room: Room) {
+  private setupWorldSync(room: RoomLike) {
     // The one boundary cast in the client. colyseus.js types `room.state` as the
     // untyped decoded state; from here down it is GameStateView, whose interfaces
     // the server's schema classes `implements` — so a renamed @type field is a
@@ -870,7 +873,9 @@ export class GameScene extends Phaser.Scene {
     // Inventory HUD tracks the first local player; PAUSED overlay follows the
     // server's shared pause flag.
     const first = this.localManager.getAll()[0];
-    const firstState = first?.room.state.players.get(first.room.sessionId);
+    const firstState = first
+      ? (first.room.state as GameStateView).players.get(first.room.sessionId)
+      : undefined;
     if (firstState) {
       this.inventoryHud.update(Array.from(firstState.weapons), firstState.activeWeaponIndex);
     }
@@ -881,10 +886,10 @@ export class GameScene extends Phaser.Scene {
     // The objective banner, read straight off the MapSchema — a challenge has no
     // world view to manage, so it needs no onAdd/onRemove bookkeeping the way
     // pedestals do.
-    this.challengeBanner.update(this.observerRoom?.state.challenges?.get(roomId));
+    const obs = this.observerRoom?.state as GameStateView | undefined;
+    this.challengeBanner.update(obs?.challenges?.get(roomId));
     // Darkness is decided entirely from the locally generated room type.
     this.darkness.update(this.roomTypes.get(roomId) === "dark", x, y, bx, by);
-    const obs = this.observerRoom?.state;
 
     // Minimap: the party's current cell is explored the moment the camera enters
     // it. Cleared rooms are derived from the barrier state GameScene tracks.

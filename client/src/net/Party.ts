@@ -5,6 +5,8 @@ import {
 } from "shared";
 import { Loadout } from "../launch";
 import { SERVER_URL, SERVER_HTTP_URL } from "./serverUrl";
+import { RoomLike } from "./RoomLike";
+import { LocalAuthority } from "./LocalAuthority";
 
 /**
  * The set of connections one machine holds to one room — the party, as the
@@ -23,7 +25,7 @@ import { SERVER_URL, SERVER_HTTP_URL } from "./serverUrl";
  */
 
 export interface PartyMember {
-  room: Room;
+  room: RoomLike;
   /** What this member joined as. Kept client-side so the lobby can re-open a
    *  picker pre-filled, rather than reverse-engineering it from the schema. */
   loadout: Loadout;
@@ -68,6 +70,9 @@ export class Party {
   /** Non-null only on the machine that created the room — the debug knobs the
    *  floor was generated with. Joiners read the same knobs off the schema. */
   debug: DebugConfig | null = null;
+  /** The in-process authority for a solo/local game — null on an online (colyseus)
+   *  join. Held so couch players seat onto the same running sim. */
+  private local: LocalAuthority | null = null;
   playerName: string;
   /** The loadout the next join should use: this machine's profile choice, which
    *  `setLoadout` keeps in step as it's changed in the lobby. */
@@ -84,7 +89,7 @@ export class Party {
 
   /** The connection every non-player-specific read goes through: the first local
    *  player's room is the world observer (it sees all players and enemies). */
-  get primary(): Room {
+  get primary(): RoomLike {
     return this.membersList[0].room;
   }
 
@@ -104,15 +109,17 @@ export class Party {
 
   // ── Getting in ────────────────────────────────────────────────────────────
 
-  /** Create a room and take the first seat in it. */
+  /** Create a room and take the first seat in it. The authoritative sim now runs
+   *  IN THIS PROCESS (no server) — the responsiveness win. Online multiplayer moves
+   *  to host-authoritative P2P (Phase 5); until then every host is local. */
   async host(options: HostOptions): Promise<void> {
     this.debug = options.debug;
-    const room = await client.create("game", {
+    this.local = new LocalAuthority({
       roomName: options.roomName,
       isPrivate: options.isPrivate,
       debug: options.debug,
-      ...this.joinOptions(this.pendingLoadout, false),
     });
+    const room = await this.local.addSeat(this.joinOptions(this.pendingLoadout, false));
     this.adopt(room, this.pendingLoadout, false);
   }
 
@@ -137,7 +144,14 @@ export class Party {
 
   /** Add a couch player (the `P` key in the lobby) to the room we're already in. */
   async addCouch(loadout: Loadout): Promise<PartyMember | null> {
-    if (this.isFull || !this.joinedRoomId) return null;
+    if (this.isFull) return null;
+    // Local (solo/couch): another seat on the same in-process sim.
+    if (this.local) {
+      const room = await this.local.addSeat(this.joinOptions(loadout, true));
+      return this.adopt(room, loadout, true);
+    }
+    // Online (colyseus): dial the same room again as a couch player.
+    if (!this.joinedRoomId) return null;
     const room = await this.dial(this.joinedRoomId, loadout, true);
     return this.adopt(room, loadout, true);
   }
@@ -167,7 +181,7 @@ export class Party {
     }
   }
 
-  private adopt(room: Room, loadout: Loadout, couch: boolean): PartyMember {
+  private adopt(room: RoomLike, loadout: Loadout, couch: boolean): PartyMember {
     this.joinedRoomId = room.roomId;
     const member: PartyMember = { room, loadout, couch };
     this.membersList.push(member);

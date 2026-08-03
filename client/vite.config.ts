@@ -32,6 +32,20 @@ export default defineConfig({
   resolve: {
     alias: {
       shared: path.resolve(__dirname, "../shared/src/index.ts"),
+      // The authoritative simulation is now client-importable (Colyseus- and
+      // matter-free portable TS). The in-process LocalAuthority runs it directly.
+      "@sim": path.resolve(__dirname, "../server/src"),
+    },
+  },
+  esbuild: {
+    // The imported sim tree uses legacy decorators (@tracked); target ES2020 keeps
+    // useDefineForClassFields false so field initializers assign (the Observable
+    // Proxy also handles the other case).
+    tsconfigRaw: {
+      compilerOptions: {
+        experimentalDecorators: true,
+        useDefineForClassFields: false,
+      },
     },
   },
   server: {

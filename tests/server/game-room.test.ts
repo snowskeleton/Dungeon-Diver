@@ -56,9 +56,12 @@ describe("creating a room", () => {
     h.dispose();
   });
 
-  it("allocates a well-formed join code", async () => {
-    const h = await createRoom();
+  it("carries the session-supplied join code onto the state", async () => {
+    // Room codes are a session/lobby concern now (the P2P signaling layer supplies
+    // one), not allocated inside the sim. It defaults to empty and honours what's given.
+    const h = await createRoom({ roomCode: "ABCD" });
     expect(isRoomCode(h.state.roomCode)).toBe(true);
+    expect(h.state.roomCode).toBe("ABCD");
     h.dispose();
   });
 

@@ -14,7 +14,6 @@ import {
   coinDenominations,
   Rng, makeRng, randInt,
 } from "shared";
-import { allocateRoomCode } from "./roomCodes";
 import { GameState } from "../schema/GameState";
 import { Player } from "../entities/Player";
 import { upgradeById } from "../upgrades";
@@ -77,7 +76,7 @@ export class GameRoom extends LocalRoom<GameState> {
   // freezes all simulation for everyone (co-op pause).
   private pausedBy = new Set<string>();
 
-  async onCreate(options?: CreateRoomOptions & { debug?: DebugConfig }) {
+  async onCreate(options?: CreateRoomOptions & { debug?: DebugConfig; roomCode?: string }) {
     // A fresh run gets a random floor-1 seed so no two runs are the same dungeon
     // (descending still does seed+1 from here). The Debug menu's explicit seed
     // wins when set, so debug floors stay reproducible.
@@ -101,9 +100,9 @@ export class GameRoom extends LocalRoom<GameState> {
     // nothing lives on it and nothing ticks until the host starts the run.
     this.state.roomName = clampName(options?.roomName, MAX_ROOM_NAME_LEN, "Dungeon run");
     this.state.isPrivate = options?.isPrivate === true;
-    this.state.roomCode = await allocateRoomCode();
-    // Awaited: the seat reservation for the creating client is issued the moment
-    // onCreate resolves, so a code allocated later could be missed by a lookup.
+    // The join code is a session/lobby concern (the P2P signaling layer, or empty for
+    // solo), not the sim's — it's handed in, no longer allocated from a matchmaker.
+    this.state.roomCode = options?.roomCode ?? "";
     await this.setPrivate(this.state.isPrivate);
     await this.publishMetadata();
     this.loot = new LootDirector(this.state, this.players, this.debug);

@@ -7,10 +7,13 @@
     "noEmit": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
     "types": ["vite/client"],
     "paths": {
-      "shared": ["../shared/src/index.ts"]
+      "shared": ["../shared/src/index.ts"],
+      "@sim/*": ["../server/src/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "../server/src"]
 }

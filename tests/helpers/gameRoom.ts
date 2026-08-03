@@ -56,7 +56,7 @@ function ensureMatchMaker() {
 }
 
 export async function createRoom(
-  options: (CreateRoomOptions & { debug?: DebugConfig }) | undefined = undefined,
+  options: (CreateRoomOptions & { debug?: DebugConfig; roomCode?: string }) | undefined = undefined,
 ): Promise<RoomHarness> {
   await ensureMatchMaker();
 
