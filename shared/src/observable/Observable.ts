@@ -48,6 +48,17 @@ function isTracked(instance: object, field: string): boolean {
   return false;
 }
 
+/** The union of tracked field names for an instance, up its constructor chain. */
+export function trackedKeysOf(instance: object): Set<string> {
+  const keys = new Set<string>();
+  let ctor: Function | null = instance.constructor;
+  while (ctor && ctor !== Observable && ctor !== Object) {
+    trackedFields.get(ctor)?.forEach((k) => keys.add(k));
+    ctor = Object.getPrototypeOf(ctor);
+  }
+  return keys;
+}
+
 export abstract class Observable {
   /** Change subscribers. Lazily allocated — most rows are never watched. */
   private _changeCbs?: Set<() => void>;
