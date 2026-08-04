@@ -1,6 +1,6 @@
-export { Observable, tracked, trackedKeysOf } from "./Observable";
-export type { Unsubscribe } from "./Observable";
+export { Observable, tracked, trackedKeysOf, schemaOf } from "./Observable";
+export type { Unsubscribe, FieldSpec, Schema, RowCtor } from "./Observable";
 export { ObservableMap } from "./ObservableMap";
 export { ObservableList } from "./ObservableList";
-export { encodeDelta, applyDelta } from "./replication";
-export type { RootDelta, MapDelta, MapSchema } from "./replication";
+export { encodeDelta, encodeSnapshot, applyDelta } from "./replication";
+export type { Encoded, MapDelta } from "./replication";

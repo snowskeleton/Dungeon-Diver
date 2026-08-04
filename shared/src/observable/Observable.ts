@@ -25,18 +25,57 @@
  */
 export type Unsubscribe = () => void;
 
-// Per-class registry of tracked field names, keyed by the class constructor. Filled
-// by the `@tracked` decorator at class-definition time; consulted (up the constructor
-// chain) by the Proxy traps to decide whether a write should notify.
-const trackedFields = new WeakMap<Function, Set<string>>();
+/** Constructor of an Observable subclass (a nested schema row). */
+export type RowCtor = new () => Observable;
 
-function registerTracked(ctor: Function, field: string): void {
-  let set = trackedFields.get(ctor);
-  if (!set) {
-    set = new Set();
-    trackedFields.set(ctor, set);
+/**
+ * The replication shape of one tracked field, derived from the argument the
+ * `@tracked(...)` decorator already receives. This is what turns the wire-type hint
+ * from documentation into the schema the P2P codec recurses over — see the argument
+ * forms in `specOf`.
+ */
+export type FieldSpec =
+  | { kind: "scalar" }
+  | { kind: "scalarList" }
+  | { kind: "row"; ctor: RowCtor }
+  | { kind: "rowList"; ctor: RowCtor }
+  | { kind: "map"; ctor: RowCtor };
+
+/** The tracked fields of one class → their replication spec. */
+export type Schema = Map<string, FieldSpec>;
+
+// Per-class registry of tracked fields → spec, keyed by the class constructor. Filled
+// by the `@tracked` decorator at class-definition time; consulted (up the constructor
+// chain) by the Proxy traps to decide whether a write should notify, and by the codec
+// to walk the state tree.
+const trackedFields = new WeakMap<Function, Schema>();
+
+/** Interpret the `@tracked(...)` argument as a replication spec. The forms:
+ *  - `"uint32"` / `"string"` / omitted → a scalar
+ *  - `["string"]` → a list of scalars
+ *  - `SomeObservableCtor` → a nested row
+ *  - `[SomeObservableCtor]` → a list of nested rows
+ *  - `{ map: SomeObservableCtor }` → a keyed map of nested rows */
+function specOf(wireType: unknown): FieldSpec {
+  if (Array.isArray(wireType)) {
+    const el = wireType[0];
+    if (typeof el === "function") return { kind: "rowList", ctor: el as RowCtor };
+    return { kind: "scalarList" };
   }
-  set.add(field);
+  if (typeof wireType === "function") return { kind: "row", ctor: wireType as RowCtor };
+  if (wireType && typeof wireType === "object" && "map" in wireType) {
+    return { kind: "map", ctor: (wireType as { map: RowCtor }).map };
+  }
+  return { kind: "scalar" };
+}
+
+function registerTracked(ctor: Function, field: string, spec: FieldSpec): void {
+  let map = trackedFields.get(ctor);
+  if (!map) {
+    map = new Map();
+    trackedFields.set(ctor, map);
+  }
+  map.set(field, spec);
 }
 
 function isTracked(instance: object, field: string): boolean {
@@ -48,15 +87,26 @@ function isTracked(instance: object, field: string): boolean {
   return false;
 }
 
-/** The union of tracked field names for an instance, up its constructor chain. */
-export function trackedKeysOf(instance: object): Set<string> {
-  const keys = new Set<string>();
+/** The tracked field → spec map for an instance, merged up its constructor chain
+ *  (subclass wins). The codec's single source of truth for the state tree's shape. */
+export function schemaOf(instance: object): Schema {
+  const merged: Schema = new Map();
+  const chain: Function[] = [];
   let ctor: Function | null = instance.constructor;
   while (ctor && ctor !== Observable && ctor !== Object) {
-    trackedFields.get(ctor)?.forEach((k) => keys.add(k));
+    chain.push(ctor);
     ctor = Object.getPrototypeOf(ctor);
   }
-  return keys;
+  // Walk base → derived so a subclass override of the same field name wins.
+  for (const c of chain.reverse()) {
+    trackedFields.get(c)?.forEach((spec, field) => merged.set(field, spec));
+  }
+  return merged;
+}
+
+/** The union of tracked field names for an instance, up its constructor chain. */
+export function trackedKeysOf(instance: object): Set<string> {
+  return new Set(schemaOf(instance).keys());
 }
 
 export abstract class Observable {
@@ -127,12 +177,15 @@ export abstract class Observable {
 
 /**
  * Property decorator: the drop-in for Colyseus `@type(...)`. Registers the field as
- * tracked so the Observable Proxy notifies on change. The type argument is accepted
- * and ignored — it keeps call sites reading like `@type("number")` and documents the
- * wire type for the future delta encoder.
+ * tracked so the Observable Proxy notifies on change, AND captures the argument as the
+ * field's replication `FieldSpec` (see `specOf`) — so the same annotation that reads
+ * like `@type("number")` also gives the P2P codec the schema it recurses over. A
+ * scalar hint (`"number"`) is only documentation; a ctor / `[ctor]` / `{ map: ctor }`
+ * is load-bearing, telling the codec how to walk that nested field.
  */
-export function tracked(_wireType?: unknown): PropertyDecorator {
+export function tracked(wireType?: unknown): PropertyDecorator {
+  const spec = specOf(wireType);
   return (proto: object, key: string | symbol): void => {
-    registerTracked((proto as { constructor: Function }).constructor, String(key));
+    registerTracked((proto as { constructor: Function }).constructor, String(key), spec);
   };
 }
