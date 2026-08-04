@@ -148,7 +148,7 @@ export class Party {
     s.isPrivate = options.isPrivate;
 
     this.hostSession = new HostSession(this.local);
-    this.stopAccepting = acceptGuests(signaling, (t) => this.hostSession!.acceptGuest(t));
+    this.stopAccepting = await acceptGuests(signaling, (t) => this.hostSession!.acceptGuest(t));
     // Keep the registry's seat count honest as players come and go.
     this.local.onStateChange(() => this.pushHostUpdate());
     this.pushHostUpdate();

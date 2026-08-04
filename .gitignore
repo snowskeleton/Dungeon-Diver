@@ -9,6 +9,9 @@ shared/dist/
 server/dist/
 client/dist/
 
+# Local secrets (TURN_SECRET etc.) — see .env.example. Never commit the real .env.
+.env
+
 # Misc
 .DS_Store
 *.log

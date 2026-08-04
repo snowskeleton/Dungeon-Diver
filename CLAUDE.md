@@ -24,6 +24,7 @@ Build **MIT-style, not New Jersey-style**: correctness and a clean, complete des
 | [docs/weapons-and-ammo.md](docs/weapons-and-ammo.md) | Weapons, attack FX, ammo, projectiles |
 | [docs/loadout.md](docs/loadout.md) | Inventory, weapon switching, shops, pause |
 | [docs/lobby.md](docs/lobby.md) | Menus, room browser, lobby, matchmaking, pause menu |
+| [docs/turn.md](docs/turn.md) | P2P connectivity: the STUN/TURN relay, ephemeral credentials, deploying coturn |
 | [docs/upgrades.md](docs/upgrades.md) | Player stats, weapon modifiers, damage numbers, reward pedestals |
 | [docs/enemies.md](docs/enemies.md) | Adding or balancing an enemy |
 | [docs/pathfinding.md](docs/pathfinding.md) | Enemy chase movement, flow field, aggro/threat, flyer-vs-cover collision |

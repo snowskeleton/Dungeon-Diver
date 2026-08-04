@@ -1,9 +1,14 @@
-# One service: the game server, which also serves the built client on the same
-# port. Clone the repo, `docker compose up -d --build`, and point your external
-# Caddy at <this-host>:2567.
+# Two services:
+#   server  — serves the built client + P2P signaling on :2567. Point your external
+#             Caddy at <this-host>:2567. Single stateful process (in-memory, unshared
+#             state) — do NOT scale to replicas.
+#   coturn  — the STUN/TURN relay peers fall back to when direct P2P can't traverse
+#             their NATs. Behind the "turn" profile, so it's opt-in: plain
+#             `docker compose up` runs server-only (STUN fallback, exactly as before);
+#             `docker compose --profile turn up` also starts the relay. See docs/turn.md.
 #
-# Single stateful process — all game state is in-memory and unshared, so do NOT
-# scale to replicas.
+# To enable TURN: set TURN_SECRET + TURN_HOST in a .env beside this file (see
+# .env.example) and bring the stack up with `--profile turn`.
 services:
   server:
     build:
@@ -12,6 +17,11 @@ services:
     restart: unless-stopped
     environment:
       - PORT=2567
+      # Shared with coturn below so /api/ice can mint matching credentials. Empty →
+      # the server advertises STUN only (no TURN), which is a clean no-op.
+      - TURN_SECRET=${TURN_SECRET:-}
+      # The public hostname clients dial for TURN (e.g. game.dev.snowskeleton.net).
+      - TURN_HOST=${TURN_HOST:-}
     ports:
       - "2567:2567"
     healthcheck:
@@ -19,3 +29,27 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+
+  coturn:
+    image: coturn/coturn:4.6
+    # Opt-in: only starts with `docker compose --profile turn up`. Without the profile
+    # the ${TURN_SECRET:?...} guard below never evaluates, so a plain `up` can't be
+    # aborted by an unset secret.
+    profiles:
+      - turn
+    restart: unless-stopped
+    # Host networking: TURN advertises real addresses and hands out a wide UDP relay
+    # range, both of which Docker's bridge NAT would mangle. This binds coturn straight
+    # to the host — so OPEN 3478/udp, 3478/tcp and 49160-49200/udp on the firewall.
+    network_mode: host
+    volumes:
+      - ./server/coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    # The secret is read from the container's ENV at runtime (not interpolated into the
+    # compose file), so a plain `docker compose up` without it is never aborted — only a
+    # coturn that actually starts (i.e. `--profile turn`) evaluates the `:?` guard. The
+    # `$$` escapes compose interpolation so the shell, not compose, expands $TURN_SECRET.
+    environment:
+      - TURN_SECRET=${TURN_SECRET:-}
+    entrypoint: ["sh", "-c"]
+    command:
+      - ': "$${TURN_SECRET:?set TURN_SECRET in .env to run coturn}"; exec turnserver -c /etc/coturn/turnserver.conf --static-auth-secret="$$TURN_SECRET"'

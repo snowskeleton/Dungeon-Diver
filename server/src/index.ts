@@ -2,6 +2,7 @@ import { createServer } from "http";
 import path from "path";
 import express from "express";
 import { attachSignaling } from "./signaling";
+import { iceServers } from "./ice";
 
 // This process is no longer a game server. The authoritative simulation runs IN THE
 // CLIENT — in-process for solo (the LocalAuthority) and host-authoritative peer-to-peer
@@ -15,6 +16,11 @@ const app = express();
 app.use(express.json());
 
 app.get("/healthz", (_req, res) => res.send("ok"));
+
+// The ICE server list (STUN + short-lived TURN credentials) a client fetches before
+// dialling a peer. Kept server-side so the TURN secret never reaches the browser —
+// only the derived, expiring credential does. See server/src/ice.ts + docs/turn.md.
+app.get("/api/ice", (_req, res) => res.json({ iceServers: iceServers() }));
 
 // Serve the built client from the same origin, so one process is the whole app.
 // Set CLIENT_DIR to override; in the Docker image the client build lands at ../client.

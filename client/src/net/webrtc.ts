@@ -1,6 +1,7 @@
 import { PeerId } from "shared";
 import { Transport } from "./Transport";
 import { Signaling } from "./Signaling";
+import { SERVER_HTTP_URL } from "./serverUrl";
 
 /**
  * WebRTC is the real transport under P2P: once the signaling server has introduced two
@@ -15,12 +16,31 @@ import { Signaling } from "./Signaling";
  * and adopts the channel the guest opened.
  */
 
-const RTC_CONFIG: RTCConfiguration = {
-  // A public STUN server is enough to discover reflexive candidates for peers behind
-  // typical NATs; same-LAN peers connect on host candidates without it. No TURN — a
-  // fully symmetric-NAT pair won't connect, which is an acceptable first-cut limit.
+// If the ICE endpoint is unreachable (older deployment, offline dev) fall back to a
+// public STUN server — the pre-TURN behaviour, so nothing breaks, only symmetric-NAT
+// pairs still fail.
+const FALLBACK_CONFIG: RTCConfiguration = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 };
+
+let rtcConfigPromise: Promise<RTCConfiguration> | null = null;
+
+/**
+ * Fetch this deployment's ICE server list — STUN plus, if a TURN relay is configured,
+ * short-lived TURN credentials — from the signaling origin, and memoize it for the
+ * page's lifetime (the credentials outlive any session). The TURN secret never leaves
+ * the server; only the derived, expiring credential is sent here. Both peers fetch
+ * from the SAME server, so host and guest agree on the relay.
+ */
+export function loadRtcConfig(): Promise<RTCConfiguration> {
+  if (!rtcConfigPromise) {
+    rtcConfigPromise = fetch(`${SERVER_HTTP_URL}/api/ice`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`ice ${r.status}`))))
+      .then((body) => ({ iceServers: body.iceServers as RTCIceServer[] }))
+      .catch(() => FALLBACK_CONFIG);
+  }
+  return rtcConfigPromise;
+}
 
 /** One end of the WebRTC data channel as a Transport. Configured ordered + reliable,
  *  so the codec's assumption of in-order delivery holds. */
@@ -75,13 +95,14 @@ type SignalData = { sdp?: RTCSessionDescriptionInit; candidate?: RTCIceCandidate
  * GUEST side: dial a host peer and resolve with an open Transport. Creates the data
  * channel, sends an offer, applies the host's answer, and trickles ICE both ways.
  */
-export function dialHost(
+export async function dialHost(
   signaling: Signaling,
   hostId: PeerId,
   timeoutMs = 15000,
 ): Promise<Transport> {
+  const config = await loadRtcConfig();
   return new Promise<Transport>((resolve, reject) => {
-    const pc = new RTCPeerConnection(RTC_CONFIG);
+    const pc = new RTCPeerConnection(config);
     const channel = pc.createDataChannel("game", { ordered: true });
     let settled = false;
 
@@ -141,13 +162,20 @@ export function dialHost(
  * by peer id; ICE that arrives before the offer is buffered by the browser once the
  * remote description is set. Returns an unsubscribe that tears every peer down.
  */
-export function acceptGuests(signaling: Signaling, onGuest: (t: Transport) => void): () => void {
+export async function acceptGuests(
+  signaling: Signaling,
+  onGuest: (t: Transport) => void,
+): Promise<() => void> {
+  // Resolve the ICE config up front so every guest's peer connection is built with the
+  // relay already known (fetched once, memoized) — no async hop inside the per-guest
+  // signal handler.
+  const config = await loadRtcConfig();
   const peers = new Map<PeerId, RTCPeerConnection>();
 
   const ensurePeer = (from: PeerId): RTCPeerConnection => {
     let pc = peers.get(from);
     if (pc) return pc;
-    pc = new RTCPeerConnection(RTC_CONFIG);
+    pc = new RTCPeerConnection(config);
     peers.set(from, pc);
     relayIce(pc, signaling, from);
     pc.ondatachannel = (ev) => {
