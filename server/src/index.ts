@@ -1,6 +1,7 @@
 import { createServer } from "http";
 import path from "path";
 import express from "express";
+import { attachSignaling } from "./signaling";
 
 // This process is no longer a game server. The authoritative simulation runs IN THE
 // CLIENT — in-process for solo (the LocalAuthority) and host-authoritative peer-to-peer
@@ -24,8 +25,10 @@ if (process.env.SERVE_CLIENT !== "false") {
 
 const httpServer = createServer(app);
 
-// M2 will attach the ws signaling relay to `httpServer` here, before listen().
+// The P2P signaling relay + room registry share this http server (path /ws), so one
+// origin is the whole app: static client, room discovery, and WebRTC brokering.
+attachSignaling(httpServer);
 
 httpServer.listen(port, "0.0.0.0", () => {
-  console.log(`[server] static/signaling server on :${port}`);
+  console.log(`[server] static + P2P signaling server on :${port}`);
 });

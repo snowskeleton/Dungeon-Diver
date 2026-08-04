@@ -16,5 +16,6 @@ export * from "./characters";
 export * from "./enemies";
 export * from "./stateViews";
 export * from "./lobby";
+export * from "./signaling";
 export * from "./economy";
 export * from "./changelog";

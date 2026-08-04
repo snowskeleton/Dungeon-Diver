@@ -4,6 +4,7 @@ import {
 import { Loadout } from "../launch";
 import { RoomLike } from "./RoomLike";
 import { LocalAuthority } from "./LocalAuthority";
+import { signaling } from "./Signaling";
 
 /**
  * The set of connections one machine holds to one room — the party, as the
@@ -51,10 +52,18 @@ function onlineComingSoon(): never {
   throw new JoinError(ONLINE_COMING_SOON);
 }
 
-/** Public, unlocked rooms hosted by other machines. Empty until the P2P room registry
- *  lands; the browser calls this before a party exists, so it stays free-standing. */
+/** Public, joinable rooms hosted by other machines, from the signaling registry. The
+ *  browser calls this before a party exists, so it stays free-standing. Rooms only
+ *  appear once a host announces one (the host/guest WebRTC path lands in M3–M4); until
+ *  then this returns whatever is registered, which for now is nothing joinable. */
 export async function listRooms(): Promise<RoomListing[]> {
-  return [];
+  try {
+    return await signaling.list();
+  } catch {
+    // The signaling server being unreachable is a normal "no rooms" for the browser,
+    // not an error to surface — offline play still works.
+    return [];
+  }
 }
 
 export class Party {

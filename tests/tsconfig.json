@@ -12,5 +12,5 @@
     "paths": { "shared": ["../shared/src/index.ts"] },
     "baseUrl": "."
   },
-  "include": ["**/*.ts", "../shared/src/**/*.ts", "../engine/src/**/*.ts"]
+  "include": ["**/*.ts", "../shared/src/**/*.ts", "../engine/src/**/*.ts", "../server/src/**/*.ts"]
 }
