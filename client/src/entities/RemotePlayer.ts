@@ -4,6 +4,7 @@ import {
   Facing, PlayerStateView, PLAYER_HURT_BOUNDS,
 } from "shared";
 import { Entity } from "./Entity";
+import { Extrapolator } from "./Extrapolator";
 import { CLIENT_CHARACTER_VISUAL_REGISTRY } from "../characters";
 import { DebugDrawable, DebugShape, DEBUG_COLORS, hurtBoxShape } from "../debug/DebugDraw";
 import { meleeHurtboxShapes } from "../debug/hurtboxShapes";
@@ -12,6 +13,10 @@ import { meleeWindupPose } from "./meleeWindupPose";
 export class RemotePlayer extends Entity implements DebugDrawable {
   private targetX: number;
   private targetY: number;
+  // Projects the last authoritative position forward by its measured velocity, so a
+  // remote player renders where they ARE now, not one sim tick (+ a P2P round-trip)
+  // ago. update() lerps toward this, so corrections stay smooth.
+  private readonly extrapolator = new Extrapolator();
   private currentHp: number;
   private facing: Facing = "down";
   private isAttacking = false;
@@ -53,6 +58,7 @@ export class RemotePlayer extends Entity implements DebugDrawable {
     const { weaponId, attackSeq } = state;
     this.targetX = state.x;
     this.targetY = state.y;
+    this.extrapolator.sample(state.x, state.y, performance.now());
     this.currentHp = state.health;
     // Follow the synced max HP so upgrades move the bar's full mark (see LocalPlayer).
     if (state.maxHp) this.maxHp = state.maxHp;
@@ -90,6 +96,8 @@ export class RemotePlayer extends Entity implements DebugDrawable {
     if (wasWindingUp && !this.windingUp) this.swingStartedAt = performance.now();
     if (this.pendingSnap) {
       this.pendingSnap = false;
+      // A hard cut (floor change / re-add): drop any inferred heading and jump.
+      this.extrapolator.reset(state.x, state.y, performance.now());
       this.setPosition(state.x, state.y);
     }
   }
@@ -99,8 +107,11 @@ export class RemotePlayer extends Entity implements DebugDrawable {
   }
 
   update() {
-    const dx = this.targetX - this.sprite.x;
-    const dy = this.targetY - this.sprite.y;
+    // Chase the EXTRAPOLATED position (last sample projected forward by its
+    // velocity), not the raw last sample — that's what erases the sim-tick + P2P lag.
+    const goal = this.extrapolator.target(performance.now());
+    const dx = goal.x - this.sprite.x;
+    const dy = goal.y - this.sprite.y;
     this.sprite.x += dx * 0.3;
     this.sprite.y += dy * 0.3;
     this.updateHpBar(this.currentHp);

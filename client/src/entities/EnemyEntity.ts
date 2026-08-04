@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { AiState, Facing, EnemyType, EnemyStateView, ENEMY_HURT_BOUNDS, resolveWeapon } from "shared";
 import { Entity } from "./Entity";
+import { Extrapolator } from "./Extrapolator";
 import { WeaponVisual, createWeaponVisual } from "./WeaponVisuals";
 import { CLIENT_ENEMY_REGISTRY, ClientEnemyDef } from "../enemies";
 import { DebugDrawable, DebugShape, DEBUG_COLORS, hurtBoxShape } from "../debug/DebugDraw";
@@ -8,6 +9,12 @@ import { DebugDrawable, DebugShape, DEBUG_COLORS, hurtBoxShape } from "../debug/
 export class EnemyEntity extends Entity implements DebugDrawable {
   private targetX: number;
   private targetY: number;
+  // Projects the last synced position forward by its measured velocity so a chasing
+  // enemy renders where it IS, not one sim tick (+ a P2P round-trip) behind — the
+  // difference between dodgeable and unfair on a guest. NOT a re-run of the flow
+  // field; a one-segment linear guess the next sample corrects. update() lerps
+  // toward it, so it can't pop.
+  private readonly extrapolator = new Extrapolator();
   private currentHp: number;
   private facing: Facing = "right";
   private aiState: AiState = "patrol";
@@ -82,6 +89,7 @@ export class EnemyEntity extends Entity implements DebugDrawable {
     if (!this.dying) {
       this.targetX = state.x;
       this.targetY = state.y;
+      this.extrapolator.sample(state.x, state.y, performance.now());
     }
     this.currentHp = state.health;
     this.facing = state.facing;
@@ -101,6 +109,7 @@ export class EnemyEntity extends Entity implements DebugDrawable {
       // Revive (only the debug respawn does this today) has to undo every part of
       // the flourish, tweens included, or the enemy comes back invisible.
       this.dying = false;
+      this.extrapolator.reset(state.x, state.y, performance.now());
       this.currentEnemyAnim = undefined;
       if (this.charSprite) this.scene.tweens.killTweensOf(this.charSprite);
       this.scene.tweens.killTweensOf(this);
@@ -169,8 +178,11 @@ export class EnemyEntity extends Entity implements DebugDrawable {
 
   update() {
     if (!this.dying) {
-      this.sprite.x += (this.targetX - this.sprite.x) * 0.25;
-      this.sprite.y += (this.targetY - this.sprite.y) * 0.25;
+      // Lerp toward the EXTRAPOLATED position (last sample projected by velocity),
+      // not the raw last sample — that's what removes the sim-tick + P2P lag.
+      const goal = this.extrapolator.target(performance.now());
+      this.sprite.x += (goal.x - this.sprite.x) * 0.25;
+      this.sprite.y += (goal.y - this.sprite.y) * 0.25;
     }
 
     if (this.charSprite) {
