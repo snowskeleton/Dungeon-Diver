@@ -202,7 +202,7 @@ export class Player extends Entity implements Caster, MovementCaster {
   setMeleeTuning(comboWindowMs: number, chargeHoldMs: number, attackBufferMs?: number): void {
     if (Number.isFinite(comboWindowMs)) this.comboWindowMs = Math.max(0, Math.min(2000, comboWindowMs));
     if (Number.isFinite(chargeHoldMs)) this.chargeHoldMs = Math.max(50, Math.min(3000, chargeHoldMs));
-    if (Number.isFinite(attackBufferMs)) this.attackBufferMs = Math.max(0, Math.min(1000, attackBufferMs));
+    if (attackBufferMs !== undefined && Number.isFinite(attackBufferMs)) this.attackBufferMs = Math.max(0, Math.min(1000, attackBufferMs));
   }
 
   /** Advance (or reset) the melee combo for a swing released at caster-clock `now`.
