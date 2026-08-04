@@ -1,6 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2020",
+    // ES2022 lib: the engine's ObservableList extends Array and inherits Array.at
+    // (ES2022). vite/esbuild still emits to the ES2020 target; this only widens the
+    // APIs the typechecker knows about, matching the sim's own ES2022 test target.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
@@ -12,8 +16,8 @@
     "types": ["vite/client"],
     "paths": {
       "shared": ["../shared/src/index.ts"],
-      "@sim/*": ["../server/src/*"]
+      "@engine/*": ["../engine/src/*"]
     }
   },
-  "include": ["src", "../server/src"]
+  "include": ["src", "../engine/src"]
 }

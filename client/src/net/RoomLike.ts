@@ -1,8 +1,9 @@
 /**
- * The room-shaped surface the client consumes, independent of transport. Both a
- * colyseus.js `Room` (the legacy online path) and a `LocalAuthority` seat (solo,
- * in-process) satisfy it structurally, so `Party` / `GameScene` / `LocalPlayer` read
- * one interface and neither knows nor cares whether a socket is involved.
+ * The room-shaped surface the client consumes, independent of transport. A
+ * `LocalAuthority` seat (solo/couch, in-process) satisfies it today; a guest's
+ * `RemoteAuthority` over a WebRTC transport (P2P) will satisfy the same interface,
+ * so `Party` / `GameScene` / `LocalPlayer` read one interface and neither knows nor
+ * cares whether a socket is involved.
  *
  * This is the seam the whole single-client migration turns on: for solo there is no
  * serialization at all — `state` is the live Observable GameState the sim mutates,

@@ -7,8 +7,9 @@ export default defineConfig({
       shared: path.resolve(__dirname, "shared/src/index.ts"),
     },
   },
-  // Colyseus schemas use TS legacy decorators, and their @type fields must be
-  // assigned (not `defineProperty`-declared) or the serializer never sees them.
+  // The observable state primitive (@tracked) relies on class fields being ASSIGNED
+  // (not `defineProperty`-declared) so its Proxy sees each write. Keep legacy field
+  // semantics; the decorator flag is harmless leftover kept for any @tracked usage.
   oxc: {
     decorator: { legacy: true },
     define: { useDefineForClassFields: "false" },
@@ -19,10 +20,11 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reportsDirectory: "coverage",
-      include: ["shared/src/**/*.ts", "server/src/**/*.ts"],
+      include: ["shared/src/**/*.ts", "engine/src/**/*.ts", "server/src/**/*.ts"],
       exclude: [
         "**/*.generated.ts",
         "shared/src/index.ts",
+        "engine/src/index.ts",
         "server/src/index.ts",
       ],
       reporter: ["text-summary", "html"],

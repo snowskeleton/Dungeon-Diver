@@ -1,20 +1,22 @@
 {
   "name": "server",
   "version": "0.0.1",
+  "description": "The only process that serves: static client host + P2P signaling/room-registry relay. Holds no game state — the simulation runs in the client (see engine/).",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --outfile=dist/index.js --external:colyseus --external:@colyseus/* --external:express",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --outfile=dist/index.js --external:express --external:ws",
     "typecheck": "tsc --noEmit",
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "colyseus": "^0.15.57",
     "express": "^4.19.2",
-    "shared": "*"
+    "shared": "*",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/node": "^20.14.0",
+    "@types/ws": "^8.5.10",
     "esbuild": "^0.21.5",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.4.5"

@@ -34,7 +34,7 @@ export default defineConfig({
       shared: path.resolve(__dirname, "../shared/src/index.ts"),
       // The authoritative simulation is now client-importable (Colyseus- and
       // matter-free portable TS). The in-process LocalAuthority runs it directly.
-      "@sim": path.resolve(__dirname, "../server/src"),
+      "@engine": path.resolve(__dirname, "../engine/src"),
     },
   },
   esbuild: {

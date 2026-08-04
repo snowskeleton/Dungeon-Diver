@@ -7,10 +7,9 @@
 // sessionId), so those are stubbed and everything else is the shipping code.
 
 import { vi } from "vitest";
-import { matchMaker } from "colyseus";
 import { CreateRoomOptions, JoinRoomOptions, DebugConfig, MAP_SEED } from "shared";
-import { GameRoom } from "../../server/src/rooms/GameRoom";
-import { GameState } from "../../server/src/schema/GameState";
+import { GameRoom } from "../../engine/src/rooms/GameRoom";
+import { GameState } from "../../engine/src/schema/GameState";
 
 export interface Broadcast {
   type: string;
@@ -29,7 +28,7 @@ export interface RoomHarness {
   state: GameState;
   /** True once the room has locked itself — D12's "no dropping into a run". */
   isLocked(): boolean;
-  /** The metadata last published to the matchmaker listing. */
+  /** The metadata the room last published (lobby listing / registry). */
   metadata(): unknown;
   broadcasts: Broadcast[];
   /** Join a client and return its handle. */
@@ -45,21 +44,9 @@ export interface RoomHarness {
   dispose(): void;
 }
 
-// Room-code allocation scans the matchmaker's own listing, and a unit test has
-// no matchmaker running. Booting its in-process LocalDriver gives a real, empty
-// listing — no codes taken, so allocation succeeds on its first draw — without
-// stubbing the lookup itself.
-let matchMakerReady: Promise<unknown> | null = null;
-function ensureMatchMaker() {
-  matchMakerReady ??= matchMaker.setup(undefined, undefined);
-  return matchMakerReady;
-}
-
 export async function createRoom(
   options: (CreateRoomOptions & { debug?: DebugConfig; roomCode?: string }) | undefined = undefined,
 ): Promise<RoomHarness> {
-  await ensureMatchMaker();
-
   const room = new GameRoom();
   const broadcasts: Broadcast[] = [];
   const handlers = new Map<string, (client: FakeClient, msg: unknown) => void>();

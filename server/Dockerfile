@@ -10,14 +10,18 @@ RUN npm install -g npm@11
 # Install the full workspace graph so `shared` resolves for both builds.
 COPY package.json package-lock.json ./
 COPY shared/package.json ./shared/
+COPY engine/package.json ./engine/
 COPY client/package.json ./client/
 COPY server/package.json ./server/
 RUN npm ci
 
 COPY shared ./shared
+COPY engine ./engine
 COPY server ./server
 COPY client ./client
 RUN npm run build --workspace=server   # -> server/dist/index.js, shared inlined
+# The client bundles the engine (authoritative sim) via the @engine alias, so engine/
+# must be present above for vite to resolve it.
 RUN npm run build --workspace=client   # -> client/dist (static site)
 
 # --- runtime: the bundle + its externalized deps, serving the client too --------
@@ -30,10 +34,11 @@ COPY --from=build /app/server/dist ./dist
 COPY --from=build /app/client/dist ./client
 # The bundle externalizes these (see server/package.json build script); everything
 # else — including all of shared/ — is baked into dist/index.js. The server serves
-# ./client (CLIENT_DIR default is ../client relative to dist/).
+# ./client (CLIENT_DIR default is ../client relative to dist/) and runs the P2P
+# signaling relay. It holds no game code, so no engine deps here.
 RUN npm init -y >/dev/null \
   && npm install --omit=dev --no-audit --no-fund \
-       colyseus@^0.15.57 express@^4.19.2 matter-js@^0.20.0
+       express@^4.19.2 ws@^8.18.0
 
 EXPOSE 2567
 CMD ["node", "dist/index.js"]

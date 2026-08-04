@@ -13,7 +13,7 @@ import * as path from "path";
 import * as ts from "typescript";
 
 // ── Layout ──────────────────────────────────────────────────────────────────
-const ENTITIES = path.resolve(__dirname, "../../server/src/entities");
+const ENTITIES = path.resolve(__dirname, "../../engine/src/entities");
 const ENEMIES_DIR = path.join(ENTITIES, "enemies");
 const BOSSES_DIR = path.join(ENTITIES, "bosses");
 

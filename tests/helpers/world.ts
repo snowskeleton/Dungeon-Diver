@@ -18,13 +18,13 @@ import {
   PLAYER_ATTACK_AFFECTS,
   ENEMY_ATTACK_AFFECTS,
 } from "shared";
-import { PhysicsWorld } from "../../server/src/physics/PhysicsWorld";
-import { Player } from "../../server/src/entities/Player";
-import { Enemy } from "../../server/src/entities/Enemy";
-import { Projectile } from "../../server/src/entities/Projectile";
-import { CombatSystem } from "../../server/src/combat/CombatSystem";
-import { HitSource } from "../../server/src/combat/HitSource";
-import { HitEvent } from "../../server/src/combat/CombatSystem";
+import { PhysicsWorld } from "../../engine/src/physics/PhysicsWorld";
+import { Player } from "../../engine/src/entities/Player";
+import { Enemy } from "../../engine/src/entities/Enemy";
+import { Projectile } from "../../engine/src/entities/Projectile";
+import { CombatSystem } from "../../engine/src/combat/CombatSystem";
+import { HitSource } from "../../engine/src/combat/HitSource";
+import { HitEvent } from "../../engine/src/combat/CombatSystem";
 
 export const COLS = 60;
 export const ROWS = 40;

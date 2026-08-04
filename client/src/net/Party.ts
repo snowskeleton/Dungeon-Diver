@@ -1,10 +1,7 @@
-import { Client, Room } from "colyseus.js";
 import {
-  DebugConfig, GameStateView, RoomListing, RoomMetadata,
-  ROOM_CODE_LOOKUP_PATH, MAX_CLIENTS,
+  DebugConfig, GameStateView, RoomListing, MAX_CLIENTS,
 } from "shared";
 import { Loadout } from "../launch";
-import { SERVER_URL, SERVER_HTTP_URL } from "./serverUrl";
 import { RoomLike } from "./RoomLike";
 import { LocalAuthority } from "./LocalAuthority";
 
@@ -12,16 +9,17 @@ import { LocalAuthority } from "./LocalAuthority";
  * The set of connections one machine holds to one room — the party, as the
  * network sees it.
  *
- * Same-screen co-op is still one Colyseus connection per player, so "the party"
- * was previously an implementation detail buried in LocalPlayerManager, which
- * both dialled the server and built Phaser sprites. That worked while the only
- * way into a game was GameScene doing a joinOrCreate on load. It stopped working
- * the moment a lobby existed: the connections are made in the LOBBY, minutes
- * before any sprite exists, and must survive the scene change into the run.
+ * Same-screen co-op is still one room seat per player, so "the party" was
+ * previously an implementation detail buried in LocalPlayerManager, which both
+ * opened the seats and built Phaser sprites. That worked while the only way into a
+ * game was GameScene joining on load. It stopped working the moment a lobby
+ * existed: the seats are taken in the LOBBY, minutes before any sprite exists, and
+ * must survive the scene change into the run.
  *
- * So this owns the socket half and nothing else — no Phaser, no scene. The
+ * So this owns the connection half and nothing else — no Phaser, no scene. The
  * lobby builds one and hands it to GameScene, which renders the members it
- * finds rather than joining anything itself.
+ * finds rather than joining anything itself. A seat is a RoomLike: an in-process
+ * LocalAuthority seat today, a WebRTC-backed RemoteAuthority once P2P lands.
  */
 
 export interface PartyMember {
@@ -39,29 +37,24 @@ export interface HostOptions {
   debug: DebugConfig | null;
 }
 
-/** Thrown for every failed join so callers can show one message. Colyseus's own
- *  errors are protocol-shaped ("room is locked"); this is player-shaped. */
+/** Thrown for every failed join so callers can show one message. This is
+ *  player-shaped ("that room is full"), not protocol-shaped. */
 export class JoinError extends Error {}
 
-/** One Colyseus client for the whole app. It holds an endpoint, not a socket —
- *  each join opens its own — so the browser's polling and a party's four
- *  connections have no reason to disagree about where the server is. */
-const client = new Client(SERVER_URL);
+/** The online path (join/list a room hosted by another machine) is host-authoritative
+ *  P2P over WebRTC, being built in stages after the Colyseus→single-client migration.
+ *  Until the signaling server + transport land, every online entry point routes here so
+ *  the lobby shows one honest message instead of dialling a server that no longer exists.
+ *  Solo and same-screen couch play (the LocalAuthority path) are unaffected. */
+const ONLINE_COMING_SOON = "Online multiplayer is coming soon — solo and same-screen co-op work now.";
+function onlineComingSoon(): never {
+  throw new JoinError(ONLINE_COMING_SOON);
+}
 
-/** Public, unlocked rooms. Colyseus filters both for us — a private room is
- *  absent and a started run is locked — so this list is exactly the rooms a
- *  stranger may walk into. Free-standing because the browser lists rooms before
- *  there is a party to list them for. */
+/** Public, unlocked rooms hosted by other machines. Empty until the P2P room registry
+ *  lands; the browser calls this before a party exists, so it stays free-standing. */
 export async function listRooms(): Promise<RoomListing[]> {
-  const available = await client.getAvailableRooms("game");
-  return available
-    .filter((room) => room.metadata)
-    .map((room) => ({
-      roomId: room.roomId,
-      clients: room.clients,
-      maxClients: room.maxClients,
-      metadata: room.metadata as RoomMetadata,
-    }));
+  return [];
 }
 
 export class Party {
@@ -70,7 +63,7 @@ export class Party {
   /** Non-null only on the machine that created the room — the debug knobs the
    *  floor was generated with. Joiners read the same knobs off the schema. */
   debug: DebugConfig | null = null;
-  /** The in-process authority for a solo/local game — null on an online (colyseus)
+  /** The in-process authority for a solo/local game — null on an online (P2P guest)
    *  join. Held so couch players seat onto the same running sim. */
   private local: LocalAuthority | null = null;
   playerName: string;
@@ -94,8 +87,8 @@ export class Party {
   }
 
   get state(): GameStateView {
-    // The one boundary cast on this side: colyseus.js types room.state as the
-    // untyped decoded state. From here down it's the view the server implements.
+    // The one boundary cast on this side: RoomLike types state as unknown (a guest
+    // decodes it; the host holds the live Observable). From here down it's the view.
     return this.primary.state as unknown as GameStateView;
   }
 
@@ -123,23 +116,16 @@ export class Party {
     this.adopt(room, this.pendingLoadout, false);
   }
 
-  async joinById(roomId: string): Promise<void> {
-    const room = await this.dial(roomId, this.pendingLoadout, false);
-    this.adopt(room, this.pendingLoadout, false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async joinById(_roomId: string): Promise<void> {
+    onlineComingSoon();
   }
 
-  /** Resolve a 4-character code to a room id, then join it. Private rooms are
-   *  absent from the public listing, so only the server can do the first half. */
-  async joinByCode(code: string): Promise<void> {
-    const url = `${SERVER_HTTP_URL}${ROOM_CODE_LOOKUP_PATH}/${encodeURIComponent(code.toUpperCase())}`;
-    let payload: { roomId?: string; error?: string };
-    try {
-      payload = await (await fetch(url)).json();
-    } catch {
-      throw new JoinError("Couldn't reach the server.");
-    }
-    if (!payload.roomId) throw new JoinError(payload.error ?? "That room isn't available.");
-    await this.joinById(payload.roomId);
+  /** Resolve a 4-character code to a room and join it — an online path, so stubbed
+   *  until the P2P registry + transport land (see onlineComingSoon). */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async joinByCode(_code: string): Promise<void> {
+    onlineComingSoon();
   }
 
   /** Add a couch player (the `P` key in the lobby) to the room we're already in. */
@@ -150,10 +136,9 @@ export class Party {
       const room = await this.local.addSeat(this.joinOptions(loadout, true));
       return this.adopt(room, loadout, true);
     }
-    // Online (colyseus): dial the same room again as a couch player.
-    if (!this.joinedRoomId) return null;
-    const room = await this.dial(this.joinedRoomId, loadout, true);
-    return this.adopt(room, loadout, true);
+    // Online: a couch player would join the same remote room again — stubbed until
+    // the P2P path lands. Reachable only from an online room, which can't be entered yet.
+    return null;
   }
 
   /** The `couch` flag rides along so the server can mark these players ready on
@@ -165,20 +150,6 @@ export class Party {
       characterType: loadout.characterType,
       couch,
     };
-  }
-
-  private async dial(roomId: string, loadout: Loadout, couch: boolean): Promise<Room> {
-    try {
-      return await client.joinById(roomId, this.joinOptions(loadout, couch));
-    } catch (err) {
-      // Colyseus reports a started run and a full room the same way (both are
-      // "locked"), so say the thing that's true of both rather than guessing.
-      const message = err instanceof Error ? err.message : String(err);
-      if (/lock/i.test(message)) {
-        throw new JoinError("That room is full, or its run has already started.");
-      }
-      throw new JoinError(message);
-    }
   }
 
   private adopt(room: RoomLike, loadout: Loadout, couch: boolean): PartyMember {

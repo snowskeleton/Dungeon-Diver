@@ -1,0 +1,16 @@
+{
+  "name": "engine",
+  "version": "0.0.1",
+  "description": "The authoritative game simulation — a library the client bundles and runs (in-process for solo, on the host peer for P2P). Not a server; see server/ for the process that serves.",
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "shared": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.4.5"
+  }
+}

@@ -1,7 +1,13 @@
-import { GameRoom } from "@sim/rooms/GameRoom";
-import { RoomClient } from "@sim/rooms/LocalRoom";
+import { GameRoom } from "@engine/rooms/GameRoom";
+import { RoomClient } from "@engine/rooms/LocalRoom";
+import { assertEngineInvariants } from "@engine/index";
 import { CreateRoomOptions, JoinRoomOptions, DebugConfig } from "shared";
 import { RoomLike } from "./RoomLike";
+
+// Fail loudly at sim boot if the content classes and their id-unions have drifted.
+// The sim runs in the client now, so this is where the old server's startup checks
+// live. Run once for the whole app, not per authority.
+let invariantsChecked = false;
 
 /**
  * Runs the authoritative simulation (GameRoom) IN-PROCESS and hands each local player
@@ -76,6 +82,10 @@ export class LocalAuthority {
   private readonly stateChangeCbs = new Set<() => void>();
 
   constructor(options: { roomName: string; isPrivate: boolean; debug: DebugConfig | null }) {
+    if (!invariantsChecked) {
+      assertEngineInvariants();
+      invariantsChecked = true;
+    }
     this.room.onBroadcast((type, payload) => {
       for (const seat of this.seats) seat.deliver(type, payload);
     });

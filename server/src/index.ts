@@ -1,22 +1,13 @@
 import { createServer } from "http";
 import path from "path";
 import express from "express";
-import { assertClassesHaveFirstRollPool } from "shared";
-import { assertUpgradesCoverAllIds } from "./upgrades";
 
-// Fail at boot, not silently at pick time, if the shared UpgradeId union and the
-// server's Upgrade classes have drifted apart.
-assertUpgradesCoverAllIds();
-// Likewise fail at boot if a class has no unique weapon category to roll its first
-// weapon from (its supply pedestal would be empty).
-assertClassesHaveFirstRollPool();
-
-// The authoritative simulation now runs IN THE CLIENT: in-process for solo (the
-// LocalAuthority) and host-authoritative peer-to-peer for multiplayer. This process
-// is no longer a game server — it serves the static client build and will host the
-// P2P signaling endpoint (Phase 5). The whole tick loop moved to
-// server/src/rooms/GameRoom (now a transport-agnostic LocalRoom) + the shared sim
-// tree, which the client imports directly.
+// This process is no longer a game server. The authoritative simulation runs IN THE
+// CLIENT — in-process for solo (the LocalAuthority) and host-authoritative peer-to-peer
+// for multiplayer (the host peer runs the engine). This process only:
+//   - serves the static client build (below), and
+//   - hosts the P2P signaling relay + room registry (added in Milestone 2).
+// It holds no game state and imports no game code (see engine/ for the simulation).
 
 const port = Number(process.env.PORT ?? 2567);
 const app = express();
@@ -32,6 +23,9 @@ if (process.env.SERVE_CLIENT !== "false") {
 }
 
 const httpServer = createServer(app);
+
+// M2 will attach the ws signaling relay to `httpServer` here, before listen().
+
 httpServer.listen(port, "0.0.0.0", () => {
   console.log(`[server] static/signaling server on :${port}`);
 });
