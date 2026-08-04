@@ -4,6 +4,9 @@ import {
 import { Loadout } from "../launch";
 import { RoomLike } from "./RoomLike";
 import { LocalAuthority } from "./LocalAuthority";
+import { HostSession } from "./HostSession";
+import { RemoteAuthority } from "./RemoteAuthority";
+import { dialHost, acceptGuests } from "./webrtc";
 import { signaling } from "./Signaling";
 
 /**
@@ -36,26 +39,18 @@ export interface HostOptions {
   roomName: string;
   isPrivate: boolean;
   debug: DebugConfig | null;
+  /** True for a room OTHER machines can join (Play Online → Host): the sim still runs
+   *  in-process, but we announce it to the signaling registry and accept WebRTC guests.
+   *  False (Play Solo) keeps the whole thing offline — no socket, no registry. */
+  online?: boolean;
 }
 
 /** Thrown for every failed join so callers can show one message. This is
  *  player-shaped ("that room is full"), not protocol-shaped. */
 export class JoinError extends Error {}
 
-/** The online path (join/list a room hosted by another machine) is host-authoritative
- *  P2P over WebRTC, being built in stages after the Colyseus→single-client migration.
- *  Until the signaling server + transport land, every online entry point routes here so
- *  the lobby shows one honest message instead of dialling a server that no longer exists.
- *  Solo and same-screen couch play (the LocalAuthority path) are unaffected. */
-const ONLINE_COMING_SOON = "Online multiplayer is coming soon — solo and same-screen co-op work now.";
-function onlineComingSoon(): never {
-  throw new JoinError(ONLINE_COMING_SOON);
-}
-
 /** Public, joinable rooms hosted by other machines, from the signaling registry. The
- *  browser calls this before a party exists, so it stays free-standing. Rooms only
- *  appear once a host announces one (the host/guest WebRTC path lands in M3–M4); until
- *  then this returns whatever is registered, which for now is nothing joinable. */
+ *  browser calls this before a party exists, so it stays free-standing. */
 export async function listRooms(): Promise<RoomListing[]> {
   try {
     return await signaling.list();
@@ -75,6 +70,11 @@ export class Party {
   /** The in-process authority for a solo/local game — null on an online (P2P guest)
    *  join. Held so couch players seat onto the same running sim. */
   private local: LocalAuthority | null = null;
+  /** Non-null only when THIS machine is hosting an online room: it bridges WebRTC
+   *  guests onto `local`'s GameRoom and pumps state down to them. */
+  private hostSession: HostSession | null = null;
+  /** Tear-down for the signaling `onSignal` listener that accepts guests. */
+  private stopAccepting: (() => void) | null = null;
   playerName: string;
   /** The loadout the next join should use: this machine's profile choice, which
    *  `setLoadout` keeps in step as it's changed in the lobby. */
@@ -123,18 +123,72 @@ export class Party {
     });
     const room = await this.local.addSeat(this.joinOptions(this.pendingLoadout, false));
     this.adopt(room, this.pendingLoadout, false);
+    if (options.online) await this.startHosting(options);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async joinById(_roomId: string): Promise<void> {
-    onlineComingSoon();
+  /** Announce this in-process room to the signaling registry and start accepting WebRTC
+   *  guests onto it. The host's own play is unaffected — it stays a zero-latency local
+   *  seat; guests just ride the same GameRoom over a transport. */
+  private async startHosting(options: HostOptions): Promise<void> {
+    if (!this.local) return;
+    await signaling.ready();
+    const { code } = await signaling.register({
+      roomName: options.roomName,
+      hostName: this.playerName,
+      isPrivate: options.isPrivate,
+      maxClients: MAX_CLIENTS,
+    });
+    // Surface the allocated code + name on the synced state so the lobby shows it and
+    // guests read the same values (the host is authoritative over its own state).
+    const s = this.local.roomState as unknown as {
+      roomCode: string; roomName: string; isPrivate: boolean;
+    };
+    s.roomCode = code;
+    s.roomName = options.roomName;
+    s.isPrivate = options.isPrivate;
+
+    this.hostSession = new HostSession(this.local);
+    this.stopAccepting = acceptGuests(signaling, (t) => this.hostSession!.acceptGuest(t));
+    // Keep the registry's seat count honest as players come and go.
+    this.local.onStateChange(() => this.pushHostUpdate());
+    this.pushHostUpdate();
   }
 
-  /** Resolve a 4-character code to a room and join it — an online path, so stubbed
-   *  until the P2P registry + transport land (see onlineComingSoon). */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async joinByCode(_code: string): Promise<void> {
-    onlineComingSoon();
+  /** Reflect this host's live room into the registry (seat count, and phase/lock once
+   *  the run starts) so the browser list and code lookups stay accurate. */
+  private pushHostUpdate(): void {
+    if (!this.hostSession) return;
+    const s = this.state;
+    signaling.update({
+      phase: s.phase,
+      locked: s.phase === "run",
+      clients: s.players.size,
+      roomName: s.roomName,
+    });
+  }
+
+  /** Join a room hosted on another machine: open a WebRTC channel to its host peer and
+   *  drive it through a guest RemoteAuthority. `roomId` IS the host's peer id. */
+  async joinById(roomId: string): Promise<void> {
+    try {
+      await signaling.ready();
+      const transport = await dialHost(signaling, roomId);
+      const remote = new RemoteAuthority(transport, roomId);
+      await remote.connect(this.joinOptions(this.pendingLoadout, false));
+      
+      this.adopt(remote, this.pendingLoadout, false);
+    } catch (err) {
+      throw new JoinError(err instanceof Error ? err.message : "Couldn't join that room.");
+    }
+  }
+
+  /** Resolve a 4-character code to a host peer, then join it (private rooms are only
+   *  reachable this way — they never appear in the public list). */
+  async joinByCode(code: string): Promise<void> {
+    await signaling.ready();
+    const result = await signaling.resolveCode(code.trim());
+    if (!result.ok) throw new JoinError(result.error);
+    await this.joinById(result.roomId);
   }
 
   /** Add a couch player (the `P` key in the lobby) to the room we're already in. */
@@ -197,6 +251,16 @@ export class Party {
     const rooms = this.membersList.map((m) => m.room);
     this.membersList.length = 0;
     this.joinedRoomId = null;
+    // Tear down the hosting side, if any: stop accepting guests, drop the registry
+    // entry, and end the state pump.
+    if (this.hostSession) {
+      this.stopAccepting?.();
+      this.stopAccepting = null;
+      this.hostSession.dispose();
+      this.hostSession = null;
+      signaling.update({ phase: "run", locked: true, clients: 0 });
+    }
+    
     await Promise.all(rooms.map((room) => room.leave()));
   }
 }

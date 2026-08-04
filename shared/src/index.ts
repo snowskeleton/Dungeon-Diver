@@ -17,5 +17,6 @@ export * from "./enemies";
 export * from "./stateViews";
 export * from "./lobby";
 export * from "./signaling";
+export * from "./p2p";
 export * from "./economy";
 export * from "./changelog";

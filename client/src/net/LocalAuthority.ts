@@ -101,6 +101,36 @@ export class LocalAuthority {
     return this.room.state;
   }
 
+  /** Subscribe to the sim's broadcasts (fan-out sends like `hits`/`floor_change`).
+   *  The P2P HostSession uses this to relay them out to guests over their transports;
+   *  local seats already receive them via the constructor's subscription. Returns an
+   *  unsubscribe. */
+  onBroadcast(cb: (type: string, payload: unknown) => void): () => void {
+    return this.room.onBroadcast(cb);
+  }
+
+  /** Seat a GUEST: a client whose `send` goes out over a transport rather than into an
+   *  in-process listener. Same GameRoom, so a guest and the host share one authoritative
+   *  world; only the delivery of directed messages differs. Resolves once joined. */
+  async addRemoteClient(client: RoomClient, joinOptions: JoinRoomOptions): Promise<void> {
+    await this.ready;
+    this.room.onJoin(client, joinOptions);
+    this.fireStateChange();
+  }
+
+  /** A guest disconnected — drop its seat. Unlike a local seat this never disposes the
+   *  room (the host is still here); the room dies only when the host's own seats empty. */
+  removeRemoteClient(client: RoomClient): void {
+    this.room.onLeave(client);
+    this.fireStateChange();
+  }
+
+  /** True once the sim has finished onCreate — HostSession awaits this before it starts
+   *  streaming so a snapshot never races an unbuilt floor. */
+  get whenReady(): Promise<unknown> {
+    return this.ready;
+  }
+
   /** Seat a local player. Resolves once the sim has processed the join. */
   async addSeat(joinOptions: JoinRoomOptions): Promise<RoomLike> {
     await this.ready;

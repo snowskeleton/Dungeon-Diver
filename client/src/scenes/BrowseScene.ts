@@ -40,6 +40,7 @@ export class BrowseScene extends Phaser.Scene {
             roomName: roomName.trim() || `${profile.name}'s run`,
             isPrivate,
             debug: null,
+            online: true,
           })),
         onRefresh: () => void this.refresh(),
         onBack: () => this.scene.start("MenuScene"),

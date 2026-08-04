@@ -5,6 +5,10 @@ export default defineConfig({
   resolve: {
     alias: {
       shared: path.resolve(__dirname, "shared/src/index.ts"),
+      // The client's net layer (LocalAuthority/HostSession/RemoteAuthority) deep-imports
+      // the sim via this alias; the P2P session tests exercise those, so vitest resolves
+      // it the same way vite does for the client bundle.
+      "@engine": path.resolve(__dirname, "engine/src"),
     },
   },
   // The observable state primitive (@tracked) relies on class fields being ASSIGNED
