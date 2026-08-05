@@ -14,7 +14,7 @@ import { meleeWindupPose } from "./meleeWindupPose";
 // gives a bracketing pair with margin for 60 Hz patch jitter. Remote players are pure
 // upside here — a small constant trail is invisible and standard, and it's what removes
 // the stop-overshoot drift entirely (we never project past a real sample).
-const REMOTE_PLAYER_INTERP_MS = 100;
+const REMOTE_PLAYER_INTERP_MS = 200;
 
 export class RemotePlayer extends Entity implements DebugDrawable {
   private targetX: number;
