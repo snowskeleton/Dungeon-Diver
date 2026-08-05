@@ -3,7 +3,7 @@ import {
   InputMessage, CharacterClass, CharacterType, Character, getCharacter,
   Weapon, WeaponView, WeaponSlotView, UpgradeSlotView, resolveWeapon, Facing, facingFromInput,
   GameStateView, PlayerStateView, ShopStateView, ShopItemStateView, OfferStateView, RewardStateView, ChestStateView, DroppedWeaponStateView,
-  PLAYER_HURT_BOUNDS, FOOT_OFFSET,
+  PLAYER_HURT_BOUNDS, FOOT_OFFSET, ComboSwing, swingDurationMs,
 } from "shared";
 import { Entity } from "./Entity";
 import { RoomLike } from "../net/RoomLike";
@@ -30,14 +30,6 @@ const SHOP_BUY_RADIUS = 40;
 // worst-case steady-state lead so normal play NEVER snaps (a snap on the lead is
 // what makes prediction feel like it isn't working).
 const RECONCILE_SNAP_PX = 48;
-
-// Minimum time a predicted swing keeps asserting the "attack" action, so a fast
-// weapon's short cooldown doesn't drop the clip before the server's confirmation
-// (serverAttacking) arrives to carry it. Sized to comfortably cover a round-trip.
-const MIN_PREDICT_WINDOW_MS = 220;
-// A predicted swing must be confirmed by a server attackSeq within this window; past
-// it we assume the server rejected the press and drop the pending entry.
-const PREDICT_CONFIRM_WINDOW_MS = 400;
 
 export class LocalPlayer extends Entity implements DebugDrawable {
   readonly room: RoomLike;
@@ -98,37 +90,52 @@ export class LocalPlayer extends Entity implements DebugDrawable {
   private lastInput: InputMessage = { dx: 0, dy: 0, attack: false, ability: false };
   private facing: Facing = "down";
   private prevAttack = false;
-  // MELEE swing visuals are PREDICTED from local input (see maybePredictSwing) so your
-  // own swing fires the instant you press instead of a round-trip later — the "mushy
-  // attack" fix. Damage stays 100% server-authoritative (it flows from the `hits`
-  // broadcast, untouched). Ranged/hold shots stay server-driven: projectile travel
-  // already hides their latency and hold-fire cadence is the server's to own.
-  /** When the current swing's animation began (performance.now()), so the debug
-   *  overlay can ask the weapon for the hurtbox of the frame on screen right now.
-   *  -Infinity until the first swing, which reads as "animation long over". For a
-   *  predicted swing this leads the authoritative strike by ~one RTT (accepted). */
-  private swingStartedAt = -Infinity;
-  // Mid melee wind-up (holding the cocked-back pose before the strike) — suppresses
-  // the debug hurtbox and marks where the swing arc's clock restarts.
-  private windingUp = false;
+  // ── Local melee animation (fully client-owned) ───────────────────────────────
+  // A MELEE swing's visuals are simulated HERE from local input, running the exact same
+  // clock the server's MeleeWeaponSpell does: wind-up = the weapon's (modified)
+  // attackCooldownMs, strike = swingDurationMs(fxType), combo grace = comboWindowMs,
+  // hard-swing hold = chargeHoldMs — every number read from `shared` (or the synced
+  // slot), so client and server CAN'T drift. The server stays authoritative for the only
+  // two things that cross the wire: DAMAGE (the `hits` broadcast) and POSITION (reconciled
+  // in syncFromServer). We deliberately DON'T read the server's animation fields
+  // (isAttacking / windingUp / attackSeq / comboStep / hardSwing) for our OWN melee sprite
+  // — rendering round-tripped animation state is what made the swing feel laggy and forced
+  // the old predict-then-reconcile kludge. RemotePlayer still renders those fields (it's
+  // showing the server's view of a DIFFERENT player): predict-self, interpolate-others.
+  // RANGED / AOE weapons stay server-driven (projectile travel already hides their latency,
+  // and hold-fire cadence is the server's to own) — see the non-melee branch of syncFromServer.
+  private meleePhase: "none" | "windup" | "strike" = "none";
+  private prevMeleePhase: "none" | "windup" | "strike" = "none";
+  private phaseStartedAt = 0;
+  private phaseDurationMs = 0;
+  // The swing now in flight (chosen when it fires): its FX strip, combo index, hard flag.
+  private curSwing: ComboSwing | null = null;
+  private curComboStep = 0;
+  private curHard = false;
+  // Combo chain: index walks 0→1→2→0 across taps within the grace window; lastSwingAt is
+  // when the previous swing began (wall clock). Mirrors Player.advanceCombo exactly.
+  private comboIndex = 0;
+  private lastSwingAt = -Infinity;
+  // Deferred heavy: a held press past chargeHoldMs arms a hard swing that fires on release.
+  private charging = false;
+  private chargeStartedAt = 0;
+  private hardQueued = false;
+  // A fresh press that couldn't fire (weapon mid-swing) is remembered until this time, so
+  // an early tap still lands the moment the weapon frees up. 0 = nothing buffered.
+  private bufferedUntil = 0;
+  // The active weapon's synced (mod-adjusted) attack cooldown — the wind-up hold length.
+  // Read from the synced slot so an attack-speed roll shortens the local wind-up too.
+  private activeAttackCooldownMs = 0;
+  // Server-driven attack flag, used ONLY to animate ranged/AOE weapons (their swing/shot
+  // visuals stay authoritative). Melee ignores it — the local machine owns that sprite.
   private serverAttacking = false;
   private lastAttackSeq = -1;
-  // ── Local melee-swing prediction ─────────────────────────────────────────────
-  // While now < this, hold the "attack" action so a predicted swing's clip isn't cut
-  // short by the walk/idle anim before the server confirms (and takes over via
-  // serverAttacking). Covers ~one RTT so the handoff is seamless.
-  private predictedSwingUntil = 0;
-  // Local mirrors of the server's swing gate, so we never SHOW a swing the server will
-  // drop: a cooldown-ready clock and the combo index (advanced within the grace window,
-  // reset outside it). Reset on weapon change.
-  private localSwingReadyAt = 0;
-  private localComboStep = 0;
-  private localLastSwingAt = -Infinity;
-  // Timestamps of predicted swings not yet confirmed by a server attackSeq. When the
-  // confirming attackSeq arrives we consume one and SKIP the retrigger (the clip is
-  // already on screen); entries older than the confirm window are pruned as rejected so
-  // they can't swallow a later real swing.
-  private unconfirmedPredictedSwings: number[] = [];
+  /** When the current swing's arc animation began (performance.now()), so the debug overlay
+   *  reads the hurtbox of the frame actually on screen. -Infinity = no swing has struck yet. */
+  private swingStartedAt = -Infinity;
+  // True while holding the cocked wind-up pose (before the blade comes out) — suppresses
+  // the debug hurtbox and marks where the swing arc's clock restarts.
+  private windingUp = false;
   hp: number;
   downed = false;
   reviveProgress = 0;
@@ -215,10 +222,11 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     }
     this.prevAttack = input.attack;
 
-    // Predict the melee swing on the local press so it fires this frame, not a
-    // round-trip later. Must run before the action is chosen below.
+    // Simulate the local player's melee swing from this frame's input — the same
+    // wind-up→strike clock the server runs, so it animates instantly and can't drift.
+    // Must run before the action/pose are chosen below.
     const now = performance.now();
-    if (!locked) this.maybePredictSwing(risingEdge, now);
+    this.updateLocalMelee(input.attack && !locked, risingEdge && !locked, now);
 
     // Client-side prediction: move the sprite locally THIS frame instead of waiting
     // for the input→server→broadcast round-trip, so control feels instant. The
@@ -228,48 +236,157 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     this.setPosition(this.predicted.x, this.predicted.y);
 
     const isMoving = input.dx !== 0 || input.dy !== 0;
-    // A predicted swing holds "attack" until the server confirms (serverAttacking) or
-    // the window lapses; resolveEffectiveAction still reverts to idle once the one-shot
-    // clip finishes, so a rejected press never freezes the pose.
-    const attacking = this.serverAttacking || now < this.predictedSwingUntil;
-    const action = attacking ? "attack" : isMoving ? "walk" : "idle";
+    // The local melee machine drives the pose (cocked wind-up / heavy charge) and fires the
+    // swing arc; applyMeleePose does that and reports whether the arc is on screen. Ranged/AOE
+    // stay server-driven via serverAttacking. Nothing here is authoritative — damage + position are.
+    const meleeStriking = this.applyMeleePose(now);
+    const w = this.weapon;
+    const rangedFiring = !!w && (w.isRanged || w.isAoe) && this.serverAttacking;
+    const action = meleeStriking || rangedFiring ? "attack" : isMoving ? "walk" : "idle";
     this.playAnim(action, this.facing);
     this.renderMovementFX();
   }
 
-  // Fire the melee swing visuals from the local press, gated by a local mirror of the
-  // server's cooldown/combo so we never show a swing the server will drop. The actual
-  // damage is unaffected — it comes from the server's `hits` broadcast. Ranged/hold
-  // weapons are left server-driven (see the field comment).
-  private maybePredictSwing(risingEdge: boolean, now: number) {
-    if (!risingEdge) return;
+  // ── Local melee state machine ────────────────────────────────────────────────
+  // A direct mirror of the server's Player.updateMelee, run for VISUALS only. A tap fires a
+  // swing immediately (a rear-back wind-up, then the arc); holding past chargeHoldMs arms a
+  // single heavy that fires on release; an early tap that can't fire yet is buffered. Every
+  // duration is the same `shared` number the server uses, so the on-screen swing lines up
+  // with the authoritative one. Only melee weapons run this — ranged/AOE stay server-driven.
+  private updateLocalMelee(attackHeld: boolean, risingEdge: boolean, now: number) {
     const w = this.weapon;
-    if (!w || w.isRanged) return;
-    if (this.downed || this.roomState.paused) return;
-    if (now < this.localSwingReadyAt) return; // local cooldown mirror
-    this.pruneUnconfirmedPredicted(now);
+    if (!w || w.isRanged || w.isAoe || this.downed || this.roomState.paused) {
+      this.resetMelee();
+      return;
+    }
+    this.tickMeleePhase(now);
+    const busy = this.meleePhase !== "none";
+    const opts = loadOptions();
 
-    // Mirror the server's combo: advance within the grace window, else restart.
-    const withinCombo = now - this.localLastSwingAt <= loadOptions().comboWindowMs;
-    const swings = w.comboSwings;
-    this.localComboStep = withinCombo && swings.length ? (this.localComboStep + 1) % swings.length : 0;
-    this.localLastSwingAt = now;
-    this.localSwingReadyAt = now + w.attackCooldownMs;
+    // Age out any buffered press.
+    if (this.bufferedUntil && now > this.bufferedUntil) this.bufferedUntil = 0;
 
-    // Show the swing now (a normal combo swing — the charged/hard release stays
-    // server-driven so its heavier timing/pose is authoritative).
-    this.setPendingComboSwing(w.id, this.localComboStep, false);
-    this.retriggerAttack();
-    this.swingStartedAt = now;
-    this.predictedSwingUntil = now + Math.max(w.attackCooldownMs, MIN_PREDICT_WINDOW_MS);
-    this.unconfirmedPredictedSwings.push(now);
+    // Fresh press: swing right away and begin charging a heavy follow-up. If the weapon is
+    // still mid-swing, remember the press for attackBufferMs so an early tap isn't lost.
+    if (risingEdge) {
+      if (!busy) {
+        this.fireSwingLocal(false, now);
+        this.charging = true;
+        this.chargeStartedAt = now;
+        return;
+      }
+      this.bufferedUntil = now + opts.attackBufferMs;
+    }
+
+    // Release past the hold threshold arms the heavy (the initial tap already went out).
+    if (this.charging && !attackHeld) {
+      if (now - this.chargeStartedAt >= opts.chargeHoldMs) this.hardQueued = true;
+      this.charging = false;
+    }
+
+    // A buffered press fires as a fresh swing the moment the weapon frees up.
+    if (this.bufferedUntil && !busy) {
+      this.bufferedUntil = 0;
+      this.fireSwingLocal(false, now);
+      this.charging = true;
+      this.chargeStartedAt = now;
+      return;
+    }
+    // A queued heavy fires as soon as the weapon is free (it does not start its own charge).
+    if (this.hardQueued && !busy) {
+      this.hardQueued = false;
+      this.fireSwingLocal(true, now);
+    }
   }
 
-  private pruneUnconfirmedPredicted(now: number) {
-    const cutoff = now - PREDICT_CONFIRM_WINDOW_MS;
-    while (this.unconfirmedPredictedSwings.length && this.unconfirmedPredictedSwings[0] < cutoff) {
-      this.unconfirmedPredictedSwings.shift();
+  // Advance the wind-up → strike → done timeline. Wind-up holds the cocked pose for the
+  // weapon's cooldown; the strike plays the arc for the FX strip's own length.
+  private tickMeleePhase(now: number) {
+    if (this.meleePhase === "none") return;
+    if (now - this.phaseStartedAt < this.phaseDurationMs) return;
+    if (this.meleePhase === "windup") {
+      this.meleePhase = "strike";
+      this.phaseStartedAt = now;
+      this.phaseDurationMs = swingDurationMs(this.curSwing!.fxType);
+    } else {
+      this.meleePhase = "none";
     }
+  }
+
+  // Begin a swing: choose the combo/hard variant, then enter the wind-up hold.
+  private fireSwingLocal(hard: boolean, now: number) {
+    const w = this.weapon!;
+    if (hard) {
+      this.curHard = true;
+      this.curSwing = w.hardSwing;
+      this.curComboStep = 0;
+      this.comboIndex = 0; // a heavy is its own move — the next tap starts a fresh chain
+    } else {
+      this.advanceCombo(now);
+      this.curHard = false;
+      this.curComboStep = this.comboIndex;
+      this.curSwing = w.comboSwings[this.comboIndex % w.comboSwings.length];
+    }
+    this.lastSwingAt = now;
+    this.meleePhase = "windup";
+    this.phaseStartedAt = now;
+    this.phaseDurationMs = this.windUpMs();
+  }
+
+  /** The chain continues only when the gap since the last swing is within the weapon's
+   *  cooldown plus the grace window; otherwise it restarts at swing 0. Mirrors the server. */
+  private advanceCombo(now: number) {
+    const w = this.weapon!;
+    const graceExpired = now - this.lastSwingAt > this.windUpMs() + loadOptions().comboWindowMs;
+    this.comboIndex = graceExpired ? 0 : (this.comboIndex + 1) % w.comboSwings.length;
+  }
+
+  /** The wind-up hold length = the active weapon's mod-adjusted cooldown (synced per slot),
+   *  falling back to the template default before the first sync lands. */
+  private windUpMs(): number {
+    return this.activeAttackCooldownMs || this.weapon!.attackCooldownMs;
+  }
+
+  /** Drop any in-flight swing / charge (weapon swap to non-melee, downed, or paused). */
+  private resetMelee() {
+    this.meleePhase = "none";
+    this.charging = false;
+    this.hardQueued = false;
+    this.bufferedUntil = 0;
+    this.windingUp = false;
+  }
+
+  /** Drive the melee pose from the machine and fire the swing arc's strip the frame it
+   *  strikes. Returns true while the strike arc is on screen (so update() plays the attack
+   *  clip). A no-op for ranged/AOE weapons — those keep their server-driven visuals. */
+  private applyMeleePose(now: number): boolean {
+    const w = this.weapon;
+    if (!w || w.isRanged || w.isAoe) {
+      this.windingUp = false;
+      return false;
+    }
+    // Strike edge: pick the strip for the swing in flight, restart the arc clock, and force
+    // the one-shot attack clip to (re)play even mid-combo (retrigger clears the edge latch).
+    if (this.meleePhase === "strike" && this.prevMeleePhase !== "strike") {
+      this.setPendingComboSwing(w.id, this.curComboStep, this.curHard);
+      this.retriggerAttack();
+      this.swingStartedAt = now;
+    }
+    this.prevMeleePhase = this.meleePhase;
+
+    // Two cocked-back poses share the wind-up frame: an in-flight swing's own rear-back
+    // (windup), and a held heavy charging AFTER a swing (telegraph, shown only while idle).
+    const windingUp = this.meleePhase === "windup";
+    const telegraph = this.meleePhase === "none" && this.charging;
+    const hardPose = windingUp
+      ? this.curHard
+      : telegraph && now - this.chargeStartedAt >= loadOptions().chargeHoldMs;
+    const swing = windingUp
+      ? this.curSwing
+      : hardPose ? w.hardSwing : w.comboSwings[0];
+    this.setChargePose(windingUp || telegraph, hardPose, swing ?? null);
+    this.windingUp = windingUp;
+    return this.meleePhase === "strike";
   }
 
   // Integrate the local player's position from this frame's input, mirroring the
@@ -552,38 +669,32 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     this.serverAttacking = state.isAttacking;
     this.ingestMovementState(state);
     this.checkAcquired(Array.from(state.weapons), Array.from(state.upgrades) as UpgradeSlotView[]);
-    // A new attackSeq means the server accepted a fresh attack — restart the
-    // swing/bow clip even if isAttacking never dropped (held-fire).
-    if (attackSeq !== this.lastAttackSeq) {
-      const now = performance.now();
-      this.pruneUnconfirmedPredicted(now);
-      if (this.unconfirmedPredictedSwings.length > 0) {
-        // This attackSeq confirms a swing we already predicted and drew — consume it and
-        // do NOT retrigger (that would restart the clip mid-swing). Keep the predicted
-        // swingStartedAt so the on-screen clip and debug hurtbox stay aligned.
-        this.unconfirmedPredictedSwings.shift();
-      } else {
-        // A swing we didn't predict (a charged/hard release, or a ranged shot) — drive
-        // it from the server as before.
+    // Melee swing visuals are owned by the local machine (updateLocalMelee / applyMeleePose)
+    // and IGNORE these server animation fields — that's what makes your own swing instant and
+    // drift-free. Ranged/AOE keep their authoritative visuals: a new attackSeq restarts the
+    // bow/cast clip (even when isAttacking never dropped on held-fire), and the wind-up pose
+    // follows the synced flags. `this.weapon` is still the pre-swap weapon on a swap frame,
+    // which is exactly whose animation this state belongs to.
+    const melee = !!this.weapon && !this.weapon.isRanged && !this.weapon.isAoe;
+    if (!melee) {
+      if (attackSeq !== this.lastAttackSeq) {
         this.setPendingComboSwing(weaponId, state.comboStep, state.hardSwing);
         if (this.lastAttackSeq !== -1) this.retriggerAttack();
-        this.swingStartedAt = now;
+        this.swingStartedAt = performance.now();
       }
-      this.lastAttackSeq = attackSeq;
+      if (this.weapon) this.setChargePose(...meleeWindupPose(state, this.weapon));
+      const wasWindingUp = this.windingUp;
+      this.windingUp = state.windingUp;
+      if (wasWindingUp && !this.windingUp) this.swingStartedAt = performance.now();
     }
-    // Hold the cocked-back first swing frame for both melee poses: the swing's own
-    // wind-up BEFORE the blow (windingUp) and the heavy charge held AFTER it. No
-    // weapon yet (before the first supply pickup) means nothing to pose.
-    if (this.weapon) this.setChargePose(...meleeWindupPose(state, this.weapon));
-    // The swing arc's animation clock starts at the STRIKE (the end of the wind-up),
-    // not the press — so the debug hurtbox lines up with the frame the resolver
-    // actually hit against. attackSeq set it at the press for fast (0ms) weapons.
-    const wasWindingUp = this.windingUp;
-    this.windingUp = state.windingUp;
-    if (wasWindingUp && !this.windingUp) this.swingStartedAt = performance.now();
-    // The active weapon's tint rides on its slot (a rolled modifier's colour), read
-    // from the active slot so the held icon matches the composed weapon.
+    // Track the sequence for both paths so a later swap to a ranged weapon can't replay a
+    // stale seq as a phantom shot.
+    this.lastAttackSeq = attackSeq;
+    // The active weapon's tint rides on its slot (a rolled modifier's colour), and its
+    // mod-adjusted cooldown drives the local wind-up hold (windUpMs) — both read from the
+    // active slot so the held icon and swing timing match the composed weapon.
     const activeSlot = state.weapons.at(state.activeWeaponIndex);
+    if (activeSlot) this.activeAttackCooldownMs = activeSlot.attackCooldownMs;
     const tint = activeSlot && activeSlot.tint >= 0 ? activeSlot.tint : null;
     // Active weapon changed (switch or acquire) — hot-swap the visuals + local
     // weapon so attack FX / facing-lock follow the new weapon.
@@ -593,11 +704,12 @@ export class LocalPlayer extends Entity implements DebugDrawable {
         this.activeWeaponId = weaponId;
         this.weapon = w;
         this.swapWeapon(w.fxType, w.id, w.rangedStyle, tint);
-        // A different weapon resets the local swing gate — its combo chain and cooldown
-        // don't carry over from the last one.
-        this.localComboStep = 0;
-        this.localSwingReadyAt = 0;
-        this.localLastSwingAt = -Infinity;
+        // A different weapon drops any in-flight local swing and resets the combo chain —
+        // its cooldown and combo don't carry over from the last one.
+        this.resetMelee();
+        this.comboIndex = 0;
+        this.lastSwingAt = -Infinity;
+        this.prevMeleePhase = "none";
       }
     } else {
       this.setWeaponTint(tint);
