@@ -49,11 +49,12 @@ The server and coturn only have to share one thing: `TURN_SECRET`.
    - `49160-49200/udp` — the relay media range (matches `min-port`/`max-port` in
      [turnserver.conf](../server/coturn/turnserver.conf))
 
-3. **Bring the stack up with the profile:**
+3. **Bring the stack up** (coturn is part of the default stack now):
    ```bash
-   docker compose --profile turn up -d --build
+   docker compose up -d --build
    ```
-   Without `--profile turn`, only the game server starts (STUN-only, as before).
+   coturn aborts at startup with a clear message if `TURN_SECRET` is unset, so a
+   misconfigured deploy fails loud rather than running an unauthenticatable relay.
 
 4. **If the host is behind NAT** (its public IP isn't on the interface coturn binds —
    uncommon for a single VPS): uncomment `external-ip=<public-ip>` in
@@ -69,7 +70,7 @@ The server and coturn only have to share one thing: `TURN_SECRET`.
   [Trickle ICE test page](https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/)
   and Gather. A `relay` candidate means TURN works; only `srflx`/`host` means the relay
   isn't reachable (usually a firewall port).
-- **coturn logs:** `docker compose --profile turn logs -f coturn` — a real relay session
+- **coturn logs:** `docker compose logs -f coturn` — a real relay session
   logs an allocation when two peers actually fall back to it.
 
 ## Notes / limits
@@ -79,8 +80,17 @@ The server and coturn only have to share one thing: `TURN_SECRET`.
   outright, add `tls-listening-port=443` + a cert to coturn and a `turns:` URL in
   `ice.ts` — TURN over TLS on 443 punches through almost anything, at the cost of running
   coturn on 443 (which then can't also be Caddy's).
-- Credential TTL is 12h (`TURN_TTL_SECONDS` in `ice.ts`) — far longer than a session; the
+- Credential TTL is 10 min (`TURN_TTL_SECONDS` in `ice.ts`) — safely above any WebRTC
+  handshake but short enough that a scraped credential expires almost immediately; the
   browser fetches a fresh set each time it starts connecting.
+- **Abuse containment.** The relay only ever forwards our game traffic, so coturn caps
+  each allocation at `max-bps` (~1 Mbps, ~2× a busy floor) plus `user-quota`/`total-quota`
+  and an aggregate `bps-capacity` ceiling ([turnserver.conf](../server/coturn/turnserver.conf)).
+  This makes the relay useless for bulk data no matter how many credentials get minted.
+  Separately, set `ALLOWED_ORIGINS` on the server (e.g. `https://game.dev.snowskeleton.net`)
+  to refuse `/api/ice` credential requests that don't carry your page's `Origin` — a
+  lightweight gate against other sites' pages and plain `curl` (a non-browser client can
+  still set the header by hand, which is why the coturn caps are the real backstop).
 - Relaying costs the server bandwidth (all game traffic for a relayed pair flows through
   it). For a hobby deployment that's negligible; it only kicks in for pairs that can't
   connect directly.

@@ -22,9 +22,14 @@ interface IceServer {
   credential?: string;
 }
 
-// Comfortably longer than any single co-op session; the browser fetches a fresh set
-// each time it starts connecting anyway.
-const TURN_TTL_SECONDS = 12 * 60 * 60;
+// Short-lived on purpose: the browser fetches a fresh set each time it starts
+// connecting, and a co-op session's WebRTC handshake completes in seconds. Keeping this
+// tight means a credential scraped from a client (or the network tab) is useless almost
+// immediately, so anyone wanting to abuse the relay has to keep coming back through
+// /api/ice — the one place a gate/rate-limit can live — rather than minting once and
+// relaying for hours. coturn allows a modest clock skew, so 10 min is safely above any
+// handshake without leaving a long reuse window.
+const TURN_TTL_SECONDS = 10 * 60;
 
 export function iceServers(): IceServer[] {
   const servers: IceServer[] = [

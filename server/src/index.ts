@@ -17,10 +17,30 @@ app.use(express.json());
 
 app.get("/healthz", (_req, res) => res.send("ok"));
 
+// Web origins allowed to mint TURN credentials, comma-separated (e.g.
+// "https://game.dev.snowskeleton.net"). Browsers attach the Origin header automatically
+// and JS can't forge it, so this refuses credentials to other sites' pages AND to plain
+// curl (which sends no Origin at all). It's a lightweight gate, not a wall — a non-browser
+// client can still set the header by hand — so the real abuse containment is the coturn
+// per-session cap + short credential TTL (see server/src/ice.ts + docs/turn.md). Empty →
+// no origin gating, which is the sensible local-dev default.
+const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 // The ICE server list (STUN + short-lived TURN credentials) a client fetches before
 // dialling a peer. Kept server-side so the TURN secret never reaches the browser —
 // only the derived, expiring credential does. See server/src/ice.ts + docs/turn.md.
-app.get("/api/ice", (_req, res) => res.json({ iceServers: iceServers() }));
+app.get("/api/ice", (req, res) => {
+  if (allowedOrigins.length > 0) {
+    const origin = req.headers.origin;
+    if (!origin || !allowedOrigins.includes(origin)) {
+      return res.status(403).json({ error: "forbidden origin" });
+    }
+  }
+  return res.json({ iceServers: iceServers() });
+});
 
 // Serve the built client from the same origin, so one process is the whole app.
 // Set CLIENT_DIR to override; in the Docker image the client build lands at ../client.
