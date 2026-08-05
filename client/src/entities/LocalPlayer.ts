@@ -31,6 +31,14 @@ const SHOP_BUY_RADIUS = 40;
 // what makes prediction feel like it isn't working).
 const RECONCILE_SNAP_PX = 48;
 
+// Minimum time a predicted swing keeps asserting the "attack" action, so a fast
+// weapon's short cooldown doesn't drop the clip before the server's confirmation
+// (serverAttacking) arrives to carry it. Sized to comfortably cover a round-trip.
+const MIN_PREDICT_WINDOW_MS = 220;
+// A predicted swing must be confirmed by a server attackSeq within this window; past
+// it we assume the server rejected the press and drop the pending entry.
+const PREDICT_CONFIRM_WINDOW_MS = 400;
+
 export class LocalPlayer extends Entity implements DebugDrawable {
   readonly room: RoomLike;
   /** The same room state, typed. The server's schema classes `implements` these
@@ -90,18 +98,37 @@ export class LocalPlayer extends Entity implements DebugDrawable {
   private lastInput: InputMessage = { dx: 0, dy: 0, attack: false, ability: false };
   private facing: Facing = "down";
   private prevAttack = false;
-  // Attack visuals are driven by the server (authoritative about which presses
-  // actually become attacks) so cooldown-rejected presses don't restart the
-  // swing clip and held-fire replays the bow each shot — matching RemotePlayer.
+  // MELEE swing visuals are PREDICTED from local input (see maybePredictSwing) so your
+  // own swing fires the instant you press instead of a round-trip later — the "mushy
+  // attack" fix. Damage stays 100% server-authoritative (it flows from the `hits`
+  // broadcast, untouched). Ranged/hold shots stay server-driven: projectile travel
+  // already hides their latency and hold-fire cadence is the server's to own.
   /** When the current swing's animation began (performance.now()), so the debug
    *  overlay can ask the weapon for the hurtbox of the frame on screen right now.
-   *  -Infinity until the first swing, which reads as "animation long over". */
+   *  -Infinity until the first swing, which reads as "animation long over". For a
+   *  predicted swing this leads the authoritative strike by ~one RTT (accepted). */
   private swingStartedAt = -Infinity;
   // Mid melee wind-up (holding the cocked-back pose before the strike) — suppresses
   // the debug hurtbox and marks where the swing arc's clock restarts.
   private windingUp = false;
   private serverAttacking = false;
   private lastAttackSeq = -1;
+  // ── Local melee-swing prediction ─────────────────────────────────────────────
+  // While now < this, hold the "attack" action so a predicted swing's clip isn't cut
+  // short by the walk/idle anim before the server confirms (and takes over via
+  // serverAttacking). Covers ~one RTT so the handoff is seamless.
+  private predictedSwingUntil = 0;
+  // Local mirrors of the server's swing gate, so we never SHOW a swing the server will
+  // drop: a cooldown-ready clock and the combo index (advanced within the grace window,
+  // reset outside it). Reset on weapon change.
+  private localSwingReadyAt = 0;
+  private localComboStep = 0;
+  private localLastSwingAt = -Infinity;
+  // Timestamps of predicted swings not yet confirmed by a server attackSeq. When the
+  // confirming attackSeq arrives we consume one and SKIP the retrigger (the clip is
+  // already on screen); entries older than the confirm window are pruned as rejected so
+  // they can't swallow a later real swing.
+  private unconfirmedPredictedSwings: number[] = [];
   hp: number;
   downed = false;
   reviveProgress = 0;
@@ -188,6 +215,11 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     }
     this.prevAttack = input.attack;
 
+    // Predict the melee swing on the local press so it fires this frame, not a
+    // round-trip later. Must run before the action is chosen below.
+    const now = performance.now();
+    if (!locked) this.maybePredictSwing(risingEdge, now);
+
     // Client-side prediction: move the sprite locally THIS frame instead of waiting
     // for the input→server→broadcast round-trip, so control feels instant. The
     // server stays authoritative — syncFromServer reconciles (and snaps on any real
@@ -196,9 +228,48 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     this.setPosition(this.predicted.x, this.predicted.y);
 
     const isMoving = input.dx !== 0 || input.dy !== 0;
-    const action = this.serverAttacking ? "attack" : isMoving ? "walk" : "idle";
+    // A predicted swing holds "attack" until the server confirms (serverAttacking) or
+    // the window lapses; resolveEffectiveAction still reverts to idle once the one-shot
+    // clip finishes, so a rejected press never freezes the pose.
+    const attacking = this.serverAttacking || now < this.predictedSwingUntil;
+    const action = attacking ? "attack" : isMoving ? "walk" : "idle";
     this.playAnim(action, this.facing);
     this.renderMovementFX();
+  }
+
+  // Fire the melee swing visuals from the local press, gated by a local mirror of the
+  // server's cooldown/combo so we never show a swing the server will drop. The actual
+  // damage is unaffected — it comes from the server's `hits` broadcast. Ranged/hold
+  // weapons are left server-driven (see the field comment).
+  private maybePredictSwing(risingEdge: boolean, now: number) {
+    if (!risingEdge) return;
+    const w = this.weapon;
+    if (!w || w.isRanged) return;
+    if (this.downed || this.roomState.paused) return;
+    if (now < this.localSwingReadyAt) return; // local cooldown mirror
+    this.pruneUnconfirmedPredicted(now);
+
+    // Mirror the server's combo: advance within the grace window, else restart.
+    const withinCombo = now - this.localLastSwingAt <= loadOptions().comboWindowMs;
+    const swings = w.comboSwings;
+    this.localComboStep = withinCombo && swings.length ? (this.localComboStep + 1) % swings.length : 0;
+    this.localLastSwingAt = now;
+    this.localSwingReadyAt = now + w.attackCooldownMs;
+
+    // Show the swing now (a normal combo swing — the charged/hard release stays
+    // server-driven so its heavier timing/pose is authoritative).
+    this.setPendingComboSwing(w.id, this.localComboStep, false);
+    this.retriggerAttack();
+    this.swingStartedAt = now;
+    this.predictedSwingUntil = now + Math.max(w.attackCooldownMs, MIN_PREDICT_WINDOW_MS);
+    this.unconfirmedPredictedSwings.push(now);
+  }
+
+  private pruneUnconfirmedPredicted(now: number) {
+    const cutoff = now - PREDICT_CONFIRM_WINDOW_MS;
+    while (this.unconfirmedPredictedSwings.length && this.unconfirmedPredictedSwings[0] < cutoff) {
+      this.unconfirmedPredictedSwings.shift();
+    }
   }
 
   // Integrate the local player's position from this frame's input, mirroring the
@@ -484,10 +555,21 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     // A new attackSeq means the server accepted a fresh attack — restart the
     // swing/bow clip even if isAttacking never dropped (held-fire).
     if (attackSeq !== this.lastAttackSeq) {
-      this.setPendingComboSwing(weaponId, state.comboStep, state.hardSwing);
-      if (this.lastAttackSeq !== -1) this.retriggerAttack();
+      const now = performance.now();
+      this.pruneUnconfirmedPredicted(now);
+      if (this.unconfirmedPredictedSwings.length > 0) {
+        // This attackSeq confirms a swing we already predicted and drew — consume it and
+        // do NOT retrigger (that would restart the clip mid-swing). Keep the predicted
+        // swingStartedAt so the on-screen clip and debug hurtbox stay aligned.
+        this.unconfirmedPredictedSwings.shift();
+      } else {
+        // A swing we didn't predict (a charged/hard release, or a ranged shot) — drive
+        // it from the server as before.
+        this.setPendingComboSwing(weaponId, state.comboStep, state.hardSwing);
+        if (this.lastAttackSeq !== -1) this.retriggerAttack();
+        this.swingStartedAt = now;
+      }
       this.lastAttackSeq = attackSeq;
-      this.swingStartedAt = performance.now();
     }
     // Hold the cocked-back first swing frame for both melee poses: the swing's own
     // wind-up BEFORE the blow (windingUp) and the heavy charge held AFTER it. No
@@ -511,6 +593,11 @@ export class LocalPlayer extends Entity implements DebugDrawable {
         this.activeWeaponId = weaponId;
         this.weapon = w;
         this.swapWeapon(w.fxType, w.id, w.rangedStyle, tint);
+        // A different weapon resets the local swing gate — its combo chain and cooldown
+        // don't carry over from the last one.
+        this.localComboStep = 0;
+        this.localSwingReadyAt = 0;
+        this.localLastSwingAt = -Infinity;
       }
     } else {
       this.setWeaponTint(tint);

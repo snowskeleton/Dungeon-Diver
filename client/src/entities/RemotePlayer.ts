@@ -4,19 +4,21 @@ import {
   Facing, PlayerStateView, PLAYER_HURT_BOUNDS,
 } from "shared";
 import { Entity } from "./Entity";
-import { Extrapolator } from "./Extrapolator";
 import { CLIENT_CHARACTER_VISUAL_REGISTRY } from "../characters";
 import { DebugDrawable, DebugShape, DEBUG_COLORS, hurtBoxShape } from "../debug/DebugDraw";
 import { meleeHurtboxShapes } from "../debug/hurtboxShapes";
 import { meleeWindupPose } from "./meleeWindupPose";
 
+// How far in the past a remote player is rendered. Interpolation needs two samples
+// bracketing the render time; at the 20 Hz sim cadence (50ms) two ticks (100ms) always
+// gives a bracketing pair with margin for 60 Hz patch jitter. Remote players are pure
+// upside here — a small constant trail is invisible and standard, and it's what removes
+// the stop-overshoot drift entirely (we never project past a real sample).
+const REMOTE_PLAYER_INTERP_MS = 100;
+
 export class RemotePlayer extends Entity implements DebugDrawable {
   private targetX: number;
   private targetY: number;
-  // Projects the last authoritative position forward by its measured velocity, so a
-  // remote player renders where they ARE now, not one sim tick (+ a P2P round-trip)
-  // ago. update() lerps toward this, so corrections stay smooth.
-  private readonly extrapolator = new Extrapolator();
   private currentHp: number;
   private facing: Facing = "down";
   private isAttacking = false;
@@ -58,7 +60,7 @@ export class RemotePlayer extends Entity implements DebugDrawable {
     const { weaponId, attackSeq } = state;
     this.targetX = state.x;
     this.targetY = state.y;
-    this.extrapolator.sample(state.x, state.y, performance.now());
+    this.posBuffer.push(state.x, state.y, performance.now());
     this.currentHp = state.health;
     // Follow the synced max HP so upgrades move the bar's full mark (see LocalPlayer).
     if (state.maxHp) this.maxHp = state.maxHp;
@@ -96,8 +98,9 @@ export class RemotePlayer extends Entity implements DebugDrawable {
     if (wasWindingUp && !this.windingUp) this.swingStartedAt = performance.now();
     if (this.pendingSnap) {
       this.pendingSnap = false;
-      // A hard cut (floor change / re-add): drop any inferred heading and jump.
-      this.extrapolator.reset(state.x, state.y, performance.now());
+      // A hard cut (floor change / re-add): drop history and jump, so interpolation
+      // doesn't lerp across the teleport gap.
+      this.posBuffer.reset(state.x, state.y, performance.now());
       this.setPosition(state.x, state.y);
     }
   }
@@ -107,13 +110,14 @@ export class RemotePlayer extends Entity implements DebugDrawable {
   }
 
   update() {
-    // Chase the EXTRAPOLATED position (last sample projected forward by its
-    // velocity), not the raw last sample — that's what erases the sim-tick + P2P lag.
-    const goal = this.extrapolator.target(performance.now());
+    // Render slightly in the past, interpolating between received samples — never
+    // projecting forward, so a stop lands exactly on the last sample instead of coasting
+    // past it. Assign directly: interpolation is already the smoothing (no extra lerp).
+    const goal = this.interpolatedGoal(performance.now(), REMOTE_PLAYER_INTERP_MS);
     const dx = goal.x - this.sprite.x;
     const dy = goal.y - this.sprite.y;
-    this.sprite.x += dx * 0.3;
-    this.sprite.y += dy * 0.3;
+    this.sprite.x = goal.x;
+    this.sprite.y = goal.y;
     this.updateHpBar(this.currentHp);
 
     const isMoving = Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5;

@@ -1,20 +1,21 @@
 import Phaser from "phaser";
 import { AiState, Facing, EnemyType, EnemyStateView, ENEMY_HURT_BOUNDS, resolveWeapon } from "shared";
 import { Entity } from "./Entity";
-import { Extrapolator } from "./Extrapolator";
 import { WeaponVisual, createWeaponVisual } from "./WeaponVisuals";
 import { CLIENT_ENEMY_REGISTRY, ClientEnemyDef } from "../enemies";
 import { DebugDrawable, DebugShape, DEBUG_COLORS, hurtBoxShape } from "../debug/DebugDraw";
 
+// Enemies are rendered less far in the past than remote players (~1.5 ticks vs 2). The
+// HOST meleees enemies through this same view, and interpolation delay is pure added lag
+// for the host's own combat — so we keep it as short as still reliably brackets one
+// 50ms sim segment (with 60 Hz patch margin). Interpolation still kills the stop-
+// overshoot; this knob only trades a little smoothing headroom for host responsiveness.
+// If host melee ever feels laggy against enemies, lower this first.
+const ENEMY_INTERP_MS = 70;
+
 export class EnemyEntity extends Entity implements DebugDrawable {
   private targetX: number;
   private targetY: number;
-  // Projects the last synced position forward by its measured velocity so a chasing
-  // enemy renders where it IS, not one sim tick (+ a P2P round-trip) behind — the
-  // difference between dodgeable and unfair on a guest. NOT a re-run of the flow
-  // field; a one-segment linear guess the next sample corrects. update() lerps
-  // toward it, so it can't pop.
-  private readonly extrapolator = new Extrapolator();
   private currentHp: number;
   private facing: Facing = "right";
   private aiState: AiState = "patrol";
@@ -89,7 +90,7 @@ export class EnemyEntity extends Entity implements DebugDrawable {
     if (!this.dying) {
       this.targetX = state.x;
       this.targetY = state.y;
-      this.extrapolator.sample(state.x, state.y, performance.now());
+      this.posBuffer.push(state.x, state.y, performance.now());
     }
     this.currentHp = state.health;
     this.facing = state.facing;
@@ -109,7 +110,7 @@ export class EnemyEntity extends Entity implements DebugDrawable {
       // Revive (only the debug respawn does this today) has to undo every part of
       // the flourish, tweens included, or the enemy comes back invisible.
       this.dying = false;
-      this.extrapolator.reset(state.x, state.y, performance.now());
+      this.posBuffer.reset(state.x, state.y, performance.now());
       this.currentEnemyAnim = undefined;
       if (this.charSprite) this.scene.tweens.killTweensOf(this.charSprite);
       this.scene.tweens.killTweensOf(this);
@@ -178,11 +179,12 @@ export class EnemyEntity extends Entity implements DebugDrawable {
 
   update() {
     if (!this.dying) {
-      // Lerp toward the EXTRAPOLATED position (last sample projected by velocity),
-      // not the raw last sample — that's what removes the sim-tick + P2P lag.
-      const goal = this.extrapolator.target(performance.now());
-      this.sprite.x += (goal.x - this.sprite.x) * 0.25;
-      this.sprite.y += (goal.y - this.sprite.y) * 0.25;
+      // Render slightly in the past, interpolating between received samples — never
+      // projecting forward, so a stopping enemy lands on its stop point instead of
+      // coasting past. Assign directly: interpolation is already the smoothing.
+      const goal = this.interpolatedGoal(performance.now(), ENEMY_INTERP_MS);
+      this.sprite.x = goal.x;
+      this.sprite.y = goal.y;
     }
 
     if (this.charSprite) {

@@ -4,6 +4,7 @@ import { DEBUG_COLORS, type DebugShape } from "../debug/DebugDraw";
 import { AttackFXType } from "./AttackFXSprites";
 import { WeaponVisual, createWeaponVisual, createNoWeaponVisual } from "./WeaponVisuals";
 import { PlayerMovementFX } from "./PlayerMovementFX";
+import { SnapshotBuffer } from "./SnapshotBuffer";
 
 const HP_BAR_W = 24;
 const HP_BAR_H = 4;
@@ -45,6 +46,11 @@ export abstract class Entity {
   protected hpBarBg: Phaser.GameObjects.Rectangle;
   protected scene: Phaser.Scene;
   protected maxHp: number;
+  // Timestamped authoritative-position history for views the client doesn't simulate
+  // (remote players, enemies). setTarget pushes into it; update() reads an interpolated
+  // point out of the recent past. Unused by the locally-predicted LocalPlayer. See
+  // SnapshotBuffer.ts for why interpolation (not extrapolation) is the right choice.
+  protected posBuffer = new SnapshotBuffer();
 
   constructor(
     scene: Phaser.Scene,
@@ -419,6 +425,14 @@ export abstract class Entity {
     this.sprite.y = y;
     const ratio = this.lastHp !== undefined ? Math.min(1, Math.max(0, this.lastHp / this.maxHp)) : 1;
     this.repositionHpBar(ratio);
+  }
+
+  /** The interpolated position `delayMs` in the past — where a non-simulated entity
+   *  should render this frame. Reads the shared posBuffer; subclasses call this from
+   *  update() instead of chasing the raw latest sample (which trails) or extrapolating
+   *  (which overshoots). */
+  protected interpolatedGoal(now: number, delayMs: number): { x: number; y: number } {
+    return this.posBuffer.sampleAt(now - delayMs);
   }
 
   /** True once destroy() has run. Colyseus `onChange` callbacks outlive the view

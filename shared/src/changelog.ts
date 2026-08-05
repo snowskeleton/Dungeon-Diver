@@ -44,6 +44,8 @@ export const CHANGELOG: ChangelogVersion[] = [
     version: "Unreleased",
     released: false,
     changes: [
+      { kind: "fix", text: "Other players and enemies no longer drift or coast past their stopping point in co-op — they're now drawn by smoothing between the positions the game actually reported instead of guessing ahead, so when someone stops, they stop right where they are (most visible when two characters move together and let go at once)" },
+      { kind: "fix", text: "Your own melee swing now starts the instant you press attack instead of a beat later — the swing animation is shown immediately while the hit itself stays server-checked, so close combat feels snappier, especially online" },
       { kind: "feature", text: "Full controller support: P1 can now play solo on a gamepad (left stick moves, A attacks, B uses your movement ability, LB/RB switch weapons, X interacts, View opens the inventory, Start opens the pause menu) and can swap between the pad and keyboard mid-run. Each couch player claims the next controller" },
       { kind: "feature", text: "The left stick now moves you in 16 directions (up from 8) for finer, crisper steering, and your facing follows the stick's dominant direction (push mostly-west and you face west, mostly-north and you face up)" },
       { kind: "fix", text: "Movement now responds instantly to your input instead of lagging a beat behind: your character is drawn where you're steering right away (client-side prediction) and quietly reconciled with the server, so starting, stopping, and turning feel immediate — most noticeable on a controller" },
