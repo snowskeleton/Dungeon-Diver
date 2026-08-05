@@ -13,6 +13,9 @@ const BAT_HOVER = 16;
 // rank-and-file Enemy is a FlightCaster (dashStep + setAirHeight).
 export class EyeBat extends ApproachCastEnemy {
   static readonly type: EnemyType = "eye-bat";
+  protected get maxHp() { return 30; }
+  protected get speed() { return 70; }
+  protected get aggroRadius() { return 240; }
   protected get knockbackResistance() { return 0; }
   protected get cruiseHeight() { return BAT_HOVER; }
 

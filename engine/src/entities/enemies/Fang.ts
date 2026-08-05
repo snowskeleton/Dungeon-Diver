@@ -10,6 +10,9 @@ import { ApproachCastEnemy } from "./ApproachCastEnemy";
 export class Fang extends ApproachCastEnemy {
   static readonly type: EnemyType = "fang";
   protected get facingMode(): EnemyFacingMode { return "directional"; }
+  protected get maxHp() { return 40; }
+  protected get speed() { return 85; }
+  protected get aggroRadius() { return 240; }
 
   protected get commitRange(): number { return 90; }
   protected get restMs(): number { return 650; }

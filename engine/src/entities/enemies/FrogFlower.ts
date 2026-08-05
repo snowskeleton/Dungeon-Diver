@@ -9,6 +9,10 @@ import { hopApproach } from "./movement";
 // drives the client's hop arc). Grounded body: the leap's height is purely visual.
 export class FrogFlower extends ApproachCastEnemy {
   static readonly type: EnemyType = "frog-flower";
+  protected get maxHp() { return 45; }
+  protected get speed() { return 70; }
+  protected get aggroRadius() { return 260; }
+  protected get knockbackResistance() { return 1; }
 
   protected get commitRange(): number { return 90; }
   protected get restMs(): number { return 500; }

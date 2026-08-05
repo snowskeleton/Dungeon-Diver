@@ -20,6 +20,9 @@ const CLOUD_REHIT_MS = 500; // ticks damage every 0.5s to anyone still inside
 // abstraction. What it DOES share: the caster, selfAim, and the no-contact default.
 export class Smushroom extends CastingEnemy {
   static readonly type: EnemyType = "smushroom";
+  protected get maxHp() { return 50; }
+  protected get speed() { return 55; }
+  protected get aggroRadius() { return 240; }
 
   /** Distance at which it stops and gasses you. */
   private get cloudRange(): number { return CLOUD_RADIUS * 0.9; }

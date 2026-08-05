@@ -10,7 +10,7 @@ import {
   ENEMY_PROJECTILE_AFFECTS,
 } from "shared";
 import { Player } from "../../engine/src/entities/Player";
-import { GooGreen } from "../../engine/src/entities/enemies";
+import { GooGreen, GooGold } from "../../engine/src/entities/enemies";
 import { Projectile } from "../../engine/src/entities/Projectile";
 import { Upgrade } from "../../engine/src/upgrades";
 import { arena, flatWorld, swingUntilHit, tapSwing, armedPlayer } from "../helpers/world";
@@ -254,9 +254,11 @@ describe("enemy contact damage, start to finish", () => {
       readonly description = "";
       override get armorFlat() { return 4; }
     }
+    // A heavy hitter (GooGold), so mitigated damage stays well above the
+    // min-damage floor and the armor's flat reduction shows through cleanly.
     const bare = arena();
     const p1 = bare.addPlayer("p1", new Player(bare.physics, 300, 300));
-    bare.addEnemy("e1", new GooGreen(bare.physics, 306, 300));
+    bare.addEnemy("e1", new GooGold(bare.physics, 306, 300));
     const before1 = p1.state.health;
     bare.step();
     const tookBare = before1 - p1.state.health;
@@ -264,7 +266,7 @@ describe("enemy contact damage, start to finish", () => {
     const armored = arena();
     const p2 = armored.addPlayer("p1", new Player(armored.physics, 300, 300));
     p2.addUpgrade(new Armor());
-    armored.addEnemy("e1", new GooGreen(armored.physics, 306, 300));
+    armored.addEnemy("e1", new GooGold(armored.physics, 306, 300));
     const before2 = p2.state.health;
     armored.step();
 

@@ -10,6 +10,7 @@ import {
   TILE_SIZE,
   mazeDeepestTile,
   CharacterClass,
+  canClassUseWeapon,
   MAX_WEAPONS,
   DEFAULT_DEBUG_CONFIG,
   makeRng,
@@ -565,13 +566,17 @@ describe("supply pedestals (floor-1 first weapon)", () => {
     return { ...f, party, supplies: f.state.supplies };
   }
 
-  it("lays one weapon pedestal per player, from that class's unique categories", () => {
-    const { supplies } = supplyFloor(["knight", "mage"]);
-    expect(supplies.size).toBe(2);
-    const cats = [...supplies.values()].map(s => resolveWeapon(s.weapon.weaponId)!.category);
-    // Knight → hammer/mace, Mage → staff; every pedestal is one of the party's uniques.
-    for (const cat of cats) expect(["hammer", "mace", "staff"]).toContain(cat);
-    expect(cats).toContain("staff"); // the mage's pedestal
+  it("lays one weapon pedestal per player, each a weapon that player's class can wield", () => {
+    const classes: CharacterClass[] = ["knight", "mage"];
+    const { supplies } = supplyFloor(classes);
+    expect(supplies.size).toBe(classes.length);
+    // Pedestals are laid one per player, in party order. The contract isn't a
+    // specific category — a supply weapon rolls from ANYTHING the class can wield —
+    // it's that each player gets a weapon its own class can actually equip.
+    const weapons = [...supplies.values()];
+    weapons.forEach((s, i) => {
+      expect(canClassUseWeapon(classes[i], s.weapon.weaponId)).toBe(true);
+    });
   });
 
   it("only exists on floor 1", () => {
@@ -592,7 +597,10 @@ describe("supply pedestals (floor-1 first weapon)", () => {
   });
 
   it("blocks an incompatible class with an error and grants nothing", () => {
-    const s = supplyFloor(["mage"]); // a single staff pedestal
+    // Force a staff (mage-exclusive) so the pedestal is guaranteed unusable by a
+    // knight — a rolled supply weapon could otherwise be a shared melee category.
+    const staff = anyWeaponOfCategory("staff");
+    const s = debugSupplyFloor("mage", staff);
     const [supplyId, reward] = [...s.supplies.entries()][0];
     const knight = new Player(s.physics, reward.x, reward.y, "knight", "guy");
 
@@ -617,7 +625,7 @@ describe("supply pedestals (floor-1 first weapon)", () => {
     const loot = new LootDirector(state, players, { ...DEFAULT_DEBUG_CONFIG, enabled: true, firstWeaponId });
     loot.setFloor(dungeon);
     loot.spawnSupply();
-    return { state, supplies: state.supplies };
+    return { state, supplies: state.supplies, loot, physics };
   }
 
   const anyWeaponOfCategory = (cat: string): WeaponId =>
@@ -635,8 +643,9 @@ describe("supply pedestals (floor-1 first weapon)", () => {
     const { supplies } = debugSupplyFloor("knight", staff);
     const rolled = [...supplies.values()][0].weapon.weaponId;
     expect(rolled).not.toBe(staff);
-    // Fell back to the knight's unique first-weapon pool (hammer/mace).
-    expect(["hammer", "mace"]).toContain(resolveWeapon(rolled)!.category);
+    // Fell back to rolling from the knight's own wieldable pool — whatever it
+    // rolled, it's a weapon a knight can actually equip.
+    expect(canClassUseWeapon("knight", rolled)).toBe(true);
   });
 });
 

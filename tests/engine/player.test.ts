@@ -247,10 +247,13 @@ describe("input and attack cadence", () => {
 
   it("ends the swing after its window, so isAttacking is not stuck on", () => {
     const p = newPlayer("knight", "broadsword");
-    const window = Math.ceil(WEAPON_REGISTRY["broadsword"].attackCooldownMs / SERVER_TICK_MS);
+    // A melee swing lasts attackCooldownMs (wind-up hold) + the swing-arc length,
+    // and both are well under a second — 60 ticks (1s) is comfortably past the end,
+    // whatever the exact arc length. isAttacking must have dropped by then.
+    const ticks = Math.ceil(1000 / SERVER_TICK_MS);
     // Tap to fire, then let the swing's window elapse: isAttacking must drop.
     p.applyInput({ dx: 0, dy: 0, attack: true }, SERVER_TICK_MS);
-    for (let t = 0; t < window * 2; t++) p.applyInput({ dx: 0, dy: 0, attack: false }, SERVER_TICK_MS);
+    for (let t = 0; t < ticks; t++) p.applyInput({ dx: 0, dy: 0, attack: false }, SERVER_TICK_MS);
     expect(p.state.isAttacking).toBe(false);
   });
 
