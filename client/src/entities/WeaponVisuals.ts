@@ -151,7 +151,7 @@ class HeldWeaponVisual implements WeaponVisual {
   }
 }
 
-/** Held ranged (bow/crossbow): a 2-frame draw sheet beside the player. */
+/** Held ranged (bow): a 2-frame draw sheet beside the player. */
 class HeldBowVisual implements WeaponVisual {
   private readonly bowSprite: Phaser.GameObjects.Sprite;
 
@@ -162,10 +162,8 @@ class HeldBowVisual implements WeaponVisual {
     y: number,
     facing: Facing,
   ) {
-    // The crossbow is one-handed: hold it in the right hand, not centred like a
-    // two-handed bow draw.
-    const handHeld = resolveWeapon(weaponId)?.category === "crossbow";
-    this.bowSprite = createBowSprite(scene, weaponId, handHeld);
+    // Bows are cradled two-handed, centred on the body (not held off in one hand).
+    this.bowSprite = createBowSprite(scene, weaponId, false);
     // Held in hand from the moment it's equipped (like the staff), so it doesn't
     // blink out between shots on the slower bows.
     showHeldBow(this.bowSprite, x, y, facing);

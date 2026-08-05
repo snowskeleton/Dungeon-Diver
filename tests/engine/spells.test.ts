@@ -288,7 +288,7 @@ class Faster extends WeaponMod {
 
 describe("weaponSpell", () => {
   const sword = WEAPON_REGISTRY["broadsword"];
-  const bow = WEAPON_REGISTRY["longbow"];
+  const bow = WEAPON_REGISTRY["shortbow"];
 
   it("holds a melee weapon's cooldown as a pure wind-up before a swing-length strike", () => {
     // attackCooldownMs is a feel dial: it IS the wind-up hold, full stop. The swing

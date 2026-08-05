@@ -632,10 +632,10 @@ describe("supply pedestals (floor-1 first weapon)", () => {
     (Object.keys(WEAPON_REGISTRY) as WeaponId[]).find((id) => WEAPON_REGISTRY[id].category === cat)!;
 
   it("forces the debug-picked first weapon when the class can equip it", () => {
-    const hammer = anyWeaponOfCategory("hammer"); // knight-only, so canEquip passes
-    const { supplies } = debugSupplyFloor("knight", hammer);
+    const mace = anyWeaponOfCategory("mace"); // knight-only, so canEquip passes
+    const { supplies } = debugSupplyFloor("knight", mace);
     expect(supplies.size).toBe(1);
-    expect([...supplies.values()][0].weapon.weaponId).toBe(hammer);
+    expect([...supplies.values()][0].weapon.weaponId).toBe(mace);
   });
 
   it("ignores the debug pick a class can't use and rolls from its own pool instead", () => {

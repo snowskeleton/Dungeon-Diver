@@ -1,78 +1,27 @@
 import { Weapon, WeaponClass } from "./base";
 
 // ─── Swords ──────────────────────────────────────────────────────────────────
-import { ShortSword }     from "./swords/short-sword";
-import { Broadsword }     from "./swords/broadsword";
-import { Flamberge }      from "./swords/flamberge";
-import { OrnateSword }    from "./swords/ornate-sword";
-import { CrimsonBlade }   from "./swords/crimson-blade";
-import { FrostBlade }     from "./swords/frost-blade";
-import { GoldBlade }      from "./swords/gold-blade";
-import { MysticBlade }    from "./swords/mystic-blade";
-import { WoodenSword }    from "./swords/wood-sword";
-import { Sabre }          from "./swords/sabre";
-import { GildedSword }    from "./swords/gilded-sword";
-import { Stiletto }       from "./swords/stiletto";
-import { SerpentBlade }   from "./swords/serpent-blade";
-import { TealBlade }      from "./swords/teal-blade";
-import { CrystalBlade }   from "./swords/crystal-blade";
-import { InfernoBlade }   from "./swords/inferno-blade";
-import { ShadowBlade }    from "./swords/shadow-blade";
-import { LightningBlade } from "./swords/lightning-blade";
+import { ShortSword }  from "./swords/short-sword";
+import { Broadsword }  from "./swords/broadsword";
+import { GildedSword } from "./swords/gilded-sword";
 
 // ─── Axes ─────────────────────────────────────────────────────────────────────
 import { BattleAxe } from "./axes/battle-axe";
-import { Hatchet }   from "./axes/hatchet";
-import { MoonAxe }   from "./axes/moon-axe";
-import { DoubleAxe } from "./axes/double-axe";
-import { WarAxe }    from "./axes/war-axe";
-import { DarkAxe }   from "./axes/dark-axe";
 
 // ─── Spears ───────────────────────────────────────────────────────────────────
-import { Javelin } from "./spears/javelin";
-import { Lance }   from "./spears/lance";
-import { Spear }   from "./spears/spear";
 import { Trident } from "./spears/trident";
 
-// ─── Rapiers ──────────────────────────────────────────────────────────────────
-import { BlueRapier }   from "./rapiers/blue-rapier";
-import { SilverRapier } from "./rapiers/silver-rapier";
-import { TealRapier }   from "./rapiers/teal-rapier";
-
 // ─── Maces ────────────────────────────────────────────────────────────────────
-import { StarMace }    from "./maces/star-mace";
 import { MorningStar } from "./maces/morning-star";
-import { Flail }       from "./maces/flail";
-import { Club }        from "./maces/club";
-import { OrbMace }     from "./maces/orb-mace";
-
-// ─── Daggers ──────────────────────────────────────────────────────────────────
-import { Kris }         from "./daggers/kris";
-import { CurvedDagger } from "./daggers/curved-dagger";
-
-// ─── Hammers ──────────────────────────────────────────────────────────────────
-import { WarHammer } from "./hammers/war-hammer";
 
 // ─── Bows ─────────────────────────────────────────────────────────────────────
 import { Shortbow } from "./bows/shortbow";
-import { Longbow }  from "./bows/longbow";
-
-// ─── Crossbows ────────────────────────────────────────────────────────────────
-import { Crossbow } from "./crossbows/crossbow";
 
 // ─── Thrown ───────────────────────────────────────────────────────────────────
-import { ThrowingKnife }  from "./thrown/throwing-knife";
-import { ThrowingStar }   from "./thrown/throwing-star";
-import { Boomerang }      from "./thrown/boomerang";
-import { SteelBoomerang } from "./thrown/steel-boomerang";
+import { ThrowingStar } from "./thrown/throwing-star";
 
 // ─── Staves ───────────────────────────────────────────────────────────────────
-import { OakStaff }     from "./staves/oak-staff";
-import { Cane }         from "./staves/cane";
-import { ArcaneStaff }  from "./staves/arcane-staff";
-import { RubyStaff }    from "./staves/ruby-staff";
-import { EmeraldStaff } from "./staves/emerald-staff";
-import { CrystalWand }  from "./staves/crystal-wand";
+import { OakStaff } from "./staves/oak-staff";
 
 // ─── Enemy armaments ──────────────────────────────────────────────────────────
 import { ENEMY_WEAPONS, EnemyWeaponId } from "./enemy";
@@ -84,19 +33,13 @@ import { ENEMY_WEAPONS, EnemyWeaponId } from "./enemy";
 // LOOT POOL — `partyRollableWeaponIds` draws from it — so enemy-only armaments
 // live in ENEMY_WEAPONS (below) and can never drop as loot.
 export const WEAPONS: WeaponClass[] = [
-  ShortSword, Broadsword, Flamberge, OrnateSword, CrimsonBlade, FrostBlade,
-  GoldBlade, MysticBlade, WoodenSword, Sabre, GildedSword, Stiletto,
-  SerpentBlade, TealBlade, CrystalBlade, InfernoBlade, ShadowBlade, LightningBlade,
-  BattleAxe, Hatchet, MoonAxe, DoubleAxe, WarAxe, DarkAxe,
-  Javelin, Lance, Spear, Trident,
-  BlueRapier, SilverRapier, TealRapier,
-  StarMace, MorningStar, Flail, Club, OrbMace,
-  Kris, CurvedDagger,
-  WarHammer,
-  Shortbow, Longbow,
-  Crossbow,
-  ThrowingKnife, ThrowingStar, Boomerang, SteelBoomerang,
-  OakStaff, Cane, ArcaneStaff, RubyStaff, EmeraldStaff, CrystalWand,
+  ShortSword, Broadsword, GildedSword,
+  BattleAxe,
+  Trident,
+  MorningStar,
+  Shortbow,
+  ThrowingStar,
+  OakStaff,
 ];
 
 // WEAPON_REGISTRY is the id→template lookup, derived from BOTH the player catalog
@@ -123,35 +66,27 @@ export function resolveWeapon(id: string): Weapon | undefined {
   return (WEAPON_REGISTRY as Record<string, Weapon | undefined>)[id];
 }
 
-export type SwordId     = "short-sword" | "broadsword" | "flamberge" | "ornate-sword" | "crimson-blade" | "frost-blade" | "gold-blade" | "mystic-blade" | "wood-sword" | "sabre" | "gilded-sword" | "stiletto" | "serpent-blade" | "teal-blade" | "crystal-blade" | "inferno-blade" | "shadow-blade" | "lightning-blade";
-export type AxeId       = "battle-axe" | "hatchet" | "moon-axe" | "double-axe" | "war-axe" | "dark-axe";
-export type SpearId     = "javelin" | "lance" | "spear" | "trident";
-export type RapierId    = "blue-rapier" | "silver-rapier" | "teal-rapier";
-export type MaceId      = "star-mace" | "morning-star" | "flail" | "club" | "orb-mace";
-export type DaggerId    = "kris" | "curved-dagger";
-export type HammerId    = "war-hammer";
-export type BowId       = "shortbow" | "longbow";
-export type CrossbowId  = "crossbow";
-export type ThrownId    = "throwing-knife" | "throwing-star" | "boomerang" | "steel-boomerang";
-export type StaffId     = "oak-staff" | "cane" | "arcane-staff" | "ruby-staff" | "emerald-staff" | "crystal-wand";
+export type SwordId  = "short-sword" | "broadsword" | "gilded-sword";
+export type AxeId     = "battle-axe";
+export type SpearId   = "trident";
+export type MaceId    = "morning-star";
+export type BowId     = "shortbow";
+export type ThrownId  = "throwing-star";
+export type StaffId   = "oak-staff";
 
 // A weapon id is any PLAYER weapon or any ENEMY armament — both are wire-referenced
 // and resolvable in WEAPON_REGISTRY. Only the player ids are loot-rollable.
-export type WeaponId = SwordId | AxeId | SpearId | RapierId | MaceId | DaggerId | HammerId | BowId | CrossbowId | ThrownId | StaffId | EnemyWeaponId;
+export type WeaponId = SwordId | AxeId | SpearId | MaceId | BowId | ThrownId | StaffId | EnemyWeaponId;
 
 export { Weapon } from "./base";
 export type { WeaponClass } from "./base";
-export { Sword }    from "./swords/base";
-export { Axe }      from "./axes/base";
-export { Spear }    from "./spears/base";
-export { Rapier }   from "./rapiers/base";
-export { Mace }     from "./maces/base";
-export { Dagger }   from "./daggers/base";
-export { Hammer }   from "./hammers/base";
-export { Bow }      from "./bows/base";
-export { Crossbow } from "./crossbows/base";
-export { Thrown }   from "./thrown/base";
-export { Staff }    from "./staves/base";
+export { Sword }  from "./swords/base";
+export { Axe }    from "./axes/base";
+export { Spear }  from "./spears/base";
+export { Mace }   from "./maces/base";
+export { Bow }    from "./bows/base";
+export { Thrown } from "./thrown/base";
+export { Staff }  from "./staves/base";
 export { ENEMY_WEAPONS } from "./enemy";
 // The concrete enemy-armament classes, so a server-side ArmedEnemy holds its weapon
 // as a direct object reference (`new BeastAxe()`) rather than a string id looked up

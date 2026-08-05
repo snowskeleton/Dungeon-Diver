@@ -47,10 +47,9 @@ describe("ammo registry", () => {
     }
   });
 
-  it("gives a boomerang a return time inside its own lifetime", () => {
-    const boomerangs = ammo.filter(a => a.returnsAtMs !== undefined);
-    expect(boomerangs.length).toBeGreaterThan(0);
-    for (const b of boomerangs) {
+  it("keeps any returning ammo's return time inside its own lifetime", () => {
+    const returners = ammo.filter(a => a.returnsAtMs !== undefined);
+    for (const b of returners) {
       expect(b.returnsAtMs!, `${b.id}`).toBeGreaterThan(0);
       expect(b.returnsAtMs!, `${b.id} returns after it despawns`).toBeLessThan(b.lifetimeMs);
     }

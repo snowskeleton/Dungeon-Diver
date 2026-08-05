@@ -92,20 +92,20 @@ describe("the weapon list", () => {
 
   it("mirrors every weapon onto the wire as a slot", () => {
     const p = newPlayer();
-    p.addWeapon(WEAPON_REGISTRY["longbow"]);
+    p.addWeapon(WEAPON_REGISTRY["shortbow"]);
     expect(p.state.weapons).toHaveLength(2);
-    expect(p.state.weapons[1]!.weaponId).toBe("longbow");
+    expect(p.state.weapons[1]!.weaponId).toBe("shortbow");
   });
 
   it("cycles the active weapon and wraps in both directions", () => {
     const p = newPlayer("knight", "broadsword");
-    p.addWeapon(WEAPON_REGISTRY["longbow"]); // picked up → now the one in hand
+    p.addWeapon(WEAPON_REGISTRY["shortbow"]); // picked up → now the one in hand
 
-    expect(p.weapon!.id).toBe("longbow");
+    expect(p.weapon!.id).toBe("shortbow");
     p.switchWeapon(1);
     expect(p.weapon!.id).toBe("broadsword"); // wrapped forward
     p.switchWeapon(1);
-    expect(p.weapon!.id).toBe("longbow");    // wrapped again
+    expect(p.weapon!.id).toBe("shortbow");    // wrapped again
     p.switchWeapon(-1);
     expect(p.weapon!.id).toBe("broadsword"); // and backward
   });
@@ -118,23 +118,23 @@ describe("the weapon list", () => {
 
   it("holds a picked-up weapon in hand, and caps the inventory by dropping the held one", () => {
     const p = newPlayer("knight", "broadsword"); // broadsword in hand
-    p.addWeapon(WEAPON_REGISTRY["longbow"]);      // longbow now in hand, 2 held
-    expect(p.weapons.map(w => w.id)).toEqual(["broadsword", "longbow"]);
-    expect(p.weapon!.id).toBe("longbow");
+    p.addWeapon(WEAPON_REGISTRY["shortbow"]);      // shortbow now in hand, 2 held
+    expect(p.weapons.map(w => w.id)).toEqual(["broadsword", "shortbow"]);
+    expect(p.weapon!.id).toBe("shortbow");
 
-    // At the cap, the third pickup displaces the weapon in hand (longbow), not the
+    // At the cap, the third pickup displaces the weapon in hand (shortbow), not the
     // stowed one — and returns it so the caller can drop it on the floor.
-    const { added, displaced } = p.addWeapon(WEAPON_REGISTRY["hatchet"]);
-    expect(displaced!.id).toBe("longbow");
-    expect(added.id).toBe("hatchet");
-    expect(p.weapons.map(w => w.id)).toEqual(["broadsword", "hatchet"]);
-    expect(p.weapon!.id).toBe("hatchet");
+    const { added, displaced } = p.addWeapon(WEAPON_REGISTRY["battle-axe"]);
+    expect(displaced!.id).toBe("shortbow");
+    expect(added.id).toBe("battle-axe");
+    expect(p.weapons.map(w => w.id)).toEqual(["broadsword", "battle-axe"]);
+    expect(p.weapon!.id).toBe("battle-axe");
   });
 
   it("syncs the active weapon id on every switch", () => {
     const p = newPlayer("knight", "broadsword");
-    p.addWeapon(WEAPON_REGISTRY["longbow"]); // auto-equipped on pickup
-    expect(p.state.weaponId).toBe("longbow");
+    p.addWeapon(WEAPON_REGISTRY["shortbow"]); // auto-equipped on pickup
+    expect(p.state.weaponId).toBe("shortbow");
     expect(p.state.activeWeaponIndex).toBe(1);
     p.switchWeapon(1);
     expect(p.state.weaponId).toBe("broadsword");
@@ -148,9 +148,9 @@ describe("the weapon list", () => {
     }
     const p = newPlayer("knight", "broadsword");
     expect(p.ownsUnmodified("broadsword")).toBe(true);
-    expect(p.ownsUnmodified("longbow")).toBe(false);
+    expect(p.ownsUnmodified("shortbow")).toBe(false);
 
-    const q = newPlayer("knight", "longbow");
+    const q = newPlayer("knight", "shortbow");
     q.addWeapon(WEAPON_REGISTRY["broadsword"], [new Plus()]);
     // A rolled copy is a genuinely different weapon, so a plain one is still new.
     expect(q.ownsUnmodified("broadsword")).toBe(false);
@@ -229,7 +229,7 @@ describe("input and attack cadence", () => {
   };
 
   it("gives instant feedback: a melee press flags windingUp before any hitbox lands", () => {
-    const p = newPlayer("knight", "war-hammer"); // slow: a real wind-up hold
+    const p = newPlayer("knight", "battle-axe"); // slow: a real wind-up hold
     p.applyInput({ dx: 0, dy: 0, attack: true }, SERVER_TICK_MS);
     expect(p.state.isAttacking).toBe(true);
     expect(p.state.windingUp).toBe(true);           // cocked back at once
@@ -237,8 +237,8 @@ describe("input and attack cadence", () => {
   });
 
   it("holds the wind-up longer for a slower weapon, and the blow lands after it clears", () => {
-    const slow = firstHitTick(newPlayer("knight", "war-hammer")); // 800ms cooldown
-    const fast = firstHitTick(newPlayer("rogue", "kris"));        // 250ms cooldown
+    const slow = firstHitTick(newPlayer("knight", "battle-axe"));  // 180ms cooldown
+    const fast = firstHitTick(newPlayer("rogue", "short-sword"));  // 120ms cooldown
 
     expect(fast.tick).toBeGreaterThan(0);
     expect(slow.tick).toBeGreaterThan(fast.tick); // the heavy telegraphs longer
@@ -355,7 +355,7 @@ describe("the wire shape of a weapon slot", () => {
   });
 
   it("carries ammo damage as ammo + weapon, matching what actually gets fired", () => {
-    const p = newPlayer("ranger", "longbow");
+    const p = newPlayer("ranger", "shortbow");
     const slot = slotStateFor(p.weapon!);
     const ammo = resolveAmmo(p.weapon!.ammoId!)!;
 
@@ -365,7 +365,7 @@ describe("the wire shape of a weapon slot", () => {
   });
 
   it("reconstructs on the client into the same numbers the server holds", () => {
-    const p = newPlayer("ranger", "longbow");
+    const p = newPlayer("ranger", "shortbow");
     const view = viewFromSlot(slotStateFor(p.weapon!))!;
 
     expect(view.damage).toBe(p.weapon!.damage);

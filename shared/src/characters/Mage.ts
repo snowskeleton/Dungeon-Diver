@@ -14,7 +14,6 @@ export class Mage extends Character {
       "sword",
       "axe",
       "spear",
-      "rapier",
       "staff",
     ];
   }

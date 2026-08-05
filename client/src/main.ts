@@ -3,7 +3,6 @@ import { MenuScene } from "./scenes/MenuScene";
 import { BrowseScene } from "./scenes/BrowseScene";
 import { LobbyScene } from "./scenes/LobbyScene";
 import { GameScene } from "./scenes/GameScene";
-import { reportPlaceholders } from "./dev/PlaceholderReport";
 import { gamepadMenuCursor } from "./ui/GamepadMenuCursor";
 
 const game = new Phaser.Game({
@@ -27,7 +26,6 @@ const game = new Phaser.Game({
 gamepadMenuCursor.start();
 
 if (import.meta.env.DEV) {
-  reportPlaceholders();
   // Handy from the browser console: __game.scene.getScene("GameScene")
   (window as unknown as { __game: Phaser.Game }).__game = game;
 }

@@ -62,9 +62,9 @@ export abstract class Character {
    * rather than consulting a lookup that could drift from the classes.
    *
    * Categories owned by exactly one class (a class's `firstRollCategories`) are
-   * its identity — the Mage's staves, the Knight's hammers/maces — while the
-   * four melee categories (sword/axe/spear/rapier) appear on every list as the
-   * shared backbone. Players no longer start holding a weapon; a class's first
+   * its identity — the Mage's staves, the Knight's maces — while the three melee
+   * categories (sword/axe/spear) appear on every list as the shared
+   * backbone. Players no longer start holding a weapon; a class's first
    * weapon is rolled from its unique categories at the floor-1 supply room.
    */
   abstract get usableCategories(): readonly WeaponCategory[];

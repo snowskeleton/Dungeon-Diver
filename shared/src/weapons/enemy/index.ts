@@ -66,7 +66,9 @@ export class SkeletonStaff extends Staff {
   get ammoId(): string { return "hex-bolt"; }
 }
 
-// The armor-lancer's lance — a long thrust, reusing the player lance's icon.
+// The armor-lancer's lance — a long thrust. The player lance weapon was retired
+// from the catalog, but its icon art (spears/lance/lance.png) is kept solely for
+// this enemy armament, which is the only thing that still renders it.
 export class SoldierLance extends Spear {
   readonly id = "soldier-lance";
   readonly name = "Soldier Lance";

@@ -1,27 +1,13 @@
 import { Ammo, AmmoClass } from "./base";
 
 // ─── Arrows ───────────────────────────────────────────────────────────────────
-import { Arrow }          from "./arrows/arrow";
-import { SteelArrow }     from "./arrows/steel-arrow";
-import { PiercingArrow }  from "./arrows/piercing-arrow";
-import { PrismaticArrow } from "./arrows/prismatic-arrow";
-import { WoodenArrow }    from "./arrows/wooden-arrow";
-import { FireArrow }      from "./arrows/fire-arrow";
+import { Arrow } from "./arrows/arrow";
 
-// ─── Boomerangs ───────────────────────────────────────────────────────────────
-import { Boomerang }      from "./boomerangs/boomerang";
-import { SteelBoomerang } from "./boomerangs/steel-boomerang";
-
-// ─── Bolts (the Mage's staff projectiles, one element per staff) ──────────────
-import { MagicBolt }      from "./bolts/magic-bolt";
-import { ArcaneBolt }     from "./bolts/arcane-bolt";
-import { FlameBolt }      from "./bolts/flame-bolt";
-import { VerdantBolt }    from "./bolts/verdant-bolt";
-import { FrostBolt }      from "./bolts/frost-bolt";
+// ─── Bolts (the Mage's staff projectile) ──────────────────────────────────────
+import { MagicBolt } from "./bolts/magic-bolt";
 
 // ─── Thrown (one-offs) ────────────────────────────────────────────────────────
-import { ThrowingKnife }  from "./throwing-knife";
-import { ThrowingStar }   from "./throwing-star";
+import { ThrowingStar } from "./throwing-star";
 
 // ─── Enemy projectiles (one-offs) ─────────────────────────────────────────────
 import { Fireball }       from "./fireball";
@@ -37,9 +23,9 @@ import { HexBolt }        from "./hex-bolt";
 // id→instance lookup derived from it (ammo, like weapons, is referenced by id
 // across the wire, so the map is a genuine need).
 export const AMMO_CLASSES: AmmoClass[] = [
-  Arrow, SteelArrow, PiercingArrow, PrismaticArrow, WoodenArrow, FireArrow,
-  MagicBolt, ArcaneBolt, FlameBolt, VerdantBolt, FrostBolt,
-  ThrowingKnife, ThrowingStar, Boomerang, SteelBoomerang,
+  Arrow,
+  MagicBolt,
+  ThrowingStar,
   Fireball, MagicOrb, RockShard, Boulder, HexBolt,
 ];
 
@@ -57,17 +43,15 @@ export function resolveAmmo(id: string): Ammo | undefined {
   return (AMMO_REGISTRY as Record<string, Ammo | undefined>)[id];
 }
 
-export type ArrowId      = "arrow" | "steel-arrow" | "piercing-arrow" | "prismatic-arrow" | "wooden-arrow" | "fire-arrow";
-export type BoltId       = "magic-bolt" | "arcane-bolt" | "flame-bolt" | "verdant-bolt" | "frost-bolt";
-export type BoomerangId  = "boomerang" | "steel-boomerang";
-export type ThrownAmmoId = "throwing-knife" | "throwing-star";
+export type ArrowId      = "arrow";
+export type BoltId       = "magic-bolt";
+export type ThrownAmmoId = "throwing-star";
 export type EnemyAmmoId  = "fireball" | "magic-orb" | "rock-shard" | "boulder" | "hex-bolt";
 
-export type AmmoId = ArrowId | BoltId | BoomerangId | ThrownAmmoId | EnemyAmmoId;
+export type AmmoId = ArrowId | BoltId | ThrownAmmoId | EnemyAmmoId;
 
 export { Ammo } from "./base";
 export type { AmmoClass } from "./base";
 export { Arrow } from "./arrows/base";
-export { Boomerang } from "./boomerangs/base";
 export { Bolt } from "./bolts/base";
 export type { AmmoConfig, AmmoCategory } from "./base";

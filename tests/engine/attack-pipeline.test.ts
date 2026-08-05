@@ -145,7 +145,7 @@ describe("upgrades reach every attack through the one seam", () => {
 
   it("scales a bow shot the same way, with no bow-specific code", () => {
     const a = arena();
-    const p = a.addPlayer("p1", armedPlayer(a.physics, 200, 300, "ranger", "guy", "longbow"));
+    const p = a.addPlayer("p1", armedPlayer(a.physics, 200, 300, "ranger", "guy", "shortbow"));
     p.state.facing = "right";
     p.addUpgrade(new FlatDamage(3));
     const e = a.addEnemy("e1", new GooGreen(a.physics, 300, 300));
@@ -329,7 +329,7 @@ describe("two players in the same world", () => {
   it("each swing independently, with their own weapons and dedupe state", () => {
     const a = arena(flatWorld());
     const p1 = a.addPlayer("p1", armedPlayer(a.physics, 300, 300, "knight", "guy", "broadsword"));
-    const p2 = a.addPlayer("p2", armedPlayer(a.physics, 300, 500, "knight", "guy", "hatchet"));
+    const p2 = a.addPlayer("p2", armedPlayer(a.physics, 300, 500, "knight", "guy", "battle-axe"));
     p1.state.facing = "right";
     p2.state.facing = "right";
     const e1 = a.addEnemy("e1", new GooGreen(a.physics, 312, 300));
@@ -347,7 +347,7 @@ describe("two players in the same world", () => {
     expect(e1.state.health).toBeLessThan(hp1);
     expect(e2.state.health).toBeLessThan(hp2);
     expect(hp1 - e1.state.health).toBeCloseTo(WEAPON_REGISTRY["broadsword"].damage, 6);
-    expect(hp2 - e2.state.health).toBeCloseTo(WEAPON_REGISTRY["hatchet"].damage, 6);
+    expect(hp2 - e2.state.health).toBeCloseTo(WEAPON_REGISTRY["battle-axe"].damage, 6);
   });
 
   it("can both hit the SAME enemy in one swing window", () => {

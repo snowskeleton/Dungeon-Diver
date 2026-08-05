@@ -3,7 +3,7 @@ import type { CharacterClass } from "./base";
 import type { WeaponCategory } from "../weapons/base";
 
 /** Fragile skirmisher: fastest on foot, least HP, and the only class that wields
- *  daggers and thrown weapons. */
+ *  thrown weapons. */
 export class Rogue extends Character {
   get id(): CharacterClass { return "rogue"; }
   get name(): string { return "Rogue"; }
@@ -14,8 +14,6 @@ export class Rogue extends Character {
       "sword",
       "axe",
       "spear",
-      "rapier",
-      "dagger",
       "thrown",
     ];
   }

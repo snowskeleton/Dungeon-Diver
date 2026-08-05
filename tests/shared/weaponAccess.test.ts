@@ -62,10 +62,10 @@ describe("class weapon access", () => {
 describe("first-roll (unique) categories", () => {
   it("gives each class the categories no other class can use", () => {
     // Derived by set-difference, so this is really a test of the class declarations.
-    expect(firstRollCategories("knight").sort()).toEqual(["hammer", "mace"]);
+    expect(firstRollCategories("knight")).toEqual(["mace"]);
     expect(firstRollCategories("mage")).toEqual(["staff"]);
-    expect(firstRollCategories("ranger").sort()).toEqual(["bow", "crossbow"]);
-    expect(firstRollCategories("rogue").sort()).toEqual(["dagger", "thrown"]);
+    expect(firstRollCategories("ranger")).toEqual(["bow"]);
+    expect(firstRollCategories("rogue")).toEqual(["thrown"]);
   });
 
   it("never includes a shared category in any class's unique set", () => {
@@ -90,9 +90,9 @@ describe("first-roll (unique) categories", () => {
 
 describe("party loot filter (D10)", () => {
   it("excludes categories no present class can use", () => {
-    // A knight-only party can never see a staff, bow, crossbow, dagger or thrown.
+    // A knight-only party can never see a staff, bow, or thrown weapon.
     const usable = partyRollableWeaponIds(["knight"]);
-    const forbidden = new Set(["staff", "bow", "crossbow", "dagger", "thrown"]);
+    const forbidden = new Set(["staff", "bow", "thrown"]);
     for (const id of usable) expect(forbidden.has(WEAPON_REGISTRY[id].category), id).toBe(false);
     // ...but every shared + knight weapon is present.
     const expected = (Object.keys(WEAPON_REGISTRY) as WeaponId[]).filter((id) =>
@@ -104,9 +104,9 @@ describe("party loot filter (D10)", () => {
   it("unions across the present classes", () => {
     const mixed = partyRollableWeaponIds(["knight", "mage"]);
     const staff = anyWeaponOfCategory("staff");
-    const hammer = anyWeaponOfCategory("hammer");
+    const mace = anyWeaponOfCategory("mace");
     expect(mixed).toContain(staff); // mage brings staves
-    expect(mixed).toContain(hammer); // knight brings hammers
+    expect(mixed).toContain(mace); // knight brings maces
   });
 
   it("treats an empty party as no restriction (returns everything)", () => {

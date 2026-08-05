@@ -14,7 +14,7 @@ export type StripFXType = Exclude<AttackFXType, "nova">;
 export function isStripFx(fx: AttackFXType): fx is StripFXType {
   return fx !== "nova";
 }
-export type WeaponCategory = "sword" | "axe" | "spear" | "rapier" | "mace" | "dagger" | "hammer" | "bow" | "crossbow" | "staff" | "thrown";
+export type WeaponCategory = "sword" | "axe" | "spear" | "mace" | "bow" | "staff" | "thrown";
 
 /** How a ranged weapon renders its attack client-side (see Entity.setupCharacter).
  *  "held"  — a 2-frame draw sheet played beside the player (bows, crossbows).
@@ -70,9 +70,8 @@ export interface AoeSpec {
 }
 
 const CATEGORY_DIRS: Record<WeaponCategory, string> = {
-  sword: "swords", axe: "axes", spear: "spears", rapier: "rapiers",
-  mace: "maces", dagger: "daggers", hammer: "hammers",
-  bow: "bows", crossbow: "crossbows", staff: "staves", thrown: "thrown",
+  sword: "swords", axe: "axes", spear: "spears",
+  mace: "maces", bow: "bows", staff: "staves", thrown: "thrown",
 };
 
 // A weapon TEMPLATE. Like enemies, weapons are object-oriented: one class per

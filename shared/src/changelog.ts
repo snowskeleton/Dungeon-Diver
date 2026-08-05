@@ -44,6 +44,7 @@ export const CHANGELOG: ChangelogVersion[] = [
     version: "Unreleased",
     released: false,
     changes: [
+      { kind: "balance", text: "Trimmed the weapon pool down to a tighter, more distinct set: nine weapons across swords, an axe, a spear, a mace, a bow, a throwing star, and a staff. Arrows are now a single basic arrow and staves fire one bolt, so what you find and wield is clearer at a glance" },
       { kind: "fix", text: "Other players and enemies no longer drift or coast past their stopping point in co-op — they're now drawn by smoothing between the positions the game actually reported instead of guessing ahead, so when someone stops, they stop right where they are (most visible when two characters move together and let go at once)" },
       { kind: "fix", text: "Your own melee swing now starts the instant you press attack instead of a beat later — the swing animation is shown immediately while the hit itself stays server-checked, so close combat feels snappier, especially online" },
       { kind: "feature", text: "Full controller support: P1 can now play solo on a gamepad (left stick moves, A attacks, B uses your movement ability, LB/RB switch weapons, X interacts, View opens the inventory, Start opens the pause menu) and can swap between the pad and keyboard mid-run. Each couch player claims the next controller" },

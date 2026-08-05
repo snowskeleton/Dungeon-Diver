@@ -2,8 +2,8 @@ import { Character } from "./base";
 import type { CharacterClass } from "./base";
 import type { WeaponCategory } from "../weapons/base";
 
-/** Ranged specialist: middling HP and speed, and the only class that wields bows
- *  and crossbows. */
+/** Ranged specialist: middling HP and speed, and the only class that wields
+ *  bows. */
 export class Ranger extends Character {
   get id(): CharacterClass { return "ranger"; }
   get name(): string { return "Ranger"; }
@@ -14,9 +14,7 @@ export class Ranger extends Character {
       "sword",
       "axe",
       "spear",
-      "rapier",
       "bow",
-      "crossbow",
     ];
   }
 }

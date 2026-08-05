@@ -3,7 +3,7 @@ import type { CharacterClass } from "./base";
 import type { WeaponCategory } from "../weapons/base";
 
 /** Tanky melee bruiser: most HP, average speed, and the only class that wields
- *  hammers and maces. */
+ *  maces. */
 export class Knight extends Character {
   get id(): CharacterClass { return "knight"; }
   get name(): string { return "Knight"; }
@@ -14,8 +14,6 @@ export class Knight extends Character {
       "sword",
       "axe",
       "spear",
-      "rapier",
-      "hammer",
       "mace",
     ];
   }

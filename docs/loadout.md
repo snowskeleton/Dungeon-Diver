@@ -78,10 +78,10 @@ pedestal, so the input freeze is safe; revisit if weapons are ever granted mid-c
 
 Weapons are gated by **class**, and the restriction is declared on the class itself —
 each `Character`'s `usableCategories` getter (`shared/src/characters/<Class>.ts`, OO,
-no lookup table). The four melee categories (sword/axe/spear/rapier) are the shared
-backbone every class gets; each class also owns a few **unique** categories that are
-its identity and its first-weapon pool (Knight → hammer/mace, Rogue → dagger/thrown,
-Ranger → bow/crossbow, Mage → staff).
+no lookup table). The three melee categories (sword/axe/spear) are the shared
+backbone every class gets; each class also owns one **unique** category that is
+its identity and its first-weapon pool (Knight → mace, Rogue → thrown,
+Ranger → bow, Mage → staff).
 
 - `Player.canEquip(weaponId)` gates **every** weapon-granting path — shop, offer,
   room-clear reward, supply pedestal, maze chest. An incompatible pickup grants

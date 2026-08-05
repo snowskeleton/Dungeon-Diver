@@ -1,11 +1,10 @@
-// Ammo = a projectile a ranged weapon (bow, crossbow) spawns when it fires.
+// Ammo = a projectile a ranged weapon (bow, staff) spawns when it fires.
 // Defined separately from Weapon so all projectile behaviour lives in one place
-// and a weapon just references an ammo id. Anything with a sprite can be ammo —
-// arrows today, thrown swords/boomerangs tomorrow.
+// and a weapon just references an ammo id. Anything with a sprite can be ammo.
 //
 // Folder layout mirrors weapons/: ammo that shares a behaviour bundle is grouped
-// under a category folder with its own base subclass (arrows/, boomerangs/);
-// one-offs (throwing-knife, throwing-star) sit flat at the top level. Each ammo
+// under a category folder with its own base subclass (arrows/, bolts/);
+// one-offs (throwing-star) sit flat at the top level. Each ammo
 // is <…>/<id>/index.ts (`export class … extends …`) + <id>/<id>.png.
 // sync-to-client.js copies shared/src/ammo/**/*.png into client/public/sprites/
 // ammo/ preserving that structure, so the derived spritePath resolves at runtime.
@@ -15,7 +14,7 @@
 import type { AmmoId } from "./index";
 
 // Categories with a shared base subclass. One-offs pass no category and live flat.
-export type AmmoCategory = "arrows" | "boomerangs" | "bolts";
+export type AmmoCategory = "arrows" | "bolts";
 
 export interface AmmoConfig {
   id: string;
