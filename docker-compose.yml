@@ -3,13 +3,21 @@
 #             Caddy at <this-host>:2567. Single stateful process (in-memory, unshared
 #             state) — do NOT scale to replicas.
 #   coturn  — the STUN/TURN relay peers fall back to when direct P2P can't traverse
-#             their NATs. Now part of the default stack, so the relay is always on. That
-#             means TURN_SECRET is required: coturn aborts at startup with a clear message
-#             if it's unset (see the guard on its command below).
+#             their NATs. Now part of the default stack, so the relay is always on.
 #
-# Setup: copy .env.example to a .env beside this file and set TURN_SECRET + TURN_HOST,
-# then `docker compose up -d`. Also set ALLOWED_ORIGINS on the server to lock /api/ice to
-# your page's origin. See docs/turn.md.
+# TURN_SECRET is just a shared key between the two services above (the server mints
+# credentials, coturn verifies them) — it needn't be durable, since sessions die on
+# restart anyway. So generate a fresh one at boot and let compose inject the same value
+# into both services in a single interpolation pass:
+#
+#   TURN_SECRET=$(openssl rand -hex 32) docker compose up -d --build
+#
+# Nothing is stored: the secret lives only in the running containers' env, and a
+# crash-restart of either keeps its baked-in value so they stay in sync. The only rule is
+# to bring BOTH up together (a plain `up` always does) — never recreate just one.
+#
+# The durable, non-secret config lives in a .env beside this file (see .env.example):
+# TURN_HOST, and optionally ALLOWED_ORIGINS. See docs/turn.md.
 services:
   server:
     build:
@@ -21,11 +29,12 @@ services:
       # Shared with coturn below so /api/ice can mint matching credentials. Empty →
       # the server advertises STUN only (no TURN), which is a clean no-op.
       - TURN_SECRET=${TURN_SECRET:-}
-      # The public hostname clients dial for TURN (e.g. game.dev.snowskeleton.net).
+      # The public hostname clients dial for TURN (e.g. game.dev.snowskeleton.net). Also
+      # drives the /api/ice origin gate: it defaults to allowing https://<TURN_HOST>.
       - TURN_HOST=${TURN_HOST:-}
-      # Comma-separated web origins allowed to mint TURN credentials at /api/ice. Empty →
-      # no origin gating (any caller can fetch credentials). Set this in production, e.g.
-      # ALLOWED_ORIGINS=https://game.dev.snowskeleton.net
+      # OPTIONAL override for the origin gate. Leave empty to gate to https://<TURN_HOST>
+      # (the common case). Set only for a page served from a different origin, or several
+      # (comma-separated), e.g. ALLOWED_ORIGINS=https://game.example.net,https://staging.example.net
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
     ports:
       - "2567:2567"

@@ -37,11 +37,11 @@ The server and coturn only have to share one thing: `TURN_SECRET`.
 1. **Create `.env`** beside `docker-compose.yml` (copy [.env.example](../.env.example)):
    ```bash
    cp .env.example .env
-   # then edit .env:
-   #   TURN_SECRET=<paste `openssl rand -hex 32`>
-   #   TURN_HOST=game.dev.snowskeleton.net
+   # then edit .env — only the durable, non-secret config lives here:
+   #   TURN_HOST=game.dev.snowskeleton.net   (also gates /api/ice to https://<this host>)
    ```
-   `.env` is gitignored — keep the real secret out of the repo.
+   `.env` is gitignored. There's no secret to store: `TURN_SECRET` is generated at boot
+   (step 3).
 
 2. **Open the firewall** to the host (coturn uses host networking, so these hit the host
    directly — Caddy does NOT proxy them, they're UDP/raw TCP, not HTTP):
@@ -49,12 +49,17 @@ The server and coturn only have to share one thing: `TURN_SECRET`.
    - `49160-49200/udp` — the relay media range (matches `min-port`/`max-port` in
      [turnserver.conf](../server/coturn/turnserver.conf))
 
-3. **Bring the stack up** (coturn is part of the default stack now):
+3. **Bring the stack up**, generating a fresh shared secret at boot (coturn is part of the
+   default stack now):
    ```bash
-   docker compose up -d --build
+   TURN_SECRET=$(openssl rand -hex 32) docker compose up -d --build
    ```
-   coturn aborts at startup with a clear message if `TURN_SECRET` is unset, so a
-   misconfigured deploy fails loud rather than running an unauthenticatable relay.
+   `TURN_SECRET` is only a shared key between the server and coturn; it needn't be durable
+   (sessions die on restart anyway), so nothing stores it — compose injects that one value
+   into both services, and a crash-restart of either keeps its baked-in copy so they stay
+   in sync. Bring **both** up together (a plain `up` always does); never recreate just one.
+   coturn aborts at startup if `TURN_SECRET` is somehow unset, so a misconfigured deploy
+   fails loud rather than running an unauthenticatable relay.
 
 4. **If the host is behind NAT** (its public IP isn't on the interface coturn binds —
    uncommon for a single VPS): uncomment `external-ip=<public-ip>` in
@@ -63,9 +68,15 @@ The server and coturn only have to share one thing: `TURN_SECRET`.
 
 ## Verifying
 
-- **Credentials mint:** `curl https://game.dev.snowskeleton.net/api/ice` should return a
-  `turn:` entry with a `username`/`credential` (not just the Google STUN line). If you
-  only see STUN, `TURN_SECRET`/`TURN_HOST` aren't set in the server's environment.
+- **Credentials mint:** the origin gate means a bare `curl` now gets `403` — pass your
+  page's `Origin` to mint:
+  ```bash
+  curl -H "Origin: https://game.dev.snowskeleton.net" https://game.dev.snowskeleton.net/api/ice
+  ```
+  should return a `turn:` entry with a `username`/`credential` (not just the Google STUN
+  line). A bare `curl …/api/ice` returning `403` confirms the gate works; if it returns
+  credentials anyway, neither `ALLOWED_ORIGINS` nor `TURN_HOST` is set. If you only see
+  STUN (no `turn:` entry), `TURN_SECRET`/`TURN_HOST` aren't set in the server's environment.
 - **Relay reachable end-to-end:** paste the `/api/ice` output into the
   [Trickle ICE test page](https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/)
   and Gather. A `relay` candidate means TURN works; only `srflx`/`host` means the relay
@@ -87,10 +98,12 @@ The server and coturn only have to share one thing: `TURN_SECRET`.
   each allocation at `max-bps` (~1 Mbps, ~2× a busy floor) plus `user-quota`/`total-quota`
   and an aggregate `bps-capacity` ceiling ([turnserver.conf](../server/coturn/turnserver.conf)).
   This makes the relay useless for bulk data no matter how many credentials get minted.
-  Separately, set `ALLOWED_ORIGINS` on the server (e.g. `https://game.dev.snowskeleton.net`)
-  to refuse `/api/ice` credential requests that don't carry your page's `Origin` — a
-  lightweight gate against other sites' pages and plain `curl` (a non-browser client can
-  still set the header by hand, which is why the coturn caps are the real backstop).
+  Separately, `/api/ice` refuses credential requests that don't carry your page's `Origin`
+  — by default `https://<TURN_HOST>`, so setting `TURN_HOST` configures both the relay host
+  and the gate. Override with `ALLOWED_ORIGINS` (comma-separated) only for a different or
+  multiple page origins. It's a lightweight gate against other sites' pages and plain
+  `curl` (a non-browser client can still set the header by hand, which is why the coturn
+  caps are the real backstop).
 - Relaying costs the server bandwidth (all game traffic for a relayed pair flows through
   it). For a hobby deployment that's negligible; it only kicks in for pairs that can't
   connect directly.

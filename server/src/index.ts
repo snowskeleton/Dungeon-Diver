@@ -17,14 +17,20 @@ app.use(express.json());
 
 app.get("/healthz", (_req, res) => res.send("ok"));
 
-// Web origins allowed to mint TURN credentials, comma-separated (e.g.
-// "https://game.dev.snowskeleton.net"). Browsers attach the Origin header automatically
-// and JS can't forge it, so this refuses credentials to other sites' pages AND to plain
-// curl (which sends no Origin at all). It's a lightweight gate, not a wall — a non-browser
-// client can still set the header by hand — so the real abuse containment is the coturn
-// per-session cap + short credential TTL (see server/src/ice.ts + docs/turn.md). Empty →
-// no origin gating, which is the sensible local-dev default.
-const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "")
+// Web origins allowed to mint TURN credentials. By default this is just
+// `https://<TURN_HOST>` — the page is served from the same domain clients dial for TURN,
+// so one variable configures both the relay host and the origin gate. Set ALLOWED_ORIGINS
+// (comma-separated) only to OVERRIDE: a page served from a different origin, or several
+// origins. Browsers attach the Origin header automatically and JS can't forge it, so this
+// refuses credentials to other sites' pages AND to plain curl (which sends no Origin at
+// all). It's a lightweight gate, not a wall — a non-browser client can still set the
+// header by hand — so the real abuse containment is the coturn per-session cap + short
+// credential TTL (see server/src/ice.ts + docs/turn.md). Neither var set → no gating,
+// the sensible local-dev default.
+const allowedOrigins = (
+  process.env.ALLOWED_ORIGINS ||
+  (process.env.TURN_HOST ? `https://${process.env.TURN_HOST}` : "")
+)
   .split(",")
   .map((o) => o.trim())
   .filter(Boolean);
