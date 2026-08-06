@@ -149,7 +149,19 @@ export const KNOCKBACK_SCALE = 6;            // px of push per unit of overage
 export const KNOCKBACK_MIN_FRACTION = 0.3;
 export const KNOCKBACK_STUN_MS_PER_UNIT = 60; // ms of stun per unit of overage
 export const KNOCKBACK_STUN_MAX_MS = 3000;    // cap so big hits don't stun-lock forever
-export const SERVER_TICK_MS = 50;   // 20 Hz
+// The authoritative simulation runs at a fixed 60 Hz. SERVER_TICK_MS is the fixed
+// sim dt every tick integrates over (a non-integer 16.667ms); the GameRoom drives its
+// tick from a wall-clock accumulator so a rounded setInterval cadence can't drift
+// sim-time. 60 Hz matches the client's render/prediction rate, so client-side
+// prediction and the server integrate the SAME dt — the core fix for guest
+// rubber-banding (a 20 Hz server vs 60 fps client could never agree in open space).
+export const SERVER_TICK_HZ = 60;
+export const SERVER_TICK_MS = 1000 / SERVER_TICK_HZ;   // ≈16.667ms
+// The host streams state deltas to guests at a LOWER rate than it simulates — guests
+// interpolate a ~200ms buffer, so 30 Hz snapshots look identical while keeping guest
+// downstream bandwidth from tripling with the sim rate. Client→host INPUT still flows
+// at the full sim rate (tiny, and required for exact prediction replay parity).
+export const NET_SNAPSHOT_MS = 1000 / 30;   // ≈33.3ms (30 Hz)
 export const MAX_CLIENTS = 4;
 // How many weapons a player may carry at once (27 July playtest — a run used to
 // end with 20). At the cap, taking a new weapon drops the one currently in hand

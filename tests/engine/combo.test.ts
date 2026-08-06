@@ -125,9 +125,15 @@ describe("a player swinging in sequence", () => {
  *  The press swings immediately; a hold past the threshold arms a hard swing that
  *  fires on the release tick. */
 function holdRelease(a: ReturnType<typeof arena>, id: string, holdTicks: number) {
+  const p = a.players.get(id)!;
   for (let t = 0; t < holdTicks; t++) a.stepWithInput(id, 0, 0, true);
-  a.stepWithInput(id, 0, 0, false); // release fires the charged hard swing (if armed)
-  return a.players.get(id)!;
+  const seqBefore = p.state.attackSeq;
+  a.stepWithInput(id, 0, 0, false); // release: a charged hard swing fires when the weapon frees
+  // The initial press swing may still be mid-flight at release, so a queued hard
+  // fires a tick or two later (its own attackSeq). Drain idle ticks until it comes
+  // out, capped — a plain tap never queues one, so it just runs to the cap idle.
+  for (let t = 0; t < 40 && p.state.attackSeq === seqBefore; t++) a.stepWithInput(id, 0, 0, false);
+  return p;
 }
 
 describe("melee: tap swings now, hold-then-release adds a hard swing", () => {

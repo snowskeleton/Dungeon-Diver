@@ -48,6 +48,13 @@ export class GameRoom extends LocalRoom<GameState> {
   private projectileCounter = 0;
   private coinCounter = 0;
   private tickInterval!: ReturnType<typeof setInterval>;
+  // Fixed-timestep accumulator. The interval fires on a rounded (and OS-throttled)
+  // cadence, so we measure real elapsed wall-time and step the sim in exact
+  // SERVER_TICK_MS chunks — sim-time can't drift from the non-integer 60 Hz interval,
+  // and each tick() always integrates the same dt (which is what the client's
+  // prediction replays against). Tests bypass this and call tick() directly.
+  private tickAccumulatorMs = 0;
+  private lastDriveWallMs = 0;
   private physics!: PhysicsWorld;
   private floorManager!: FloorManager;
   private flowField!: FlowFieldSystem;
@@ -237,7 +244,25 @@ export class GameRoom extends LocalRoom<GameState> {
       this.startRun();
     });
 
-    this.tickInterval = setInterval(() => this.tick(), SERVER_TICK_MS);
+    this.lastDriveWallMs = Date.now();
+    this.tickInterval = setInterval(() => this.driveSim(), SERVER_TICK_MS);
+  }
+
+  /** The wall-clock driver: catch the accumulator up with real elapsed time and run
+   *  as many fixed SERVER_TICK_MS steps as have come due. Catch-up is capped so a long
+   *  stall (GC pause, a throttled background tab hosting the sim) replays a bounded
+   *  number of ticks instead of spiralling. */
+  private driveSim() {
+    const now = Date.now();
+    let elapsed = now - this.lastDriveWallMs;
+    this.lastDriveWallMs = now;
+    const MAX_CATCHUP_MS = SERVER_TICK_MS * 5;
+    if (elapsed > MAX_CATCHUP_MS) elapsed = MAX_CATCHUP_MS;
+    this.tickAccumulatorMs += elapsed;
+    while (this.tickAccumulatorMs >= SERVER_TICK_MS) {
+      this.tickAccumulatorMs -= SERVER_TICK_MS;
+      this.tick();
+    }
   }
 
   /** Guard for every lobby-only message. Answers the client rather than dropping

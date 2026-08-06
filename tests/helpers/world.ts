@@ -162,7 +162,15 @@ export function physicsTick(physics: PhysicsWorld, bodies: Array<Player | Enemy>
  *  short tap, i.e. a regular swing, not a charged one. And swings genuinely wind
  *  up (the FX strip's leading frames are empty), so a hit lands several ticks in,
  *  never on the release tick itself. */
-export function swingUntilHit(a: Arena, playerId: string, enemyId: string, maxTicks = 25): number {
+export function swingUntilHit(
+  a: Arena,
+  playerId: string,
+  enemyId: string,
+  // ~1250ms of sim by default — enough for the wind-up (weapon cooldown) plus the
+  // empty leading FX frames before the swing arc connects. Derived from the dt so it
+  // spans the same wall-time at any tick rate.
+  maxTicks = Math.ceil(1250 / SERVER_TICK_MS),
+): number {
   const enemy = a.enemies.get(enemyId)!;
   const hp0 = enemy.state.health;
   for (let t = 1; t <= maxTicks; t++) {
@@ -174,7 +182,7 @@ export function swingUntilHit(a: Arena, playerId: string, enemyId: string, maxTi
 
 /** Tap the attack once and step `ticks` times, letting the (regular) swing play
  *  through its window — for tests that assert on the world AFTER a full swing. */
-export function tapSwing(a: Arena, playerId: string, ticks = 15): void {
+export function tapSwing(a: Arena, playerId: string, ticks = Math.ceil(750 / SERVER_TICK_MS)): void {
   for (let t = 0; t < ticks; t++) a.stepWithInput(playerId, 0, 0, t === 0);
 }
 

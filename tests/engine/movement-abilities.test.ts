@@ -232,7 +232,10 @@ describe("Vault (Ranger): an arced leap", () => {
     pressAbility(a, "v", 1, 0);
     let peak = 0;
     let sawGround = false;
-    for (let i = 0; i < 14; i++) {
+    // Span a fixed ~800ms of sim so the whole arc completes and lands regardless of
+    // tick rate (was 14 ticks @ 50ms; the count now derives from the dt).
+    const arcTicks = Math.ceil(800 / SERVER_TICK_MS);
+    for (let i = 0; i < arcTicks; i++) {
       a.stepWithInput("v", 1, 0, false, false);
       peak = Math.max(peak, p.state.airHeight);
       if (p.state.abilityId === "" && p.state.airHeight === 0) sawGround = true;

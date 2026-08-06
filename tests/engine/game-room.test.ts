@@ -478,7 +478,7 @@ describe("the tick", () => {
     p.lastInput = { dx: 0, dy: 0, attack: false };
     h.clearBroadcasts();
 
-    h.tick(15);
+    h.tick(Math.ceil(750 / SERVER_TICK_MS)); // ~750ms: let the swing wind up and land
 
     const impacts = h.of("hits") as Array<{ impacts: Array<{ x: number; y: number }> }>;
     expect(impacts.length).toBeGreaterThan(0);

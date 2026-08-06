@@ -20,8 +20,12 @@ export type PendingEffect =
   | { kind: "summon"; enemy: EnemyClass; x: number; y: number };
 
 // Knockback velocity is multiplied by this each tick; applyKnockback solves the
-// resulting geometric series backwards to hit an exact total push distance.
-export const KNOCKBACK_DECAY = 0.5;
+// resulting geometric series backwards to hit an exact total push distance (the dt
+// cancels, so the DISTANCE is tick-rate-invariant — only the glide DURATION scales
+// with tick count). Tuned for 60 Hz: 0.8 over ~16.7ms ticks resolves in about the
+// same wall-clock time (~170ms) that 0.5 did over the old 50ms ticks, so knockback
+// keeps its glide feel instead of snapping 3.6× faster. See SERVER_TICK_HZ.
+export const KNOCKBACK_DECAY = 0.8;
 const KNOCKBACK_CUTOFF = 5; // px/sec — below this, snap to zero
 
 export abstract class Entity {

@@ -53,8 +53,9 @@ describe("Enemy aggro — pickTarget via threat", () => {
     enemy.tick(players, SERVER_TICK_MS);
     expect(enemy.state.targetId).toBe("B");
 
-    // With no further damage, B's threat decays and attention returns to A.
-    for (let i = 0; i < 120; i++) enemy.tick(players, SERVER_TICK_MS);
+    // With no further damage, B's threat decays and attention returns to A. Span a
+    // fixed ~6s of sim (was 120 ticks @ 50ms) so the decay completes at any tick rate.
+    for (let i = 0, n = Math.ceil(6000 / SERVER_TICK_MS); i < n; i++) enemy.tick(players, SERVER_TICK_MS);
     expect(enemy.state.targetId).toBe("A");
   });
 });

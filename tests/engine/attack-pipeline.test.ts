@@ -98,7 +98,7 @@ describe("a melee swing, start to finish", () => {
     const e = a.addEnemy("e1", new GooGreen(a.physics, 260, 300)); // to the LEFT
     const hp0 = e.state.health;
 
-    tapSwing(a, "p1", 12);
+    tapSwing(a, "p1");
     expect(e.state.health).toBe(hp0);
   });
 
@@ -111,7 +111,7 @@ describe("a melee swing, start to finish", () => {
     const e = a.addEnemy("e1", new GooGreen(a.physics, 330, 300)); // beyond the blade tip
     const hp0 = e.state.health;
 
-    tapSwing(a, "p1", 15);
+    tapSwing(a, "p1");
     expect(e.state.health).toBeLessThan(hp0);
   });
 
@@ -122,7 +122,7 @@ describe("a melee swing, start to finish", () => {
     const ally = a.addPlayer("p2", new Player(a.physics, 312, 300));
     const hp0 = ally.state.health;
 
-    tapSwing(a, "p1", 15);
+    tapSwing(a, "p1");
     expect(ally.state.health).toBe(hp0);
   });
 });
@@ -337,7 +337,8 @@ describe("two players in the same world", () => {
     const hp1 = e1.state.health;
     const hp2 = e2.state.health;
 
-    for (let i = 0; i < 15; i++) {
+    // ~750ms of sim so the tapped swing fully winds up and connects at any tick rate.
+    for (let i = 0, n = Math.ceil(750 / SERVER_TICK_MS); i < n; i++) {
       // Deferred melee: tap (press once, then release) so each is a regular swing.
       p1.applyInput({ dx: 0, dy: 0, attack: i === 0 }, SERVER_TICK_MS);
       p2.applyInput({ dx: 0, dy: 0, attack: i === 0 }, SERVER_TICK_MS);
@@ -359,7 +360,8 @@ describe("two players in the same world", () => {
     const e = a.addEnemy("e1", new GooGreen(a.physics, 310, 300));
     const hp0 = e.state.health;
 
-    for (let i = 0; i < 15; i++) {
+    // ~750ms of sim so the tapped swing fully winds up and connects at any tick rate.
+    for (let i = 0, n = Math.ceil(750 / SERVER_TICK_MS); i < n; i++) {
       // Deferred melee: tap (press once, then release) so each is a regular swing.
       p1.applyInput({ dx: 0, dy: 0, attack: i === 0 }, SERVER_TICK_MS);
       p2.applyInput({ dx: 0, dy: 0, attack: i === 0 }, SERVER_TICK_MS);

@@ -71,10 +71,15 @@ describe("P2P session (host GameRoom ↔ guest RemoteAuthority over a loopback p
     await settle();
     const x1 = (gs.players.get(id) as PlayerStateView).x;
     expect(x1).toBeGreaterThan(x0);
-    // The guest's view agrees with the host's authoritative state.
+    // The guest's view TRACKS the host's authoritative state. The snapshot pump
+    // (NET_SNAPSHOT_MS, 30 Hz) is now decoupled from and slower than the sim (60 Hz),
+    // so the guest is deliberately a fraction behind — never ahead of authority, and
+    // closely trailing it (the guest interpolates the gap away on screen).
     const hostState = (host as unknown as { authority: { roomState: GameStateView } }).authority
       .roomState;
-    expect(x1).toBe((hostState.players.get(id) as PlayerStateView).x);
+    const hostX = (hostState.players.get(id) as PlayerStateView).x;
+    expect(x1).toBeLessThanOrEqual(hostX + 1e-6); // never ahead of the authority
+    expect(hostX - x1).toBeLessThan(60); // trails by well under one snapshot of motion
     host.dispose();
   });
 

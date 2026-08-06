@@ -168,7 +168,9 @@ describe("knockback", () => {
     p.applyKnockback(250, 300, 100000);
     let ticks = 0;
     while (p.updateStun(SERVER_TICK_MS) && ticks < 10000) ticks++;
-    expect(ticks * SERVER_TICK_MS).toBeLessThanOrEqual(KNOCKBACK_STUN_MAX_MS + SERVER_TICK_MS);
+    // +1e-6 absorbs float drift from the non-integer 60 Hz dt (the last tick lands a
+    // hair past the exact cap+dt bound).
+    expect(ticks * SERVER_TICK_MS).toBeLessThanOrEqual(KNOCKBACK_STUN_MAX_MS + SERVER_TICK_MS + 1e-6);
   });
 });
 

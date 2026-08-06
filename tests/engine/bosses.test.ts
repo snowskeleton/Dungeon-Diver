@@ -32,8 +32,10 @@ interface Outcome {
   bossErrored: Error | null;
 }
 
-/** Run one boss against a parked player + a bystander enemy of its own team. */
-function fight(BossClass: BossClass, ticks = 200): Outcome {
+/** Run one boss against a parked player + a bystander enemy of its own team.
+ *  The default spans ~10s of sim (was 200 ticks @ 50ms) so a boss with a slow
+ *  ability cadence still fires within the window regardless of tick rate. */
+function fight(BossClass: BossClass, ticks = Math.ceil(10000 / SERVER_TICK_MS)): Outcome {
   const physics: PhysicsWorld = flatWorld(60, 40);
   const bx = 900;
   const by = 600;

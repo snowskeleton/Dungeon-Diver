@@ -2,7 +2,7 @@ import {
   Observable,
   encodeDelta,
   encodeSnapshot,
-  SERVER_TICK_MS,
+  NET_SNAPSHOT_MS,
   GuestChannelMsg,
   HostChannelMsg,
   MapDelta,
@@ -98,11 +98,14 @@ export class HostSession {
     if (this.guests.size === 0) this.stopPump();
   }
 
-  /** The per-tick state pump. Drains the authoritative state's change delta once and
-   *  broadcasts it — so exactly ONE encodeDelta call owns the dirty state. */
+  /** The state pump. Drains the authoritative state's change delta once and broadcasts
+   *  it — so exactly ONE encodeDelta call owns the dirty state. Runs at NET_SNAPSHOT_MS
+   *  (30 Hz), DECOUPLED from the 60 Hz sim: a delta batches whatever changed since the
+   *  last flush, and guests interpolate a ~200ms buffer, so a lower snapshot rate is
+   *  invisible while keeping guest downstream bandwidth from tracking the sim rate. */
   private ensurePump(): void {
     if (this.pump || this.disposed) return;
-    this.pump = setInterval(() => this.flush(), SERVER_TICK_MS);
+    this.pump = setInterval(() => this.flush(), NET_SNAPSHOT_MS);
   }
 
   private stopPump(): void {
