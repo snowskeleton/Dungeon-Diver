@@ -66,6 +66,12 @@ export function resolveWeapon(id: string): Weapon | undefined {
   return (WEAPON_REGISTRY as Record<string, Weapon | undefined>)[id];
 }
 
+// The loot-rollable player catalog as ids, DERIVED from WEAPONS (not the registry,
+// which folds in ENEMY_WEAPONS). This is the ONLY set a drop/roll should draw from,
+// so an enemy armament can never appear as loot. Enemy weapons still live in
+// WEAPON_REGISTRY for wire resolution — they just aren't in here.
+export const PLAYER_WEAPON_IDS: WeaponId[] = WEAPONS.map((W) => new W().id);
+
 export type SwordId  = "short-sword" | "broadsword" | "gilded-sword";
 export type AxeId     = "battle-axe";
 export type SpearId   = "trident";

@@ -10,6 +10,7 @@ import {
   firstRollCategories,
   firstRollWeaponIds,
   partyRollableWeaponIds,
+  PLAYER_WEAPON_IDS,
   assertClassesHaveFirstRollPool,
 } from "shared";
 
@@ -48,14 +49,20 @@ describe("class weapon access", () => {
     expect(canClassUseWeapon("knight", "not-a-weapon")).toBe(false);
   });
 
-  it("puts the beast weapons in the shared catalog, rollable by the party", () => {
-    // The beasts wield their own weapons, but those live in the main WEAPONS
-    // catalog (not an enemy-only pool), so anyone who can use the category may roll
-    // one. sword/axe/mace are shared melee categories every class can wield.
-    const beasts: WeaponId[] = ["beast-sword", "beast-axe", "beast-mace"];
-    for (const id of beasts) expect(WEAPON_REGISTRY[id], id).toBeDefined();
+  it("keeps enemy armaments out of the loot pool, even in shared categories", () => {
+    // The beasts/skeletons wield their own weapons, but those live in ENEMY_WEAPONS,
+    // NOT the rollable WEAPONS catalog — so even though sword/axe/mace are shared
+    // categories every class can wield, an enemy armament must never drop as loot.
+    const enemyArms: WeaponId[] = [
+      "beast-sword",
+      "beast-axe",
+      "beast-mace",
+      "skeleton-blade",
+      "soldier-lance",
+    ];
+    for (const id of enemyArms) expect(WEAPON_REGISTRY[id], id).toBeDefined(); // resolvable
     const rollable = partyRollableWeaponIds(CLASSES);
-    for (const id of beasts) expect(rollable, id).toContain(id);
+    for (const id of enemyArms) expect(rollable, id).not.toContain(id); // but never rolled
   });
 });
 
@@ -94,10 +101,8 @@ describe("party loot filter (D10)", () => {
     const usable = partyRollableWeaponIds(["knight"]);
     const forbidden = new Set(["staff", "bow", "thrown"]);
     for (const id of usable) expect(forbidden.has(WEAPON_REGISTRY[id].category), id).toBe(false);
-    // ...but every shared + knight weapon is present.
-    const expected = (Object.keys(WEAPON_REGISTRY) as WeaponId[]).filter((id) =>
-      canClassUseWeapon("knight", id),
-    );
+    // ...but every shared + knight PLAYER weapon is present (enemy armaments excluded).
+    const expected = PLAYER_WEAPON_IDS.filter((id) => canClassUseWeapon("knight", id));
     expect(new Set(usable)).toEqual(new Set(expected));
   });
 
@@ -109,7 +114,7 @@ describe("party loot filter (D10)", () => {
     expect(mixed).toContain(mace); // knight brings maces
   });
 
-  it("treats an empty party as no restriction (returns everything)", () => {
-    expect(partyRollableWeaponIds([]).length).toBe(Object.keys(WEAPON_REGISTRY).length);
+  it("treats an empty party as no restriction (returns the whole player catalog)", () => {
+    expect(partyRollableWeaponIds([]).length).toBe(PLAYER_WEAPON_IDS.length);
   });
 });

@@ -3,7 +3,7 @@ import { Knight } from "./Knight";
 import { Rogue } from "./Rogue";
 import { Ranger } from "./Ranger";
 import { Mage } from "./Mage";
-import { WEAPON_REGISTRY, resolveWeapon, WeaponId } from "../weapons";
+import { WEAPON_REGISTRY, PLAYER_WEAPON_IDS, resolveWeapon, WeaponId } from "../weapons";
 import type { WeaponCategory } from "../weapons/base";
 
 /** The playable roster, as a plain array of `Character` instances — mirrors
@@ -79,20 +79,20 @@ export function firstRollCategories(cls: CharacterClass): WeaponCategory[] {
   return getCharacter(cls).usableCategories.filter((cat) => !othersUse.has(cat));
 }
 
-/** Weapon ids in `cls`'s unique categories — the concrete first-weapon roll pool. */
+/** Weapon ids in `cls`'s unique categories — the concrete first-weapon roll pool.
+ *  Draws from the PLAYER catalog only, so an enemy armament never rolls. */
 export function firstRollWeaponIds(cls: CharacterClass): WeaponId[] {
   const cats = new Set(firstRollCategories(cls));
-  return (Object.keys(WEAPON_REGISTRY) as WeaponId[])
-    .filter((id) => cats.has(WEAPON_REGISTRY[id].category));
+  return PLAYER_WEAPON_IDS.filter((id) => cats.has(WEAPON_REGISTRY[id].category));
 }
 
 /** Weapon ids at least one present class can equip — the D10 loot filter, so a
- *  weapon nobody in the party can use never rolls. Empty party (defensive) is
- *  treated as "no restriction" and returns every weapon. */
+ *  weapon nobody in the party can use never rolls. Draws from the PLAYER catalog
+ *  only (never an enemy armament). Empty party (defensive) is treated as "no
+ *  restriction" and returns the whole player catalog. */
 export function partyRollableWeaponIds(classes: CharacterClass[]): WeaponId[] {
-  const all = Object.keys(WEAPON_REGISTRY) as WeaponId[];
-  if (classes.length === 0) return all;
-  return all.filter((id) => classes.some((cls) => canClassUseWeapon(cls, id)));
+  if (classes.length === 0) return [...PLAYER_WEAPON_IDS];
+  return PLAYER_WEAPON_IDS.filter((id) => classes.some((cls) => canClassUseWeapon(cls, id)));
 }
 
 /** Boot sanity check: every class must own at least one unique category, or its
