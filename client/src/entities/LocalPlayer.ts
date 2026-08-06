@@ -3,7 +3,7 @@ import {
   InputMessage, CharacterClass, CharacterType, Character, getCharacter,
   Weapon, WeaponView, WeaponSlotView, UpgradeSlotView, resolveWeapon, Facing, facingFromInput,
   GameStateView, PlayerStateView, ShopStateView, ShopItemStateView, OfferStateView, RewardStateView, ChestStateView, DroppedWeaponStateView,
-  PLAYER_HURT_BOUNDS, FOOT_OFFSET, ComboSwing, swingDurationMs,
+  PLAYER_HURT_BOUNDS, ComboSwing, swingDurationMs, SERVER_TICK_MS,
 } from "shared";
 import { Entity } from "./Entity";
 import { RoomLike } from "../net/RoomLike";
@@ -17,19 +17,23 @@ import { InventoryMenu } from "../ui/InventoryMenu";
 import { OfferPicker, OfferChoiceView } from "../ui/OfferPicker";
 import { viewFromSlot } from "../ui/weaponStats";
 import { loadOptions } from "../options/gameOptions";
+import { replayInputs, seqAcked, StampedInput } from "./movementPrediction";
 
 // Must match GameRoom BUY_RADIUS so the client prompt appears exactly when the
 // server will accept the purchase.
 const SHOP_BUY_RADIUS = 40;
 
-// Prediction reconciliation threshold. Below this, a gap between predicted and
-// server position is just the latency lead (the client leads the server by ~one
-// round-trip) and is left to stand — correcting it would fight the prediction and
-// bring the lag right back. Above it, the client genuinely mispredicted (knockback,
-// enemy separation, a teleport) and snaps to the server. Sized well above the
-// worst-case steady-state lead so normal play NEVER snaps (a snap on the lead is
-// what makes prediction feel like it isn't working).
-const RECONCILE_SNAP_PX = 48;
+// Per-frame fraction the rendered sprite catches up to the reconciled `predicted`
+// point. Prediction advances in fixed 60 Hz steps; the sprite eases toward it each
+// render frame so a small server correction (the client re-based onto authority and
+// replayed) resolves as a smooth glide instead of a pop. ~0.25 converges in a few
+// frames — imperceptible, but enough to erase the fixed-step stair-edges.
+const RENDER_SMOOTHING = 0.25;
+// A correction larger than this isn't a mispredict to smooth over — it's a genuine
+// discontinuity (floor change, Blink, a revive/teleport). Hard-snap the sprite to the
+// predicted point rather than sliding it across the gap. Sized well above any
+// steady-state prediction error so ordinary play never snaps.
+const TELEPORT_SNAP_PX = 96;
 
 export class LocalPlayer extends Entity implements DebugDrawable {
   readonly room: RoomLike;
@@ -87,7 +91,6 @@ export class LocalPlayer extends Entity implements DebugDrawable {
   // state.droppedWeapons. Not class-filtered here — the prompt shows for anyone and
   // the server refuses (with an on-screen error) if this class can't use it.
   nearbyDropped: { dropId: string } | null = null;
-  private lastInput: InputMessage = { dx: 0, dy: 0, attack: false, ability: false };
   private facing: Facing = "down";
   private prevAttack = false;
   // ── Local melee animation (fully client-owned) ───────────────────────────────
@@ -148,6 +151,15 @@ export class LocalPlayer extends Entity implements DebugDrawable {
   private serverPos = { x: 0, y: 0 };
   private moveSpeed = 0;
   private speedMultiplier = 1;
+  // Replay-based reconciliation. Every fixed sim tick we stamp the current input with
+  // a monotonic (uint16-wrapping) seq, send it, and keep it here until the server acks
+  // it (PlayerState.lastProcessedInputSeq). `predicted` is always
+  // replay(serverPos, unacked inputs) — the authoritative position advanced by exactly
+  // the inputs the server hasn't processed yet — so a correction never throws us into
+  // the past. simAccumulatorMs paces those ticks off real frame time.
+  private inputSeq = 0;
+  private readonly inputHistory: StampedInput[] = [];
+  private simAccumulatorMs = 0;
 
   constructor(
     scene: Phaser.Scene,
@@ -197,20 +209,6 @@ export class LocalPlayer extends Entity implements DebugDrawable {
       this.handleActions();
     }
 
-    // Analog sticks jitter every frame, so send only on a MEANINGFUL move change
-    // (or any button edge) — otherwise a held stick floods the socket at 60 Hz for
-    // sub-degree wobble the server can't act on anyway.
-    const MOVE_EPS = 0.03;
-    if (
-      Math.abs(input.dx - this.lastInput.dx) > MOVE_EPS ||
-      Math.abs(input.dy - this.lastInput.dy) > MOVE_EPS ||
-      input.attack !== this.lastInput.attack ||
-      input.ability !== this.lastInput.ability
-    ) {
-      this.room.send("input", input);
-      this.lastInput = { ...input };
-    }
-
     // Mirror the server's facing rule (Player.applyInput) so the local sprite
     // faces the same way with no round-trip: a held ranged weapon freezes facing
     // (after the first frame) so strafing keeps your aim; movement still turns
@@ -228,12 +226,14 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     const now = performance.now();
     this.updateLocalMelee(input.attack && !locked, risingEdge && !locked, now);
 
-    // Client-side prediction: move the sprite locally THIS frame instead of waiting
-    // for the input→server→broadcast round-trip, so control feels instant. The
-    // server stays authoritative — syncFromServer reconciles (and snaps on any real
-    // divergence: knockback, a wall the prediction missed, a teleport).
-    this.predictMovement(input);
-    this.setPosition(this.predicted.x, this.predicted.y);
+    // Client-side prediction. Instead of waiting for the input→server→broadcast
+    // round-trip, we advance locally at the SAME fixed 60 Hz the server integrates:
+    // step the sim accumulator off real frame time, and per tick stamp+send the input
+    // and record it as unacked. `predicted` is then replay(serverPos, unacked inputs)
+    // — the authoritative point advanced by exactly what the server hasn't processed
+    // — so control feels instant and a correction never snaps us backward. The sprite
+    // eases toward `predicted` each frame (drivePrediction).
+    this.drivePrediction(input, locked);
 
     const isMoving = input.dx !== 0 || input.dy !== 0;
     // The local melee machine drives the pose (cocked wind-up / heavy charge) and fires the
@@ -389,28 +389,56 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     return this.meleePhase === "strike";
   }
 
-  // Integrate the local player's position from this frame's input, mirroring the
-  // server's normalize-then-move with a per-axis wall stop (so we don't predict
-  // through walls and rubber-band). Suspended while the room is paused or this
-  // player is downed — those are server-driven, so we just track the server.
-  private predictMovement(input: InputMessage) {
-    if (this.downed || this.roomState.paused) {
+  // Advance prediction at the server's fixed 60 Hz and render toward it. Each due sim
+  // tick this frame: stamp the current input with a monotonic seq, send it, and record
+  // it as unacked. `predicted` is recomputed as replay(serverPos, unacked inputs); the
+  // sprite eases toward it. While paused, nothing simulates — track the server and stop
+  // emitting so the server queue can't bank stale movement across the pause.
+  private drivePrediction(input: InputMessage, locked: boolean) {
+    if (this.roomState.paused) {
+      this.inputHistory.length = 0;
+      this.simAccumulatorMs = 0;
       this.predicted = { x: this.serverPos.x, y: this.serverPos.y };
+      this.renderTowardPrediction();
       return;
     }
-    const len = Math.hypot(input.dx, input.dy);
-    const speed = this.moveSpeed * this.speedMultiplier;
-    if (len === 0 || speed <= 0) return;
-    const dt = Math.min(this.scene.game.loop.delta, 100) / 1000; // clamp a hitch
-    const step = speed * dt;
-    const ux = (input.dx / len) * step;
-    const uy = (input.dy / len) * step;
-    // Per-axis, tested at the FOOT point the server collides from.
-    const nx = this.predicted.x + ux;
-    if (this.walkableAt(nx, this.predicted.y + FOOT_OFFSET)) this.predicted.x = nx;
-    const ny = this.predicted.y + uy;
-    if (this.walkableAt(this.predicted.x, ny + FOOT_OFFSET)) this.predicted.y = ny;
+    // The tick's input: zeroed while input-locked or downed (the server freezes the
+    // body too, so replay of these no-ops keeps predicted pinned to serverPos).
+    const tickInput: InputMessage = locked || this.downed
+      ? { dx: 0, dy: 0, attack: false, ability: false }
+      : { dx: input.dx, dy: input.dy, attack: input.attack, ability: input.ability };
+
+    this.simAccumulatorMs += Math.min(this.scene.game.loop.delta, 250); // clamp a hitch
+    while (this.simAccumulatorMs >= SERVER_TICK_MS) {
+      this.simAccumulatorMs -= SERVER_TICK_MS;
+      this.inputSeq = (this.inputSeq + 1) & 0xffff; // uint16, matches the synced ack
+      const stamped = { ...tickInput, seq: this.inputSeq };
+      this.inputHistory.push({ seq: this.inputSeq, input: stamped });
+      this.room.send("input", stamped);
+    }
+
+    this.predicted = replayInputs(this.serverPos, this.inputHistory, this.effectiveSpeed(), this.walkableAt);
+    this.renderTowardPrediction();
   }
+
+  private effectiveSpeed(): number {
+    return this.moveSpeed * this.speedMultiplier;
+  }
+
+  // Ease the sprite toward the reconciled prediction — a smooth glide for ordinary
+  // corrections, a hard snap for a genuine discontinuity (floor change / Blink / revive).
+  private renderTowardPrediction() {
+    const gap = Math.hypot(this.predicted.x - this.sprite.x, this.predicted.y - this.sprite.y);
+    if (gap > TELEPORT_SNAP_PX) {
+      this.setPosition(this.predicted.x, this.predicted.y);
+      return;
+    }
+    this.setPosition(
+      this.sprite.x + (this.predicted.x - this.sprite.x) * RENDER_SMOOTHING,
+      this.sprite.y + (this.predicted.y - this.sprite.y) * RENDER_SMOOTHING,
+    );
+  }
+
 
   // Edge-detect the discrete controls (cycle weapon, open/close the pause menu)
   // into one-shot actions. Runs every frame regardless of pause so the menu can
@@ -714,18 +742,21 @@ export class LocalPlayer extends Entity implements DebugDrawable {
     } else {
       this.setWeaponTint(tint);
     }
-    // Reconcile prediction against the authoritative position. The client owns its
-    // visual position frame-to-frame (setPosition happens in update from `predicted`);
-    // here we only correct it. Small gaps are the legitimate latency lead and are
-    // left alone; a large gap is a real divergence the client couldn't predict
-    // (knockback, enemy separation, a teleport/blink, a wall we clipped) — snap.
+    // Reconcile prediction against the authoritative position. Re-base onto the server
+    // position, drop every input the server has now processed (its ack), and replay the
+    // rest — so `predicted` becomes serverPos advanced by exactly our unacked inputs.
+    // The steady-state lead is thus reproduced forward (never snapped back into the
+    // past), and a genuine mispredict the server didn't share (knockback, enemy
+    // separation, a wall we clipped) is corrected by the replayed base moving. The
+    // sprite eases toward the result in update(); only a discontinuity hard-snaps.
     this.serverPos = { x: state.x, y: state.y };
     this.moveSpeed = state.moveSpeed || this.character.speed;
     this.speedMultiplier = state.speedMultiplier ?? 1;
-    if (Math.hypot(state.x - this.predicted.x, state.y - this.predicted.y) > RECONCILE_SNAP_PX) {
-      this.predicted = { x: state.x, y: state.y };
-      this.setPosition(state.x, state.y);
+    const ack = state.lastProcessedInputSeq;
+    while (this.inputHistory.length > 0 && seqAcked(this.inputHistory[0].seq, ack)) {
+      this.inputHistory.shift();
     }
+    this.predicted = replayInputs(this.serverPos, this.inputHistory, this.effectiveSpeed(), this.walkableAt);
     // Track the SYNCED max HP so +max-HP upgrades move the bar's full mark — the
     // character base is only the starting value, and leaving it fixed made a
     // buffed player's bar read past full (looked like HP grew without limit).
