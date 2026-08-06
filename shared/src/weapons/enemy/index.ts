@@ -31,6 +31,7 @@ import { Staff } from "../staves/base";
 export class BeastSword extends Sword {
   readonly id = "beast-sword";
   readonly name = "Beast Sword";
+  get damage() { return 6; }
 }
 
 // The axe-beast's crude axe (its own art in axes/beast-axe/). Axe base stats —
@@ -38,12 +39,14 @@ export class BeastSword extends Sword {
 export class BeastAxe extends Axe {
   readonly id = "beast-axe";
   readonly name = "Beast Axe";
+  get damage() { return 12; }
 }
 
 // The mace-beast's crude mace (its own art in maces/beast-mace/). Mace base stats.
 export class BeastMace extends Mace {
   readonly id = "beast-mace";
   readonly name = "Beast Mace";
+  get damage() { return 12; }
 }
 
 // The skeleton's blade — a humanoid holding a broadsword-shaped weapon. Reuses the
@@ -52,6 +55,7 @@ export class BeastMace extends Mace {
 export class SkeletonBlade extends Sword {
   readonly id = "skeleton-blade";
   readonly name = "Skeletal Blade";
+  get damage() { return 6; }
   get iconPath(): string { return "/sprites/weapons/swords/broadsword/broadsword.png"; }
 }
 
@@ -72,6 +76,7 @@ export class SkeletonStaff extends Staff {
 export class SoldierLance extends Spear {
   readonly id = "soldier-lance";
   readonly name = "Soldier Lance";
+  get damage() { return 6; }
   get iconPath(): string { return "/sprites/weapons/spears/lance/lance.png"; }
 }
 

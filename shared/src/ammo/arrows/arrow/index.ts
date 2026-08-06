@@ -4,4 +4,5 @@ import { Arrow as ArrowBase } from "../base";
 export class Arrow extends ArrowBase {
   readonly id = "arrow";
   readonly name = "Arrow";
+  get damage() { return 10; }
 }
