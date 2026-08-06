@@ -486,6 +486,9 @@ export abstract class Enemy extends Entity implements Caster {
     let best: { id: string; dist: number; dx: number; dy: number } | null = null;
     let bestScore = -Infinity;
     players.forEach((p, id) => {
+      // A downed player is a corpse, not a threat: never chase it, so aggro
+      // pivots to a living survivor the moment a teammate goes down.
+      if (p.downed) return;
       const dx = p.x - this.state.x;
       const dy = p.y - this.state.y;
       const dist = Math.hypot(dx, dy);
@@ -558,6 +561,8 @@ export abstract class Enemy extends Entity implements Caster {
   ): { id: string; dist: number; dx: number; dy: number } | null {
     let best: { id: string; dist: number; dx: number; dy: number } | null = null;
     players.forEach((p, id) => {
+      // Skip the downed: a boss ignores a corpse and keeps to living targets.
+      if (p.downed) return;
       const dx = p.x - this.state.x;
       const dy = p.y - this.state.y;
       const dist = Math.sqrt(dx * dx + dy * dy);

@@ -883,6 +883,32 @@
         </div>
       </details>
 
+      <details class="phase-card next" open>
+        <summary>
+          <span class="floor-num">FLOOR 4.6</span>
+          <span class="phase-name">Playtest 3 Response</span>
+          <span class="phase-badge badge-next">Up Next</span>
+          <span class="phase-chevron">&#9654;</span>
+        </summary>
+        <div class="phase-body">
+          <div class="phase-milestone"><strong>Milestone:</strong> Co-op over the P2P transport is playable for the <em>guest</em>, and two people can play back-to-back runs without reloading. From the third playtest (2026-08-05, co-op, 2 players) &mdash; full notes in <code>docs/playtest-2026-08-05.md</code>. The signal this session was the <strong>guest experience</strong>: the host is authoritative and clean, the guest is where the seams are.</div>
+
+          <div class="phase-milestone"><strong>1. Critical bugs</strong> &mdash; these break a co-op session.</div>
+          <ul class="task-list">
+            <li><span class="tm done">&#10003;</span> <strong>Enemies retain aggro after player death</strong> &mdash; a downed player still held enemy threat, so enemies kept attacking the corpse instead of pivoting to the survivor. Fixed: both target-selection paths (<code>Enemy.pickTarget</code> for regular/caster enemies, <code>Enemy.closestPlayer</code> for bosses) now skip downed players &mdash; aggro pivots to a living survivor the instant a teammate goes down, and an enemy whose only in-range target is downed drops to patrol. Regression tests in <code>tests/engine/enemy.test.ts</code></li>
+            <li><span class="tm">&mdash;</span> <strong>Guest position rubber-banding</strong> &mdash; the guest snaps back mid-movement, frequently enough to make the game unplayable for the non-host; the host sees nothing (authoritative). This is the <strong>guest-prediction</strong> polish already flagged as the remaining P2P work: the guest needs local input prediction plus <em>smoothed</em> reconciliation (lerp/replay), not a hard snap to each authoritative correction. Dedicated pass, not a quick fix</li>
+            <li><span class="tm">&mdash;</span> <strong>Can't start a second run without a page reload</strong> &mdash; after a co-op run ends, the host can't create or join a new online room without <code>Cmd+R</code>. The return-to-menu flow (<code>GameScene</code> &rarr; <code>localManager.leaveAll()</code> &rarr; fresh <code>Party</code> in <code>MenuScene</code>) leaves some P2P/signaling state (host session, signaling registry entry, or accept loop) not fully reset. Same subsystem as the rubber-banding &mdash; wants an audit of <code>Party.leaveAll</code> against what a fresh host needs</li>
+          </ul>
+
+          <div class="phase-milestone"><strong>2. Design feedback</strong> &mdash; enrichment, not repair; the core loop held up.</div>
+          <ul class="task-list">
+            <li><span class="tm">&mdash;</span> <strong>Room enemy profiles ("mob voices")</strong> &mdash; fully-random mixed spawns read as chaotic. Define 2&ndash;3 curated enemy combos per room (e.g. <em>enchanter + flyers</em>, <em>frog-flowers + one other</em>) and roll randomly <em>within</em> a chosen profile &mdash; variety without all-random chaos. Home is <code>SpawnDirector</code>: the pool+count roll becomes a roll over a small set of profiles. OO-native &mdash; a profile is a small list of enemy classes, not a config blob</li>
+            <li><span class="tm">&mdash;</span> <strong>Enemy stacking / no mutual collision</strong> &mdash; enemies can occupy the same tile and all attack at once, removing counterplay. Players want them to spread out or path <em>around</em> to surround, enabling bunch-for-cleave vs. spread-to-surround. Either enemy&ndash;enemy collision (matter-js filters already exist) or a spread/surround steering layer on the flow field. Needs a design + perf pass &mdash; enemy&ndash;enemy collision multiplies solver cost</li>
+            <li><span class="tm">&mdash;</span> <strong>Dead-player spectate mode</strong> &mdash; a downed/dead player has nothing to do while waiting for a revive or run end. A spectate/free-look or follow-a-teammate camera. Low urgency, flagged</li>
+          </ul>
+        </div>
+      </details>
+
       <details class="phase-card next">
         <summary>
           <span class="floor-num">FLOOR 5</span>

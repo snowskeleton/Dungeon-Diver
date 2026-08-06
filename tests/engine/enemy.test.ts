@@ -162,6 +162,26 @@ describe("the base chase AI", () => {
     expect(goo.state.targetId).toBe("near");
   });
 
+  it("ignores a downed player and pivots to the living survivor", () => {
+    const goo = new GooGreen(flatWorld(), 300, 300);
+    const corpse = playerAt(320, 300); // closer, but downed
+    corpse.downed = true;
+    goo.tick(new Map([
+      ["dead", corpse],
+      ["alive", playerAt(300 + goo.state.aggroRadius - 10, 300)],
+    ]), SERVER_TICK_MS);
+    expect(goo.state.targetId).toBe("alive");
+  });
+
+  it("patrols when the only player in range is downed", () => {
+    const goo = new GooGreen(flatWorld(), 300, 300);
+    const corpse = playerAt(320, 300);
+    corpse.downed = true;
+    goo.tick(new Map([["dead", corpse]]), SERVER_TICK_MS);
+    expect(goo.state.aiState).toBe("patrol");
+    expect(goo.state.targetId).toBe("");
+  });
+
   it("faces the direction it is chasing", () => {
     const goo = new GooGreen(flatWorld(), 300, 300);
     goo.tick(new Map([["p1", playerAt(400, 300)]]), SERVER_TICK_MS);
