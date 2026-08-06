@@ -50,6 +50,13 @@ export interface InputMessage {
   // current movement heading (or facing when standing still). One field, not one
   // per class: the player's Character decides which ability the press triggers.
   ability: boolean;
+  // Monotonic client tick counter, stamped once per fixed 60 Hz client tick. The
+  // server echoes the seq of the input it last processed as
+  // PlayerState.lastProcessedInputSeq; the client uses that ack to prune its
+  // unacked-input buffer and replay the rest for smooth prediction reconciliation.
+  // Optional on the wire (the field default and older/synthetic inputs omit it — the
+  // server treats a missing seq as 0), always set by the real client.
+  seq?: number;
 }
 
 // Tile IDs

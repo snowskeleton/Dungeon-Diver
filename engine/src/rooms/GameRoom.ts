@@ -123,8 +123,9 @@ export class GameRoom extends LocalRoom<GameState> {
     this.initFloor(this.currentSeed);
 
     this.onMessage("input", (client, input: InputMessage) => {
-      const player = this.players.get(client.sessionId);
-      if (player) player.lastInput = input;
+      // Queue rather than overwrite: the tick drains one per tick so 1 client input =
+      // 1 sim tick, which is what makes the client's prediction replay exact.
+      this.players.get(client.sessionId)?.enqueueInput(input);
     });
 
     this.onMessage("switchWeapon", (client, msg: { delta: number }) => {
@@ -737,8 +738,13 @@ export class GameRoom extends LocalRoom<GameState> {
 
     const dtMs = SERVER_TICK_MS;
 
-    // 1. Player inputs.
-    this.players.forEach((player) => player.applyInput(player.lastInput, dtMs));
+    // 1. Player inputs. Drain one queued input per player per tick, apply it, then echo
+    //    the seq it processed so the client can ack + replay for smooth reconciliation.
+    this.players.forEach((player) => {
+      const input = player.dequeueInput();
+      player.applyInput(input, dtMs);
+      player.state.lastProcessedInputSeq = input.seq ?? 0;
+    });
 
     // 1a. Deferred spawning. Each room's enemies were built at floor start but held
     //     hidden; the first time a player is inside a room (or in a passageway

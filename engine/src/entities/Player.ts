@@ -42,7 +42,31 @@ export class Player extends Entity implements Caster, MovementCaster {
   // which is all the uid is for (spell cache key + the client's acquire diff).
   private uidCounter = 0;
   private stats: PlayerStats;
+  // The last input the sim actually processed. Held between ticks so an empty queue
+  // (packet loss, a paused sender, or a client that only sends on change) keeps a held
+  // key moving. Tests may assign this directly and tick with an empty queue.
   lastInput: InputMessage = { dx: 0, dy: 0, attack: false, ability: false };
+  // Client inputs awaiting processing. Drained ONE per sim tick (dequeueInput) so one
+  // client input maps to exactly one tick — the invariant that lets the client replay
+  // its unacked inputs for exact prediction reconciliation. Capped: a burst or a client
+  // outpacing the server can't bank unbounded movement/latency; past the cap the OLDEST
+  // is dropped and the client's ack-based pruning stays consistent with the drop.
+  private inputQueue: InputMessage[] = [];
+  private static readonly INPUT_QUEUE_CAP = 10; // ~10 ticks ≈ 167ms at 60 Hz
+
+  /** Queue a freshly-received client input for a future tick. */
+  enqueueInput(input: InputMessage): void {
+    this.inputQueue.push(input);
+    if (this.inputQueue.length > Player.INPUT_QUEUE_CAP) this.inputQueue.shift();
+  }
+
+  /** Take the next queued input for this tick and make it the processed input, or hold
+   *  the last one when the queue is empty. Returns the input the tick should apply. */
+  dequeueInput(): InputMessage {
+    const next = this.inputQueue.shift();
+    if (next) this.lastInput = next;
+    return this.lastInput;
+  }
   // Runs the active weapon's spell (the swing/shot lifecycle) — the same shared
   // runner bosses use. Attacks are just zero-wind-up spells now.
   private readonly spellCaster = new SpellCaster();

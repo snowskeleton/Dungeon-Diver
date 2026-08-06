@@ -16,6 +16,10 @@ export class PlayerState extends EntityState implements PlayerStateView {
   // Base move speed (px/sec, pre-multiplier), synced so the client can predict its
   // own movement at the server's exact pace.
   @tracked("float32") moveSpeed: number = 0;
+  // The seq of the last input the sim processed for this player (see InputMessage.seq).
+  // The client acks against it to prune + replay its unacked-input buffer. uint16, wraps
+  // like attackSeq — the client compares with wrap-aware logic.
+  @tracked("uint16") lastProcessedInputSeq: number = 0;
   @tracked("boolean") isAttacking: boolean = false;
   // Increments once per swing — clients edge-detect this to restart the attack
   // animation even when isAttacking never flips false (held attack key).

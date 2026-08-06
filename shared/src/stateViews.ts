@@ -81,6 +81,10 @@ export interface PlayerStateView extends EntityStateView {
    *  so the client can predict its own movement at the exact server pace — the
    *  effective speed is `moveSpeed * speedMultiplier`. */
   readonly moveSpeed: number;
+  /** The `seq` of the last input this player's authoritative sim has processed. The
+   *  client acks against it: prune every buffered input at or below it, then replay
+   *  the rest from this synced position to reconcile its local prediction. */
+  readonly lastProcessedInputSeq: number;
   readonly isAttacking: boolean;
   readonly attackSeq: number;
   /** Combo swing index the current attack belongs to (0 first, 1 reverse, 2
