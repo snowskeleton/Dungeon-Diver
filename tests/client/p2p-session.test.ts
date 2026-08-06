@@ -80,6 +80,17 @@ describe("P2P session (host GameRoom ↔ guest RemoteAuthority over a loopback p
     const hostX = (hostState.players.get(id) as PlayerStateView).x;
     expect(x1).toBeLessThanOrEqual(hostX + 1e-6); // never ahead of the authority
     expect(hostX - x1).toBeLessThan(60); // trails by well under one snapshot of motion
+
+    // The seq/ack round-trip that drives the guest's prediction reconciliation: stamped
+    // inputs flow guest→host, the sim drains one per tick and echoes the processed seq
+    // back as lastProcessedInputSeq — the ack the guest's LocalPlayer prunes + replays
+    // against. Five sent, more than five ticks of settle, so all are processed.
+    for (let s = 1; s <= 5; s++) {
+      guest.send("input", { dx: 1, dy: 0, attack: false, ability: false, seq: s });
+    }
+    await settle();
+    await settle();
+    expect((gs.players.get(id) as PlayerStateView).lastProcessedInputSeq).toBe(5);
     host.dispose();
   });
 
