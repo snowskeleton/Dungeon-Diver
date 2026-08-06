@@ -30,6 +30,13 @@ export class BrowseScene extends Phaser.Scene {
   create() {
     backdrop(this, "PLAY ONLINE");
 
+    // Phaser reuses the scene instance across scene.start, so field initializers
+    // run only once. A successful host/join leaves `joining` true as it hops to the
+    // lobby; without this reset, re-entering the browser after a run would find the
+    // flag stuck and silently swallow every host/join attempt (only a page reload,
+    // which rebuilds the instance, cleared it). Reset on every entry.
+    this.joining = false;
+
     const profile = loadProfile();
     this.panel = new RoomBrowserPanel(
       {
