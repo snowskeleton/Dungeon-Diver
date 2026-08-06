@@ -1,9 +1,9 @@
 import { Weapon, WeaponClass } from "./base";
 
 // ─── Swords ──────────────────────────────────────────────────────────────────
-import { ShortSword }  from "./swords/short-sword";
-import { Broadsword }  from "./swords/broadsword";
-import { GildedSword } from "./swords/gilded-sword";
+import { ShortSword }     from "./swords/short-sword";
+import { Broadsword }     from "./swords/broadsword";
+import { LightningBlade } from "./swords/lightning-blade";
 
 // ─── Axes ─────────────────────────────────────────────────────────────────────
 import { BattleAxe } from "./axes/battle-axe";
@@ -33,7 +33,7 @@ import { ENEMY_WEAPONS, EnemyWeaponId } from "./enemy";
 // LOOT POOL — `partyRollableWeaponIds` draws from it — so enemy-only armaments
 // live in ENEMY_WEAPONS (below) and can never drop as loot.
 export const WEAPONS: WeaponClass[] = [
-  ShortSword, Broadsword, GildedSword,
+  ShortSword, Broadsword, LightningBlade,
   BattleAxe,
   Trident,
   MorningStar,
@@ -72,7 +72,7 @@ export function resolveWeapon(id: string): Weapon | undefined {
 // WEAPON_REGISTRY for wire resolution — they just aren't in here.
 export const PLAYER_WEAPON_IDS: WeaponId[] = WEAPONS.map((W) => new W().id);
 
-export type SwordId  = "short-sword" | "broadsword" | "gilded-sword";
+export type SwordId  = "short-sword" | "broadsword" | "lightning-blade";
 export type AxeId     = "battle-axe";
 export type SpearId   = "trident";
 export type MaceId    = "morning-star";
