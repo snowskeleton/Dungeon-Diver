@@ -32,6 +32,7 @@ export type BindableAction =
   | "interact"
   | "back"
   // Reserved (shown but never rebindable — see RESERVED_ACTIONS).
+  | "select"
   | "pause";
 
 /** No gamepad button bound (movement, or an explicitly-cleared action). */
@@ -61,8 +62,15 @@ export function isMovementAction(action: BindableAction): boolean {
 
 /** Reserved controls: shown in the rebind screen for reference but never editable.
  *  Pause is the ESC-equivalent (keyboard Esc, controller Start) — deliberately
- *  fixed so Esc can also cancel an in-progress capture without ambiguity. */
-export const RESERVED_ACTIONS: ReadonlySet<BindableAction> = new Set(["pause"]);
+ *  fixed so Esc can also cancel an in-progress capture without ambiguity. Select is
+ *  the menu-confirm (keyboard Enter, controller A) — fixed so the "confirm" button
+ *  is a stable convention independent of the in-game Attack control (which the
+ *  player may rebind freely, and which defaults to a different button). Back stays
+ *  rebindable — only confirm/pause are locked. */
+export const RESERVED_ACTIONS: ReadonlySet<BindableAction> = new Set([
+  "select",
+  "pause",
+]);
 
 export function isReservedAction(action: BindableAction): boolean {
   return RESERVED_ACTIONS.has(action);
@@ -85,6 +93,7 @@ export const BINDABLE_ACTIONS: { action: BindableAction; label: string }[] = [
 
 /** Reserved rows, rendered greyed-out below the editable ones. */
 export const RESERVED_ROWS: { action: BindableAction; label: string }[] = [
+  { action: "select", label: "Select / Confirm" },
   { action: "pause", label: "Pause / Menu" },
 ];
 
@@ -114,22 +123,25 @@ export const PAD = {
 } as const;
 
 /** Ships as WASD + arrow-cluster secondaries for the keyboard, and the usual
- *  Xbox layout for the controller: A confirms/attacks (Select), X interacts
- *  (Pickup), B cancels (Back) — the standard console convention — Y is the
- *  movement ability, LB/RB switch weapons, View opens the inventory, Start
- *  pauses. */
+ *  Xbox layout for the controller: RB attacks, X interacts (Pickup), B cancels
+ *  (Back), Y is the movement ability, LB/RT switch weapons, View opens the
+ *  inventory, Start pauses. Menu confirm is the reserved Select (Enter / A), kept
+ *  separate from Attack — so a controller player's Attack (RB) and menu-confirm (A)
+ *  are distinct buttons, as are the keyboard Attack (Space) and confirm (Enter). */
 export const DEFAULT_BINDINGS: KeyBindings = {
   up:       { keys: [K.W, K.UP],                 pad: PAD_UNBOUND },
   down:     { keys: [K.S, K.DOWN],               pad: PAD_UNBOUND },
   left:     { keys: [K.A, K.LEFT],               pad: PAD_UNBOUND },
   right:    { keys: [K.D, K.RIGHT],              pad: PAD_UNBOUND },
-  attack:   { keys: [K.SPACE, K.ENTER],          pad: PAD.A },
+  attack:   { keys: [K.SPACE, 0],                pad: PAD.RB },
   ability:  { keys: [K.SHIFT, K.FORWARD_SLASH],  pad: PAD.Y },
   prevSlot: { keys: [K.Q, K.OPEN_BRACKET],       pad: PAD.LB },
-  nextSlot: { keys: [K.E, K.CLOSED_BRACKET],     pad: PAD.RB },
+  nextSlot: { keys: [K.E, K.CLOSED_BRACKET],     pad: PAD.RT },
   menu:     { keys: [K.I, K.BACK_SLASH],         pad: PAD.VIEW },
   interact: { keys: [K.F, K.PERIOD],             pad: PAD.X },
   back:     { keys: [K.BACKSPACE, 0],            pad: PAD.B },
+  // Reserved: menu confirm (Enter / A). Not editable — decoupled from Attack.
+  select:   { keys: [K.ENTER, 0],                pad: PAD.A },
   // Reserved: Esc / Start. Not editable — kept in sync with the GameScene handler.
   pause:    { keys: [K.ESC, 0],                  pad: PAD.MENU },
 };

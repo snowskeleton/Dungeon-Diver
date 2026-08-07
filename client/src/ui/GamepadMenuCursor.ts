@@ -6,11 +6,12 @@
  * (`.m-btn`, `.m-row.clickable`, `.m-tile`, `.m-card`, `.m-chip`, inputs). This
  * cursor scans whichever `.m-overlay` is on top for those focusables, paints a
  * `.gp-focus` ring on one of them, and turns the pad into keyboard-equivalent
- * intent: D-pad / left-stick move the ring, the bound Select button activates (a
- * real `click()`), the bound Back button sends Escape (the same key every panel's
- * `onEscape` already listens for). "Select" and "Back" follow the player's
- * `attack` / `back` keybindings, so a rebind flows through here too — B is Back by
- * default, everywhere.
+ * intent: D-pad / left-stick move the ring, the Select button activates (a real
+ * `click()`), the bound Back button sends Escape (the same key every panel's
+ * `onEscape` already listens for). Select is the reserved menu-confirm control (A,
+ * un-rebindable) and Back follows the player's `back` keybinding, so a Back rebind
+ * flows through here too — B is Back by default, everywhere. Select stays A no
+ * matter how the in-game Attack is rebound.
  *
  * It runs its own requestAnimationFrame loop rather than riding a Phaser scene
  * tick, because menus live in the DOM across scene boundaries (and before any
@@ -151,7 +152,7 @@ export class GamepadMenuCursor {
     }
 
     const bindings = loadBindings();
-    const aDown = this.buttonDown(pad, bindings.attack.pad);
+    const aDown = this.buttonDown(pad, bindings.select.pad);
     if (aDown && !this.aWasDown) this.activate();
     this.aWasDown = aDown;
 
@@ -179,7 +180,7 @@ export class GamepadMenuCursor {
       this.nextFire[dir] = state[dir] ? now + REPEAT_DELAY_MS : 0;
     }
     const bindings = loadBindings();
-    this.aWasDown = this.buttonDown(pad, bindings.attack.pad);
+    this.aWasDown = this.buttonDown(pad, bindings.select.pad);
     this.bWasDown = this.buttonDown(pad, bindings.back.pad);
   }
 
