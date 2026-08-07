@@ -30,6 +30,7 @@ export type BindableAction =
   | "nextSlot"
   | "menu"
   | "interact"
+  | "back"
   // Reserved (shown but never rebindable — see RESERVED_ACTIONS).
   | "pause";
 
@@ -79,6 +80,7 @@ export const BINDABLE_ACTIONS: { action: BindableAction; label: string }[] = [
   { action: "nextSlot", label: "Next Weapon" },
   { action: "menu",     label: "Inventory / Menu" },
   { action: "interact", label: "Interact / Open" },
+  { action: "back",     label: "Back / Cancel" },
 ];
 
 /** Reserved rows, rendered greyed-out below the editable ones. */
@@ -112,19 +114,22 @@ export const PAD = {
 } as const;
 
 /** Ships as WASD + arrow-cluster secondaries for the keyboard, and the usual
- *  Xbox layout for the controller (A attack, B ability, LB/RB switch, Start menu,
- *  X interact). */
+ *  Xbox layout for the controller: A confirms/attacks (Select), X interacts
+ *  (Pickup), B cancels (Back) — the standard console convention — Y is the
+ *  movement ability, LB/RB switch weapons, View opens the inventory, Start
+ *  pauses. */
 export const DEFAULT_BINDINGS: KeyBindings = {
   up:       { keys: [K.W, K.UP],                 pad: PAD_UNBOUND },
   down:     { keys: [K.S, K.DOWN],               pad: PAD_UNBOUND },
   left:     { keys: [K.A, K.LEFT],               pad: PAD_UNBOUND },
   right:    { keys: [K.D, K.RIGHT],              pad: PAD_UNBOUND },
   attack:   { keys: [K.SPACE, K.ENTER],          pad: PAD.A },
-  ability:  { keys: [K.SHIFT, K.FORWARD_SLASH],  pad: PAD.B },
+  ability:  { keys: [K.SHIFT, K.FORWARD_SLASH],  pad: PAD.Y },
   prevSlot: { keys: [K.Q, K.OPEN_BRACKET],       pad: PAD.LB },
   nextSlot: { keys: [K.E, K.CLOSED_BRACKET],     pad: PAD.RB },
   menu:     { keys: [K.I, K.BACK_SLASH],         pad: PAD.VIEW },
   interact: { keys: [K.F, K.PERIOD],             pad: PAD.X },
+  back:     { keys: [K.BACKSPACE, 0],            pad: PAD.B },
   // Reserved: Esc / Start. Not editable — kept in sync with the GameScene handler.
   pause:    { keys: [K.ESC, 0],                  pad: PAD.MENU },
 };

@@ -6,8 +6,11 @@
  * (`.m-btn`, `.m-row.clickable`, `.m-tile`, `.m-card`, `.m-chip`, inputs). This
  * cursor scans whichever `.m-overlay` is on top for those focusables, paints a
  * `.gp-focus` ring on one of them, and turns the pad into keyboard-equivalent
- * intent: D-pad / left-stick move the ring, A activates (a real `click()`), B
- * sends Escape (the same key every panel's `onEscape` already listens for).
+ * intent: D-pad / left-stick move the ring, the bound Select button activates (a
+ * real `click()`), the bound Back button sends Escape (the same key every panel's
+ * `onEscape` already listens for). "Select" and "Back" follow the player's
+ * `attack` / `back` keybindings, so a rebind flows through here too — B is Back by
+ * default, everywhere.
  *
  * It runs its own requestAnimationFrame loop rather than riding a Phaser scene
  * tick, because menus live in the DOM across scene boundaries (and before any
@@ -18,6 +21,8 @@
  * entering a room code or a name still needs a physical keyboard. That is the
  * one deliberate gap.
  */
+
+import { loadBindings } from "../options/keybindings";
 
 // A focusable is anything a mouse could click inside a panel.
 const FOCUSABLE_SELECTOR = [
@@ -55,9 +60,9 @@ export function isGamepadCaptureLocked(): boolean {
 }
 
 // Standard W3C gamepad mapping (what Xbox pads report on macOS/Chrome):
-// 0 = A, 1 = B, 12/13/14/15 = D-pad up/down/left/right.
-const BTN_A = 0;
-const BTN_B = 1;
+// 12/13/14/15 = D-pad up/down/left/right. Select (activate) and Back (escape)
+// are NOT hardcoded — they follow the player's `attack` / `back` keybindings so a
+// controller rebind applies to the menus too.
 const DPAD: Record<Dir, number> = { up: 12, down: 13, left: 14, right: 15 };
 
 export class GamepadMenuCursor {
@@ -145,11 +150,12 @@ export class GamepadMenuCursor {
       if (next !== -1) this.setRing(items[next]);
     }
 
-    const aDown = pad.buttons[BTN_A]?.pressed ?? false;
+    const bindings = loadBindings();
+    const aDown = this.buttonDown(pad, bindings.attack.pad);
     if (aDown && !this.aWasDown) this.activate();
     this.aWasDown = aDown;
 
-    const bDown = pad.buttons[BTN_B]?.pressed ?? false;
+    const bDown = this.buttonDown(pad, bindings.back.pad);
     if (bDown && !this.bWasDown) this.escape();
     this.bWasDown = bDown;
   }
@@ -172,8 +178,15 @@ export class GamepadMenuCursor {
       this.held[dir] = state[dir];
       this.nextFire[dir] = state[dir] ? now + REPEAT_DELAY_MS : 0;
     }
-    this.aWasDown = pad.buttons[BTN_A]?.pressed ?? false;
-    this.bWasDown = pad.buttons[BTN_B]?.pressed ?? false;
+    const bindings = loadBindings();
+    this.aWasDown = this.buttonDown(pad, bindings.attack.pad);
+    this.bWasDown = this.buttonDown(pad, bindings.back.pad);
+  }
+
+  /** Is the (possibly unbound) gamepad button index currently pressed? */
+  private buttonDown(pad: Gamepad, button: number): boolean {
+    if (button < 0) return false;
+    return pad.buttons[button]?.pressed ?? false;
   }
 
   /** True on the frame a direction should step: fires on press, then repeats
