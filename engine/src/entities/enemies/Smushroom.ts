@@ -7,6 +7,10 @@ import { CastingEnemy } from "./CastingEnemy";
 const CLOUD_RADIUS = 60;
 const CLOUD_DURATION_MS = 6000; // full 0–2s, fades out by 6s (fade is client-side)
 const CLOUD_REHIT_MS = 500; // ticks damage every 0.5s to anyone still inside
+// A readable "about to gas" tell: the smushroom swells (client pulses it red) for
+// this long before the cloud actually appears, so a player can react/step out. The
+// wind-up is interruptible by a shove (interruptOnHit), unlike the immune cloud.
+const CLOUD_WINDUP_MS = 700;
 
 // The Smushroom: walks up to the player and releases a lingering damage CLOUD it
 // tries to catch you in, and releases the same cloud on death (a parting gift). The
@@ -35,6 +39,7 @@ export class Smushroom extends CastingEnemy {
         radius: CLOUD_RADIUS,
         damage: 6,
         durationMs: CLOUD_DURATION_MS,
+        windUpMs: CLOUD_WINDUP_MS,
         hitCooldownMs: CLOUD_REHIT_MS,
         // Long enough that it doesn't chain gas nonstop; it re-clouds after a lull.
         cooldownMs: CLOUD_DURATION_MS + 1500,

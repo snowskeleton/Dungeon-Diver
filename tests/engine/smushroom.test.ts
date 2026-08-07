@@ -29,14 +29,50 @@ describe("Smushroom — cloud only, on walk-up and on death", () => {
     a.addEnemy("e", smush);
     const ps = new Map<string, PlayerState>([["p", player.state]]);
     let ticksThatDamaged = 0;
-    for (let t = 0; t < 60; t++) {
+    // Enough ticks to clear the ~700ms wind-up AND several 500ms re-hit gates of
+    // the active cloud (the sim runs at 60 Hz, so a tick is ~16.7ms).
+    for (let t = 0; t < 300; t++) {
       const hp = player.state.health;
       stepEnemy(smush, ps);
       a.step();
       if (player.state.health < hp) ticksThatDamaged++;
     }
-    // Re-hits on its 500ms gate over ~3s → several distinct damage ticks, not one.
+    // Re-hits on its 500ms gate over the cloud's life → several distinct damage
+    // ticks, not one.
     expect(ticksThatDamaged).toBeGreaterThan(1);
+  });
+
+  it("winds up (telegraph, no damage yet) before the cloud lands", () => {
+    const physics = flatWorld();
+    const smush = new Smushroom(physics, 300, 300);
+    const player = new Player(physics, 330, 300, "knight", "guy");
+    const a = arena(physics);
+    a.addPlayer("p", player);
+    a.addEnemy("e", smush);
+    const ps = new Map<string, PlayerState>([["p", player.state]]);
+    const hp0 = player.state.health;
+
+    // First tick: in range → it commits to the cloud and enters the wind-up. During
+    // the wind-up it telegraphs (client pulses it red) and deals NO damage yet — the
+    // window the player uses to step out.
+    stepEnemy(smush, ps);
+    a.step();
+    expect(smush.state.telegraph).toBe(true);
+    expect(smush.state.channeling).toBe(false);
+    // Step through the rest of the wind-up (well under the ~700ms tell) — still no gas.
+    for (let t = 0; t < 30; t++) {
+      stepEnemy(smush, ps);
+      a.step();
+    }
+    expect(player.state.health).toBe(hp0);
+
+    // Push past the wind-up: it now channels the cloud and the player takes damage.
+    for (let t = 0; t < 30; t++) {
+      stepEnemy(smush, ps);
+      a.step();
+    }
+    expect(smush.state.channeling).toBe(true);
+    expect(player.state.health).toBeLessThan(hp0);
   });
 
   it("releases a parting cloud on death that still damages a nearby player", () => {
@@ -51,7 +87,8 @@ describe("Smushroom — cloud only, on walk-up and on death", () => {
     smush.takeDamage(9999);
     expect(smush.state.isDying).toBe(true);
     const hp0 = player.state.health;
-    for (let t = 0; t < 30; t++) {
+    // The death cloud shares the same ~700ms wind-up, so step well past it (60 Hz).
+    for (let t = 0; t < 90; t++) {
       stepEnemy(smush, ps);
       a.step();
     }
