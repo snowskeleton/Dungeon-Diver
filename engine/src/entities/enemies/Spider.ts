@@ -5,4 +5,5 @@ import { Enemy } from "../Enemy";
 // special beyond its art.
 export class Spider extends Enemy {
   static readonly type: EnemyType = "spider";
+  static readonly role = "swarm" as const;
 }

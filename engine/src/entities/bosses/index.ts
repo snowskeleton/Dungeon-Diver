@@ -1,6 +1,7 @@
 import { EnemyType } from "shared";
 import { PhysicsWorld } from "../../physics/PhysicsWorld";
 import { Boss } from "../Boss";
+import { EnemyRole } from "../Enemy";
 import { TurtleDragon } from "./TurtleDragon";
 import { Wyvern } from "./Wyvern";
 import { WyvernGreen } from "./WyvernGreen";
@@ -16,6 +17,10 @@ import { BatwingButtstomper } from "./BatwingButtstomper";
 export type BossClass = {
   new (physics: PhysicsWorld, x: number, y: number): Boss;
   readonly type: EnemyType;
+  // Inherited from Enemy (a boss never spawns via an encounter profile, so these
+  // keep their defaults) — declared so a BossClass is assignable to EnemyClass.
+  readonly role: EnemyRole;
+  readonly threat: number;
   readonly lore: string;
   readonly abilities: { name: string; desc: string }[];
 };

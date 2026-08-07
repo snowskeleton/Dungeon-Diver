@@ -6,6 +6,8 @@ import { ArmedEnemy } from "./ArmedEnemy";
 // commits from well outside melee range instead of walking in to touch you.
 export class SkeletonMage extends ArmedEnemy {
   static readonly type: EnemyType = "skeleton-mage";
+  static readonly role = "ranged" as const;
+  static readonly threat = 2;
   protected get weaponTemplate(): Weapon { return new SkeletonStaff(); }
   // Fire from range: commit to a cast whenever a player is within bolt reach,
   // rather than closing to a sword's length first.

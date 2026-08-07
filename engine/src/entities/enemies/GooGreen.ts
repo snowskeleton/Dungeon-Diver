@@ -5,4 +5,5 @@ import { Enemy } from "../Enemy";
 // it overrides nothing; the other goos tune up from here.
 export class GooGreen extends Enemy {
   static readonly type: EnemyType = "goo-green";
+  static readonly role = "swarm" as const;
 }

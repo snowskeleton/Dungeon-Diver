@@ -5,6 +5,8 @@ import { ArmedEnemy } from "./ArmedEnemy";
 // commits to the thrust from further out.
 export class ArmorLancer extends ArmedEnemy {
   static readonly type: EnemyType = "armor-lancer";
+  static readonly role = "brute" as const;
+  static readonly threat = 2;
   protected get weaponTemplate(): Weapon { return new SoldierLance(); }
   protected get attackRange(): number { return 58; }
 }

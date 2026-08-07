@@ -7,6 +7,7 @@ import { ArmedEnemy } from "./ArmedEnemy";
 // is wired client-side.
 export class Skeleton extends ArmedEnemy {
   static readonly type: EnemyType = "skeleton";
+  static readonly threat = 2;
   protected get weaponTemplate(): Weapon { return new SkeletonBlade(); }
   // A deliberate, readable broadsword swing: a long rear-back and a slow cadence so
   // the player can step around each blow.

@@ -67,10 +67,24 @@ export type SpawnProjectile = (
   opts?: SpawnOpts,
 ) => void;
 
+/** The combat archetype an enemy fills in an encounter. Encounter profiles
+ *  (engine/src/encounters) request enemies BY ROLE — never by concrete class — so a
+ *  new enemy that declares its role slots into every recipe automatically. This is
+ *  spawn-time classification, never crosses the wire, and so lives engine-side. */
+export type EnemyRole = "melee" | "ranged" | "swarm" | "brute";
+
 /** A concrete enemy class: `new`-able and carrying its `EnemyType` id statically,
  *  so the spawn lists in entities/enemies can be plain arrays of classes that the
- *  compiler still checks — no id→class lookup table. */
-export type EnemyClass = { new (physics: PhysicsWorld, x: number, y: number): Enemy; readonly type: EnemyType };
+ *  compiler still checks — no id→class lookup table. `role`/`threat` are STATIC for
+ *  the same reason `type` is: the encounter director reads them to classify and
+ *  price a class with no live instance (an instance needs `physics, x, y`). Static
+ *  props inherit down the extends chain, so a subclass overrides only what differs. */
+export type EnemyClass = {
+  new (physics: PhysicsWorld, x: number, y: number): Enemy;
+  readonly type: EnemyType;
+  readonly role: EnemyRole;
+  readonly threat: number;
+};
 
 // Base class for every enemy. Behaviour lives here and in subclasses — never in a
 // data blob steered by a lookup table (see the engineering-approach note in
@@ -82,6 +96,11 @@ export type EnemyClass = { new (physics: PhysicsWorld, x: number, y: number): En
 // distinct stat — is a one-line getter override, all compiler-checked. Bosses
 // and specific enemies override what they need.
 export abstract class Enemy extends Entity implements Caster {
+  // Encounter classification (see EnemyClass). Defaults make a new enemy a plain
+  // melee unit worth one budget point; a subclass overrides `static readonly role`
+  // / `threat` to become swarm/ranged/brute or to cost more of a room's threat pool.
+  static readonly role: EnemyRole = "melee";
+  static readonly threat: number = 1;
   state: EnemyState;
   // Set true the first tick after isDying so GameRoom runs the room-clear check
   // once per death.

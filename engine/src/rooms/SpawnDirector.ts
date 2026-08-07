@@ -9,6 +9,7 @@ import {
 } from "shared";
 import { GameState } from "../schema/GameState";
 import { Enemy, EnemyClass } from "../entities/Enemy";
+import { RoomGeometry, profileFor } from "../encounters";
 import { Player } from "../entities/Player";
 import { REGULAR_ENEMIES } from "../entities/enemies";
 import { BOSSES } from "../entities/bosses";
@@ -111,21 +112,70 @@ export class SpawnDirector {
     const isShowcase = this.dungeonOpts.showcaseRoomType != null;
     const pool = this.enemyPool();
     const roundRobin = this.hasCustomEnemyList();
+    // The debug enemy-picker (an explicit type list, or a forced per-room count)
+    // bypasses encounter profiles entirely and keeps the old exact-fill behavior,
+    // so "spawn N of exactly these types" still means what it says. Everything else
+    // composes a room from an encounter profile against a threat budget.
+    const debugFill = roundRobin || (this.debug != null && this.debug.enemiesPerRoom >= 0);
     let filled = 0; // round-robin cursor, continuous across rooms
     for (const room of this.dungeon.rooms) {
       if (room.id === startId && !singleRoom) continue;
       if (isShowcase && !everyRoom && room.id === exitId) continue;
       if (!everyRoom && NO_RABBLE_ROOM_TYPES.includes(room.type)) continue;
-      for (let i = 0; i < count; i++) {
-        // Round-robin walks the listed creatures in order, wrapping to the start
-        // when the quota outruns the list; with no list it's a random draw.
-        const cls = roundRobin ? pool[filled++ % pool.length] : pick(this.rng, pool);
-        // Deferred: the enemy is built now (so the room locks and never pre-clears)
-        // but stays hidden until a player walks in.
-        this.spawnEnemyInRoom(room.id, cls, true);
+      if (debugFill) {
+        for (let i = 0; i < count; i++) {
+          // Round-robin walks the listed creatures in order, wrapping to the start
+          // when the quota outruns the list; with no list it's a random draw.
+          const cls = roundRobin ? pool[filled++ % pool.length] : pick(this.rng, pool);
+          // Deferred: built now (so the room locks and never pre-clears) but hidden
+          // until a player walks in.
+          this.spawnEnemyInRoom(room.id, cls, true);
+        }
+        continue;
+      }
+      // The threat budget IS the per-room count formula, denominated in threat
+      // points (a baseline melee = 1). A profile fills it, then places the group.
+      const ctx = {
+        roomType: room.type,
+        floor: this.state.floor,
+        partySize: Math.max(1, this.players.size),
+        rng: this.rng,
+        geometry: this.roomGeometry(room),
+      };
+      const profile = profileFor(ctx);
+      for (const p of profile.place(ctx, profile.compose(ctx, count))) {
+        this.addEnemy(p.cls, p.x, p.y, true);
       }
     }
     this.assignGoldBudget();
+  }
+
+  /** Assemble the placement geometry a profile needs for `room`: every walkable
+   *  interior tile center it may spawn on, the room center, and the passageway
+   *  midpoint of each doorway touching the room (for back/front formations). */
+  private roomGeometry(room: RoomData): RoomGeometry {
+    const [colMin, rowMin, colMax, rowMax] = this.roomInterior(room);
+    const { mapData } = this.dungeon;
+    const candidates: { x: number; y: number }[] = [];
+    for (let r = rowMin; r <= rowMax; r++) {
+      for (let c = colMin; c <= colMax; c++) {
+        const tile = mapData[r]?.[c] as TileId | undefined;
+        if (tile !== undefined && TILE_PROPS[tile].walkable && tile !== TILE.STAIRS) {
+          candidates.push(tileCenter(c, r));
+        }
+      }
+    }
+    const doorwayAnchors = this.dungeon.connections
+      .filter((cn) => cn.parentRoomId === room.id || cn.childRoomId === room.id)
+      .map((cn) => ({
+        x: (cn.passXMin + cn.passXMax) / 2,
+        y: (cn.passYMin + cn.passYMax) / 2,
+      }));
+    return {
+      candidates,
+      center: tileCenter(room.centerCol, room.centerRow),
+      doorwayAnchors,
+    };
   }
 
   /** Divide the floor's gold budget across everything spawned, weighted by each
