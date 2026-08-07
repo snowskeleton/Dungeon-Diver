@@ -20,6 +20,11 @@ export class RemotePlayer extends Entity implements DebugDrawable {
   private targetX: number;
   private targetY: number;
   private currentHp: number;
+
+  /** Standing (not downed/dead), so a fully-downed local party can spectate them. */
+  get alive(): boolean {
+    return this.currentHp > 0;
+  }
   private facing: Facing = "down";
   private isAttacking = false;
   /** When the current swing's animation began (performance.now()), so the debug

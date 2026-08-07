@@ -88,6 +88,20 @@ export class LocalPlayerManager {
     return { x: sum.x / this.localPlayers.length, y: sum.y / this.localPlayers.length };
   }
 
+  /** Centroid of the local players still standing, or null if the whole local
+   *  party is downed. The camera prefers this so a frozen corpse never drags the
+   *  view off the survivor — and an all-downed local party (null) falls back to
+   *  spectating a living teammate rather than staring at the floor. */
+  getLivingCentroid(): { x: number; y: number } | null {
+    const living = this.localPlayers.filter((p) => !p.downed);
+    if (living.length === 0) return null;
+    const sum = living.reduce(
+      (acc, p) => ({ x: acc.x + p.sprite.x, y: acc.y + p.sprite.y }),
+      { x: 0, y: 0 },
+    );
+    return { x: sum.x / living.length, y: sum.y / living.length };
+  }
+
   /** Drop the sprites AND the connections behind them — abandoning a run leaves
    *  the room for real, so the party can go back to the menu and start another. */
   async leaveAll() {

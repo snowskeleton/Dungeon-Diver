@@ -645,6 +645,28 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  /** Session id of the teammate the camera is currently spectating, so a fully-
+   *  downed local party locks onto one survivor instead of the view hopping between
+   *  teammates every frame. Cleared when that target is no longer alive. */
+  private spectateSessionId: string | null = null;
+
+  /** Camera target while the whole local party is downed: a living remote teammate,
+   *  or null when nobody remote is up either. Sticks to the current target until it
+   *  falls, then picks another. */
+  private spectateAnchor(): { x: number; y: number } | null {
+    const living = [...this.remotePlayers.entries()].filter(([, rp]) => rp.alive);
+    if (living.length === 0) {
+      this.spectateSessionId = null;
+      return null;
+    }
+    let target = living.find(([id]) => id === this.spectateSessionId);
+    if (!target) {
+      target = living[0];
+      this.spectateSessionId = target[0];
+    }
+    return { x: target[1].sprite.x, y: target[1].sprite.y };
+  }
+
   private setupWorldSync(room: RoomLike) {
     // The one boundary cast in the client. colyseus.js types `room.state` as the
     // untyped decoded state; from here down it is GameStateView, whose interfaces
@@ -862,7 +884,14 @@ export class GameScene extends Phaser.Scene {
       ...this.projectiles.values(),
     ]);
 
-    const { x, y } = this.localManager.getCentroid();
+    // Camera anchor: the living local party normally; when the whole local party
+    // is downed, spectate a living teammate so the downed player watches the fight
+    // (and their incoming revive) instead of a wall; if nobody's up anywhere, hold
+    // on the local centroid (the game-over overlay takes it from here).
+    const { x, y } =
+      this.localManager.getLivingCentroid() ??
+      this.spectateAnchor() ??
+      this.localManager.getCentroid();
 
     const cell = roomCellAt(x, y);
     const bx = cell.gx * ROOM_W * TILE_SIZE;
