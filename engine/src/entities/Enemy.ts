@@ -26,6 +26,14 @@ export interface EnemyNavigator {
   lineOfSight(kind: "ground" | "air", roomId: string, x0: number, y0: number, x1: number, y1: number): boolean;
 }
 
+/** What an enemy needs to spread out around a target instead of stacking on the one
+ *  shortest path. Injected (like EnemyNavigator) so the enemy stays testable with no
+ *  crowd wired — see EnemyFlock for the implementation. */
+export interface EnemyCrowd {
+  /** Accumulated push-away from same-room peers within `radius` of (x, y). */
+  separation(selfId: string, roomId: string, x: number, y: number, radius: number): { dx: number; dy: number };
+}
+
 const PATROL_RANGE = 64;
 
 // ── Aggro tuning ──────────────────────────────────────────────────────────────
@@ -142,6 +150,15 @@ export abstract class Enemy extends Entity implements Caster {
   protected get attackCooldownMs(): number { return 1200; }
   /** 0 = full knockback; higher absorbs more force. */
   protected get knockbackResistance(): number { return 3; }
+  /** Radius (px) within which a chasing enemy feels crowd pressure from same-room
+   *  peers and steers to spread out around the target. ~1.5 sprite-widths, so the
+   *  push kicks in only once bodies are genuinely bunched. */
+  protected get separationRadius(): number { return 26; }
+  /** How hard crowd pressure bends the chase heading. The desired heading is a unit
+   *  vector, so a weight below 1 keeps the pull toward the player dominant while
+   *  still fanning the pack out to surround it. 0 disables spreading — a lumbering
+   *  brute that should bulldoze straight in can override this to 0. */
+  protected get separationWeight(): number { return 0.55; }
   /** This enemy's share of the floor's gold budget, relative to its peers. The
    *  SpawnDirector sums every spawned enemy's weight and hands each a slice of the
    *  budget in proportion — so gold is never priced per-enemy here, and enemy or
@@ -304,6 +321,11 @@ export abstract class Enemy extends Entity implements Caster {
   // beelines, which is why the bare-world tests still pass.
   private nav: EnemyNavigator | null = null;
   private homeRoomId: string | null = null;
+  // Crowd steering (see EnemyCrowd / EnemyFlock). Null for a test-built or free
+  // enemy, which then chases with no spreading. `selfId` is this enemy's map key,
+  // needed so the flock excludes it from its own neighbour scan.
+  private crowd: EnemyCrowd | null = null;
+  private selfId: string | null = null;
   // Per-player accumulated threat (recent damage this enemy took from each), the
   // aggro system's memory. Decays every tick — see decayThreat.
   private threat = new Map<string, number>();
@@ -313,6 +335,14 @@ export abstract class Enemy extends Entity implements Caster {
   setNavigation(nav: EnemyNavigator, roomId: string): void {
     this.nav = nav;
     this.homeRoomId = roomId;
+  }
+
+  /** Wire this enemy to the floor's crowd-steering flock. Called at the same
+   *  SpawnDirector.addEnemy choke point as setNavigation; `id` is the enemy's map
+   *  key so the flock can exclude it from its own separation scan. */
+  setCrowd(crowd: EnemyCrowd, id: string): void {
+    this.crowd = crowd;
+    this.selfId = id;
   }
 
   /** Record damage this enemy took from a player, raising that player's threat.
@@ -556,8 +586,36 @@ export abstract class Enemy extends Entity implements Caster {
 
   // Reusable movement helpers subclasses (e.g. bosses) can call.
   protected chase(dx: number, dy: number): void {
-    this.move(dx, dy, this.speed);
+    const steer = this.applySeparation(dx, dy);
+    this.move(steer.dx, steer.dy, this.speed);
+    // Face where we're going, not where we were pushed: keep facing on the ORIGINAL
+    // heading so a spreading enemy still looks at the player it's closing on.
     this.updateFacing(dx, dy);
+  }
+
+  /** Blend crowd separation into a desired chase heading so packs fan out around the
+   *  target instead of stacking on the one shortest path. The desired heading is
+   *  reduced to a unit vector first, then the flock's push (scaled by
+   *  separationWeight) is added — so a lone enemy chases exactly as before and a
+   *  crowded one bows outward in proportion to how bunched it is. Returns the
+   *  heading unchanged when there's no flock wired or nothing nearby to avoid. */
+  private applySeparation(dx: number, dy: number): { dx: number; dy: number } {
+    if (!this.crowd || !this.selfId || !this.homeRoomId || this.separationWeight <= 0) {
+      return { dx, dy };
+    }
+    const push = this.crowd.separation(
+      this.selfId,
+      this.homeRoomId,
+      this.state.x,
+      this.state.y,
+      this.separationRadius,
+    );
+    if (push.dx === 0 && push.dy === 0) return { dx, dy };
+    const len = Math.hypot(dx, dy) || 1;
+    return {
+      dx: dx / len + push.dx * this.separationWeight,
+      dy: dy / len + push.dy * this.separationWeight,
+    };
   }
 
   protected patrol(dtMs: number): void {

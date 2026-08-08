@@ -17,6 +17,7 @@ import {
   roomInteriorContains,
 } from "shared";
 import { SpawnDirector } from "../../engine/src/rooms/SpawnDirector";
+import { EnemyFlock } from "../../engine/src/pathfinding/EnemyFlock";
 import { GameState } from "../../engine/src/schema/GameState";
 import { FloorManager } from "../../engine/src/floor/FloorManager";
 import { PhysicsWorld } from "../../engine/src/physics/PhysicsWorld";
@@ -54,7 +55,7 @@ function floor(opts: {
     ? null
     : { ...DEFAULT_DEBUG_CONFIG, enabled: true, ...opts.debug };
 
-  const spawner = new SpawnDirector(state, enemies, players, debug, dungeonOpts);
+  const spawner = new SpawnDirector(state, enemies, players, debug, dungeonOpts, new EnemyFlock());
   spawner.setFloor(dungeon, physics, floorManager);
   return { dungeon, physics, floorManager, state, enemies, players, spawner };
 }

@@ -33,6 +33,7 @@ import { CombatSystem, HitSource } from "../combat";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
 import { FloorManager } from "../floor/FloorManager";
 import { FlowFieldSystem } from "../pathfinding/FlowFieldSystem";
+import { EnemyFlock } from "../pathfinding/EnemyFlock";
 
 export class GameRoom extends LocalRoom<GameState> {
   maxClients = MAX_CLIENTS;
@@ -58,6 +59,10 @@ export class GameRoom extends LocalRoom<GameState> {
   private physics!: PhysicsWorld;
   private floorManager!: FloorManager;
   private flowField!: FlowFieldSystem;
+  // Crowd-steering snapshot, rebuilt each tick from the live enemy set so chasers
+  // spread out around the player. Floor-independent (holds no geometry), so one
+  // instance lives for the whole room.
+  private readonly enemyFlock = new EnemyFlock();
   private loot!: LootDirector;
   private spawner!: SpawnDirector;
   // Active room objectives keyed by room id, mirrored to state.challenges.
@@ -119,6 +124,7 @@ export class GameRoom extends LocalRoom<GameState> {
       this.players,
       this.debug,
       this.dungeonOpts,
+      this.enemyFlock,
     );
     this.initFloor(this.currentSeed);
 
@@ -728,6 +734,18 @@ export class GameRoom extends LocalRoom<GameState> {
     this.state.projectiles.set(id, proj.state);
   }
 
+  /** This tick's crowd-separation members: every spawned, living enemy paired with
+   *  its home room, so the flock groups them for same-room push-away. Dying corpses
+   *  and unrevealed enemies are skipped — neither should shove a chaser. */
+  private *flockMembers(): Iterable<{ id: string; roomId: string; x: number; y: number }> {
+    for (const [id, enemy] of this.enemies) {
+      if (enemy.isDying || !enemy.spawned) continue;
+      const roomId = this.floorManager.getEnemyRoom(id);
+      if (!roomId) continue;
+      yield { id, roomId, x: enemy.state.x, y: enemy.state.y };
+    }
+  }
+
   private tick() {
     // Nothing simulates in the lobby: the floor is generated but unpopulated, so
     // there is no AI to run and standing in the lobby costs the server a boolean.
@@ -766,6 +784,12 @@ export class GameRoom extends LocalRoom<GameState> {
     //     gradient in O(1) during their AI pass below. Always fresh (targets move),
     //     so there is no replan-interval bookkeeping.
     this.flowField.rebuild(occupiedRoomIds, playerPositions);
+
+    // 1d. Snapshot every live enemy's position by room for crowd separation, so the
+    //     AI pass below can steer chasers to fan out around the player instead of
+    //     stacking on the shortest path. Only spawned, non-dying enemies count (a
+    //     corpse or an unrevealed enemy shouldn't push anyone).
+    this.enemyFlock.rebuild(this.flockMembers());
 
     // 1b. One-way barriers (playtest B1/G1). A player inside a locked room is
     //     COMMITTED — their body starts colliding with that room's exit barrier —

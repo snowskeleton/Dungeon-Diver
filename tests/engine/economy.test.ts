@@ -9,6 +9,7 @@ import {
 } from "shared";
 import { startedRoom, RoomHarness } from "../helpers/gameRoom";
 import { SpawnDirector } from "../../engine/src/rooms/SpawnDirector";
+import { EnemyFlock } from "../../engine/src/pathfinding/EnemyFlock";
 import { LootDirector } from "../../engine/src/rooms/LootDirector";
 import { GameState } from "../../engine/src/schema/GameState";
 import { PlayerState } from "../../engine/src/schema/PlayerState";
@@ -31,7 +32,7 @@ function spawnFloor(players = 1) {
   const enemies = new Map<string, Enemy>();
   const playerMap = new Map<string, Player>();
   for (let i = 0; i < players; i++) playerMap.set(`p${i}`, new Player(physics, 100, 100));
-  const spawner = new SpawnDirector(state, enemies, playerMap, null, {});
+  const spawner = new SpawnDirector(state, enemies, playerMap, null, {}, new EnemyFlock());
   spawner.setFloor(dungeon, physics, floorManager);
   spawner.spawnFloorEnemies();
   return { dungeon, physics, state, enemies };

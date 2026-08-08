@@ -44,6 +44,7 @@ export const CHANGELOG: ChangelogVersion[] = [
     version: "Unreleased",
     released: false,
     changes: [
+      { kind: "balance", text: "Enemies chasing you now spread out to surround you instead of piling onto a single overlapping stack — a pack fans apart as it closes in, while still funneling through corridors and doorways single-file" },
       { kind: "balance", text: "Trimmed the weapon pool down to a tighter, more distinct set: nine weapons across swords, an axe, a spear, a mace, a bow, a throwing star, and a staff. Arrows are now a single basic arrow and staves fire one bolt, so what you find and wield is clearer at a glance" },
       { kind: "fix", text: "Other players and enemies no longer drift or coast past their stopping point in co-op — they're now drawn by smoothing between the positions the game actually reported instead of guessing ahead, so when someone stops, they stop right where they are (most visible when two characters move together and let go at once)" },
       { kind: "fix", text: "Your own melee swing now starts the instant you press attack instead of a beat later — the swing animation is shown immediately while the hit itself stays server-checked, so close combat feels snappier, especially online" },

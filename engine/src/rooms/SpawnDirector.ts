@@ -16,6 +16,7 @@ import { BOSSES } from "../entities/bosses";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
 import { FloorManager } from "../floor/FloorManager";
 import { FlowFieldSystem } from "../pathfinding/FlowFieldSystem";
+import { EnemyFlock } from "../pathfinding/EnemyFlock";
 
 // Room types that never get rank-and-file enemies: the boss room has its boss, and
 // the rest are reward rooms whose whole point is being safe to walk into. A debug
@@ -54,6 +55,7 @@ export class SpawnDirector {
     private readonly players: Map<string, Player>,
     private readonly debug: DebugConfig | null,
     private readonly dungeonOpts: DungeonOptions,
+    private readonly flock: EnemyFlock,
   ) {}
 
   /** Point at the newly generated floor. Called from GameRoom.initFloor, after the
@@ -268,6 +270,9 @@ export class SpawnDirector {
       // Wire the enemy to the flow-field pathfinder for its home room, so chasing
       // routes around cover/walls instead of beelining into them.
       enemy.setNavigation(this.flowField, home.id);
+      // ...and to the crowd flock, so a pack chasing one player fans out to surround
+      // it rather than piling onto the single shortest path.
+      enemy.setCrowd(this.flock, id);
     }
 
     // Deferred spawn: hide it until its room is entered. Anything with no home room

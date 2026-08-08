@@ -84,13 +84,43 @@ threat identically. For this to work every player hit needs an `ownerId`, so `Ga
 stamps it at the drain choke point (harmless to resolution — a player source only affects
 `ENEMY|PROP`, so its owner can never self-exclude).
 
+### 4. Crowd separation — `EnemyFlock` (`engine/src/pathfinding/EnemyFlock.ts`)
+
+The flow field answers *which way* to the player, and on its own it funnels every
+chaser onto the one shortest path — so a pack piles into a single overlapping stack
+(the collision bodies are radius-5 foot circles under much bigger sprites, so bodies
+barely touch while sprites fully overlap). `EnemyFlock` is the second half of a
+boids-style steer: the **separation** term that fans the pack out to *surround* the
+target.
+
+- `GameRoom.tick` (step 1d, right after the flow-field rebuild) calls
+  `enemyFlock.rebuild(...)` with every **spawned, non-dying** enemy paired with its
+  home room. One per-tick snapshot grouped by room — cheap because enemies are
+  confined to one room, so separation only ever consults same-room neighbours.
+- `separation(selfId, roomId, x, y, radius)` returns an accumulated push-away vector:
+  each same-room neighbour within `radius` contributes a unit vector pointing away
+  from it, scaled by a linear falloff (1 at contact → 0 at the rim). The result is
+  **not** normalized — its length reflects crowd pressure.
+- `Enemy.chase` blends this into the desired heading: the heading is reduced to a unit
+  vector, then `separation × separationWeight` is added. So a lone enemy chases
+  exactly as before, and a crowded one bows outward in proportion to how bunched it
+  is. The push fades at the rim, so the group settles spread ~`separationRadius`
+  apart rather than being flung arbitrarily far. **Facing tracks the original heading**
+  (the player), not the shoved one, so a spreading enemy still looks where it's going.
+
+The flock is injected (`Enemy.setCrowd`) at the same `SpawnDirector.addEnemy` choke
+point as the navigator, so a test-built or free enemy has none and simply doesn't
+spread. Bosses fully override `tick()` and drive their bodies with the movement
+builders (not `chase`), so separation never touches them.
+
 ## Tuning
 
 | Knob | Where |
 |---|---|
-| Aggro weights (proximity vs threat), threat half-life | `AGGRO_*` / `THREAT_*` consts in `server/src/entities/Enemy.ts` |
+| Aggro weights (proximity vs threat), threat half-life | `AGGRO_*` / `THREAT_*` consts in `engine/src/entities/Enemy.ts` |
 | Aggro range, speed (per enemy) | the `Enemy` subclass's `aggroRadius` / `speed` getters |
 | Which enemies fly over cover | the subclass's `cruiseHeight` getter (> 0 = airborne) |
+| Crowd spread (how far / how hard a pack fans out) | `separationRadius` / `separationWeight` getters on `Enemy` (per-subclass override; `separationWeight = 0` disables spreading for a bulldozing brute) |
 
 ## Gotchas
 

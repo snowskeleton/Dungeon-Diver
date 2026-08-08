@@ -14,6 +14,7 @@ import { PlayerState } from "../../engine/src/schema/PlayerState";
 import { GooGreen } from "../../engine/src/entities/enemies";
 import { EyeBat } from "../../engine/src/entities/enemies";
 import { FlowFieldSystem } from "../../engine/src/pathfinding/FlowFieldSystem";
+import { EnemyFlock } from "../../engine/src/pathfinding/EnemyFlock";
 import { physicsTick } from "../helpers/world";
 
 const ROOM: RoomData = {
@@ -138,6 +139,48 @@ describe("Cover corners are chamfered — bodies slide off instead of deadlockin
     // it), rather than stalling in the corner pocket around (352, 288).
     const cleared = enemy.state.x < 320 || enemy.state.y < 256;
     expect(cleared).toBe(true);
+  });
+});
+
+describe("Crowd separation — a pack spreads out instead of stacking", () => {
+  it("two stacked chasers fan apart while both close on the player", () => {
+    const map = mapFloor();
+    const physics = new PhysicsWorld(map, ROOM_W, ROOM_H);
+    const ff = new FlowFieldSystem(map, [ROOM]);
+    const flock = new EnemyFlock();
+
+    // Player to the EAST; both enemies start nearly on top of each other to the
+    // west, offset by a hair vertically (so separation has a defined axis and the
+    // coincident-skip doesn't fire). Straight-line chase would keep them stacked.
+    const target = player(center(15), center(8));
+    const players = new Map<string, PlayerState>([["p1", target]]);
+
+    const a = new GooGreen(physics, center(5), center(8) - 2);
+    const b = new GooGreen(physics, center(5), center(8) + 2);
+    for (const [id, e] of [["a", a], ["b", b]] as const) {
+      e.setNavigation(ff, "0,0"); // sets homeRoomId, which separation reads
+      e.setCrowd(flock, id);
+    }
+
+    const startGap = Math.abs(a.state.y - b.state.y);
+    for (let t = 0; t < 40; t++) {
+      ff.rebuild(new Set(["0,0"]), [{ id: "p1", x: target.x, y: target.y }]);
+      flock.rebuild([
+        { id: "a", roomId: "0,0", x: a.state.x, y: a.state.y },
+        { id: "b", roomId: "0,0", x: b.state.x, y: b.state.y },
+      ]);
+      a.tick(players, SERVER_TICK_MS);
+      b.tick(players, SERVER_TICK_MS);
+      physicsTick(physics, [a, b]);
+    }
+
+    // They spread apart perpendicular to the approach — the gap grows toward the
+    // separation radius (the push fades to nothing at the rim, so it settles there
+    // rather than flinging them arbitrarily far).
+    expect(Math.abs(a.state.y - b.state.y)).toBeGreaterThan(startGap + 12);
+    // …yet both still advanced east toward the player (spreading didn't stall them).
+    expect(a.state.x).toBeGreaterThan(center(5));
+    expect(b.state.x).toBeGreaterThan(center(5));
   });
 });
 
